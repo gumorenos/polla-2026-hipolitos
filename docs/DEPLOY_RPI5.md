@@ -46,7 +46,7 @@ The application expects its configuration in the `.env.local` file at the root o
 > [!CRITICAL]
 > **NEVER commit `.env.local` to git.** This file contains secret keys and credentials. It is automatically ignored by git.
 
-Create `/home/gumorenos/lapolla2026/app/.env.local` with the following variables:
+Create `/home/gumorenos/apps/polla-2026-hipolitos/app/.env.local` with the following variables:
 
 ```env
 # Production SQLite Connection String (WAL mode active, connection pool limit to 1 for SQLite concurrency)
@@ -86,19 +86,20 @@ Follow these steps on the Raspberry Pi 5 to perform a clean deployment:
 
 3. **Clone the repository**:
    ```bash
-   cd /home/gumorenos
-   git clone https://github.com/gumorenos/polla-2026-hipolitos.git lapolla2026
+   mkdir -p /home/gumorenos/apps
+   cd /home/gumorenos/apps
+   git clone https://github.com/gumorenos/polla-2026-hipolitos.git
    ```
 
 4. **Prepare Database Directory**:
    Set up `/var/lib/la-polla-2026` as described in Section 2.
 
 5. **Configure Environment**:
-   Create the `.env.local` file inside `/home/gumorenos/lapolla2026/app` as described in Section 3.
+   Create the `.env.local` file inside `/home/gumorenos/apps/polla-2026-hipolitos/app` as described in Section 3.
 
 6. **Install dependencies**:
    ```bash
-   cd /home/gumorenos/lapolla2026/app
+   cd /home/gumorenos/apps/polla-2026-hipolitos/app
    npm ci
    ```
 
@@ -153,7 +154,7 @@ When pulling updates or new commits from the repository, execute the following c
 
 1. **Pull the latest code**:
    ```bash
-   cd /home/gumorenos/lapolla2026
+   cd /home/gumorenos/apps/polla-2026-hipolitos
    git pull origin main
    ```
 
@@ -180,7 +181,7 @@ When pulling updates or new commits from the repository, execute the following c
 
 6. **Restart the PM2 process**:
    ```bash
-   pm2 restart la-polla-2026
+   pm2 restart polla-2026-hipolitos
    ```
 
 ---
@@ -190,12 +191,12 @@ When pulling updates or new commits from the repository, execute the following c
 To guard against SQLite database corruption or hardware failure, backups are automated.
 
 ### Backup Script
-A backup script is provided at [scripts/backup-sqlite.sh](file:///d:/projects/antigravity/lapolla2026/scripts/backup-sqlite.sh).
+A backup script is provided at [scripts/backup-sqlite.sh](../scripts/backup-sqlite.sh).
 It uses `sqlite3 .backup` to make a non-blocking snapshot, saves it to `/home/gumorenos/backups/la-polla-2026`, sets file permissions to `600`, and purges copies older than 30 days.
 
 Make the script executable:
 ```bash
-chmod +x /home/gumorenos/lapolla2026/scripts/backup-sqlite.sh
+chmod +x /home/gumorenos/apps/polla-2026-hipolitos/scripts/backup-sqlite.sh
 ```
 
 ### Cron Setup
@@ -208,7 +209,7 @@ crontab -e
 
 Add the following line at the bottom of the file:
 ```text
-0 3 * * * /bin/bash /home/gumorenos/lapolla2026/scripts/backup-sqlite.sh > /dev/null 2>&1
+0 3 * * * /bin/bash /home/gumorenos/apps/polla-2026-hipolitos/scripts/backup-sqlite.sh > /dev/null 2>&1
 ```
 
 Save and exit. The cron daemon will automatically load the new configuration.
@@ -222,7 +223,7 @@ If a production update fails or corrupts the database, execute a rollback using 
 ### Step 1: Restore Previous Code Commit
 Check the git log to locate a stable commit hash (e.g., `abc1234`) and checkout that commit:
 ```bash
-cd /home/gumorenos/lapolla2026
+cd /home/gumorenos/apps/polla-2026-hipolitos
 git checkout <stable-commit-hash>
 cd app
 npm ci
@@ -235,7 +236,7 @@ Locate the last successful backup file in `/home/gumorenos/backups/la-polla-2026
 
 1. **Stop the running application** to release file locks:
    ```bash
-   pm2 stop la-polla-2026
+   pm2 stop polla-2026-hipolitos
    ```
 
 2. **Replace the current production database** with the backup:
@@ -250,6 +251,6 @@ Locate the last successful backup file in `/home/gumorenos/backups/la-polla-2026
 
 ### Step 3: Restart PM2 Process
 ```bash
-pm2 start la-polla-2026
+pm2 start polla-2026-hipolitos
 ```
 Verify the health check endpoint `/api/health` returns a healthy state.

@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "la-polla-2026",
+      name: "polla-2026-hipolitos",
       script: "node_modules/next/dist/bin/next",
       args: "start -p 3030",
       cwd: "./",

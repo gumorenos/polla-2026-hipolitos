@@ -141,3 +141,18 @@
 - Can be added in a future phase if rules are defined.
 
 **Fields removed from schema:** `League.entry_credits`, `LeagueMember.credits_wagered`, `Player.credits`
+
+---
+
+## ADR-008 — Global Prediction Scope Per User/Match
+
+**Date:** 2026-06-12  
+**Status:** Accepted
+
+**Decision:** Users submit a single prediction per match. This prediction is shared globally across all leagues the user belongs to.
+
+**Rationale:**
+- Prevents cognitive fatigue: World Cup contains 72 matches. Belonging to multiple leagues would require predicting hundreds of scores, leading to dropouts.
+- Enforces pool integrity: Prevents hedging or split-betting strategies across different leagues.
+- Simplifies standings: Leaderboard calculation queries are simple joins on a single global prediction row.
+

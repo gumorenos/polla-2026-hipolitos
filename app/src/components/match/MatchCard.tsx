@@ -32,10 +32,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   variant = 'scoreboard',
   onSavePrediction,
 }) => {
-  // Determine mode based on match status if not explicitly provided
   const cardMode = mode ?? (
     match.status === 'result' ? 'result' :
-    match.status === 'live' || match.status === 'soon' ? 'locked' :
+    match.status === 'live' || new Date(match.kickoffUtc) <= new Date() ? 'locked' :
     'predict'
   );
 
@@ -47,6 +46,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     prediction ? prediction.awayPrediction : null
   );
   const [isSaved, setIsSaved] = useState<boolean>(!!prediction);
+
+  // Sync state if prediction prop changes (during render)
+  const [prevPrediction, setPrevPrediction] = useState(prediction);
+  if (prediction !== prevPrediction) {
+    setPrevPrediction(prediction);
+    setHomePred(prediction ? prediction.homePrediction : null);
+    setAwayPred(prediction ? prediction.awayPrediction : null);
+    setIsSaved(!!prediction);
+  }
 
   const homeTeam = TEAMS[match.homeTeamCode] ?? { code: match.homeTeamCode, name: match.homeTeamCode, hue: 200 };
   const awayTeam = TEAMS[match.awayTeamCode] ?? { code: match.awayTeamCode, name: match.awayTeamCode, hue: 200 };

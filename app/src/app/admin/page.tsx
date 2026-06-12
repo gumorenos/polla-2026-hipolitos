@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { MOCK_MATCHES, MOCK_LEAGUES } from '../../lib/mockData';
 import { FlagDisc } from '../../components/ui/FlagDisc';
 import { Shield, Settings, Play, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AdminPage() {
   const [activeSubTab, setActiveSubTab] = useState<'matches' | 'leagues' | 'users'>('matches');
@@ -70,17 +71,12 @@ export default function AdminPage() {
           >
             Partidos ({matches.length})
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('leagues')}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all border ${
-              activeSubTab === 'leagues'
-                ? 'bg-gold-400/10 border-gold-400 text-gold-400'
-                : 'bg-bg-tertiary border-border-default text-text-secondary hover:text-text-primary'
-            }`}
+          <Link
+            href="/admin/ligas"
+            className="px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all border bg-bg-tertiary border-border-default text-text-secondary hover:text-text-primary flex items-center"
           >
-            Ligas ({MOCK_LEAGUES.length})
-          </button>
+            Ligas
+          </Link>
           <button
             type="button"
             onClick={() => setActiveSubTab('users')}

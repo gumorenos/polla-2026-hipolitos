@@ -88,14 +88,14 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 ### Tasks
 
-- [ ] Build league creation Server Action (superadmin only): generates unique invite code and slug.
-- [ ] Build league join page (`app/(app)/liga/join/page.tsx`).
-- [ ] Build join Server Action: validates code, creates LeagueMember.
-- [ ] Display user's leagues on `/liga` page.
-- [ ] Migrate LigaScreen UI with real data.
-- [ ] Show invite code with copy functionality.
-- [ ] Validate: user cannot join same league twice.
-- [ ] Commit: "feat: league join flow with invite codes"
+- [x] Build league creation Server Action: generates unique invite code and slug.
+- [x] Build league join page (`app/join/[inviteCode]/page.tsx`).
+- [x] Build join Server Action: validates code, creates LeagueMember.
+- [x] Display user's leagues on `/liga` page.
+- [x] Migrate LigaScreen UI with real data.
+- [x] Show invite code with copy functionality.
+- [x] Validate: user cannot join same league twice.
+- [x] Commit: "feat: implement private leagues"
 
 **Validation:** Can join a league with invite code. League appears in /liga.
 

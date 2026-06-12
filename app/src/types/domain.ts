@@ -69,7 +69,7 @@ export interface Prediction {
 }
 
 export interface Standing {
-  leagueId: string;
+  leagueId?: string;
   userId: string;
   displayName: string;
   avatarUrl?: string;

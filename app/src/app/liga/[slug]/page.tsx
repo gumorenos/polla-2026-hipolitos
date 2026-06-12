@@ -1,71 +1,137 @@
-'use client';
-
 import React from 'react';
-import { AppShell } from '../../../components/layout/AppShell';
-import { RankingTable } from '../../../components/league/RankingTable';
-import { MOCK_LEAGUES, MOCK_STANDINGS, MOCK_USER } from '../../../lib/mockData';
-import { useParams, notFound } from 'next/navigation';
-import { Users, DollarSign, ArrowLeft, Share2 } from 'lucide-react';
-import Link from 'next/link';
+import { prisma } from '../../../lib/db';
+import { getCurrentSession } from '../../../lib/auth-helpers';
+import { redirect, notFound } from 'next/navigation';
+import { LigaDetalleClient } from '../../../components/league/LigaDetalleClient';
 
-export default function LigaDetallePage() {
-  const params = useParams();
-  const slug = params.slug as string;
+export default async function LigaDetallePage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
 
-  const league = MOCK_LEAGUES.find((l) => l.slug === slug);
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    redirect('/login');
+  }
+
+  const userId = session.user.id;
+  const isSuperadmin = !!session.user.isSuperadmin;
+
+  // Query league detail
+  const league = await prisma.league.findUnique({
+    where: { slug },
+  });
 
   if (!league) {
     notFound();
   }
 
+  // Enforce private league visibility: Only members or global Superadmins can view the league
+  const membership = await prisma.leagueMember.findUnique({
+    where: {
+      leagueId_userId: {
+        leagueId: league.id,
+        userId,
+      },
+    },
+  });
+
+  if (!membership && !isSuperadmin) {
+    // Redirect unauthorized users to the main leagues dashboard
+    redirect('/liga');
+  }
+
+  const currentUserRole = membership ? membership.role : null;
+
+  // Query all members
+  const members = await prisma.leagueMember.findMany({
+    where: { leagueId: league.id },
+    include: {
+      user: true,
+    },
+    orderBy: {
+      joinedAt: 'asc',
+    },
+  });
+
+  // Query standings
+  const standings = await prisma.standing.findMany({
+    where: {
+      leagueId: league.id,
+      block: 'global',
+    },
+    include: {
+      user: true,
+    },
+    orderBy: {
+      rank: 'asc',
+    },
+  });
+
+  // Serialize records to plain JS structures for client boundary
+  const serializedLeague = {
+    id: league.id,
+    name: league.name,
+    slug: league.slug,
+    inviteCode: league.inviteCode,
+    status: league.status,
+    createdBy: league.createdBy,
+  };
+
+  const serializedMembers = members.map((m) => ({
+    id: m.id,
+    userId: m.userId,
+    role: m.role,
+    joinedAt: m.joinedAt.toISOString(),
+    user: {
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      displayName: m.user.displayName,
+      whatsapp: m.user.whatsapp,
+    },
+  }));
+
+  const serializedStandings = standings.map((s) => ({
+    userId: s.userId,
+    displayName: s.user.displayName || s.user.name,
+    points: s.points,
+    exacts: s.exacts,
+    tendencies: s.tendencies,
+    consolations: s.consolations,
+    misses: s.misses,
+    rank: s.rank,
+    previousRank: s.previousRank,
+  }));
+
+  // If there are no standing rows computed yet, generate a fallback standing layout
+  // from our members list showing 0 points.
+  const finalStandings =
+    serializedStandings.length > 0
+      ? serializedStandings
+      : serializedMembers.map((m, index) => ({
+          userId: m.userId,
+          displayName: m.user.displayName || m.user.name,
+          points: 0,
+          exacts: 0,
+          tendencies: 0,
+          consolations: 0,
+          misses: 0,
+          rank: index + 1,
+          previousRank: index + 1,
+        }));
+
   return (
-    <AppShell>
-      <div className="space-y-6">
-        {/* Back Link and Header */}
-        <div className="space-y-4 pt-2">
-          <Link href="/liga" className="text-xs text-text-secondary hover:text-gold-400 flex items-center gap-1.5 w-fit">
-            <ArrowLeft className="w-4 h-4" /> Volver a ligas
-          </Link>
-
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="font-display text-3xl tracking-wide text-text-primary uppercase">
-                {league.name}
-              </h2>
-              <div className="flex items-center gap-4 text-xs text-text-secondary mt-1">
-                <span className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5 text-gold-400" />
-                  5 miembros
-                </span>
-                <span className="flex items-center gap-0.5">
-                  <DollarSign className="w-3.5 h-3.5 text-gold-400" />
-                  Premio total: ${league.pot} USD
-                </span>
-                <span className="font-mono bg-bg-secondary px-2 py-0.5 rounded border border-border-default">
-                  CÓDIGO: {league.inviteCode}
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/join/${league.inviteCode}`);
-                alert('Enlace de invitación copiado al portapapeles');
-              }}
-              className="btn-ghost flex items-center gap-1.5 text-xs py-2 px-4"
-            >
-              <Share2 className="w-4 h-4" /> Compartir Enlace
-            </button>
-          </div>
-        </div>
-
-        {/* Leaderboard Table */}
-        <div className="space-y-4">
-          <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Tabla de Posiciones</h3>
-          <RankingTable standings={MOCK_STANDINGS} currentUserId={MOCK_USER.id} />
-        </div>
-      </div>
-    </AppShell>
+    <LigaDetalleClient
+      league={serializedLeague}
+      currentUserRole={currentUserRole}
+      isSuperadmin={isSuperadmin}
+      currentUserId={userId}
+      members={serializedMembers}
+      standings={finalStandings}
+    />
   );
 }
+

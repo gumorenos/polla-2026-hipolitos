@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTHENTICATION (Better Auth Models) ──────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  // Custom User fields
+  displayName   String?
+  whatsapp      String?
+  isSuperadmin  Boolean   @default(false)
+
+  // Auth Relations
+  sessions      Session[]
+  accounts      Account[]
+
+  // Domain Relations
+  leaguesOwned    League[]        @relation("OwnedLeagues")
+  memberships     LeagueMember[]
+  predictions     Prediction[]
+  standings       Standing[]
+  adminActionLogs AdminActionLog[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+// ─── DOMAIN MODELS (La Polla 2026 Models) ─────────────────────────────────────
+
+model Team {
+  code String @id // e.g. "ARG", "BRA", "MEX"
+  name String
+  hue  Int    // For circular gradients
+
+  homeMatches Match[] @relation("HomeTeamMatches")
+  awayMatches Match[] @relation("AwayTeamMatches")
+
+  @@map("team")
+}
+
+model Match {
+  id           String      @id @default(cuid())
+  phase        String      // "groups" | "r32" | "r16" | "quarters" | "semis" | "final"
+  group        String?     // e.g. "A", "B" (null for knockouts)
+  jornada      String      // e.g. "Fecha 1", "Fecha 2", "Octavos de Final"
+  homeTeamCode String
+  awayTeamCode String
+  homeScore    Int?
+  awayScore    Int?
+  kickoffUtc   DateTime
+  status       String      // "open" | "soon" | "live" | "result"
+  venue        String
+  city         String
+
+  homeTeam Team @relation("HomeTeamMatches", fields: [homeTeamCode], references: [code])
+  awayTeam Team @relation("AwayTeamMatches", fields: [awayTeamCode], references: [code])
+
+  predictions Prediction[]
+
+  @@index([phase, status])
+  @@index([kickoffUtc])
+  @@map("match")
+}
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  inviteCode  String   @unique
+  createdBy   String
+  status      String   @default("active") // "active" | "archived"
+  createdAt   DateTime @default(now())
+
+  owner     User           @relation("OwnedLeagues", fields: [createdBy], references: [id])
+  members   LeagueMember[]
+  standings Standing[]
+
+  @@map("league")
+}
+
+model LeagueMember {
+  id       String   @id @default(cuid())
+  leagueId String
+  userId   String
+  role     String   @default("member") // "admin" | "member"
+  joinedAt DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@map("league_member")
+}
+
+model Prediction {
+  id             String   @id @default(cuid())
+  userId         String
+  matchId        String
+  homePrediction Int
+  awayPrediction Int
+  pointsEarned   Int?
+  scoreType      String?  // "exact" | "tendency" | "consolation" | "miss"
+  updatedAt      DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+  @@index([matchId])
+  @@index([userId])
+  @@map("prediction")
+}
+
+model Standing {
+  id           String @id @default(cuid())
+  leagueId     String
+  userId       String
+  block        String // "groups" | "knockout" | "global"
+  points       Int    @default(0)
+  exacts       Int    @default(0)
+  tendencies   Int    @default(0)
+  consolations Int    @default(0)
+  misses       Int    @default(0)
+  rank         Int    @default(0)
+  previousRank Int    @default(0)
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId, block])
+  @@index([leagueId, block])
+  @@map("standing")
+}
+
+model AdminActionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // e.g. "update_score", "edit_match"
+  target    String?  // e.g. "match:m-1", "user:u-2"
+  details   String?  // JSON string or summary of changes
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_action_log")
+}

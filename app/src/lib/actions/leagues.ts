@@ -3,6 +3,7 @@
 import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { revalidatePath } from 'next/cache';
+import { recalculateAllStandings } from './admin';
 
 /**
  * Creates a new private league. The creator automatically becomes the 'owner' member.
@@ -68,7 +69,17 @@ export async function createLeagueAction(name: string) {
       return newLeague;
     });
 
+    await prisma.adminActionLog.create({
+      data: {
+        userId,
+        action: 'league_creation',
+        target: `league:${league.id}`,
+        details: JSON.stringify({ name: league.name }),
+      },
+    });
+
     revalidatePath('/liga');
+    await recalculateAllStandings();
     return { data: league };
   } catch (error) {
     console.error('Error in createLeagueAction:', error);
@@ -123,6 +134,7 @@ export async function joinLeagueAction(inviteCode: string) {
 
     revalidatePath('/liga');
     revalidatePath(`/liga/${league.slug}`);
+    await recalculateAllStandings();
     return { data: membership, slug: league.slug };
   } catch (error) {
     console.error('Error in joinLeagueAction:', error);
@@ -177,6 +189,15 @@ export async function regenerateInviteCodeAction(leagueId: string) {
     const updatedLeague = await prisma.league.update({
       where: { id: leagueId },
       data: { inviteCode: newCode },
+    });
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId,
+        action: 'invite_regeneration',
+        target: `league:${leagueId}`,
+        details: JSON.stringify({ newCode }),
+      },
     });
 
     revalidatePath(`/liga/${updatedLeague.slug}`);
@@ -252,15 +273,39 @@ export async function manageMemberAction(
       await prisma.leagueMember.delete({
         where: { leagueId_userId: { leagueId, userId: targetUserId } },
       });
+      await prisma.adminActionLog.create({
+        data: {
+          userId,
+          action: 'member_removal',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({ leagueId }),
+        },
+      });
     } else if (action === 'promote') {
       await prisma.leagueMember.update({
         where: { leagueId_userId: { leagueId, userId: targetUserId } },
         data: { role: 'admin' },
       });
+      await prisma.adminActionLog.create({
+        data: {
+          userId,
+          action: 'member_role_change',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({ leagueId, newRole: 'admin' }),
+        },
+      });
     } else if (action === 'demote') {
       await prisma.leagueMember.update({
         where: { leagueId_userId: { leagueId, userId: targetUserId } },
         data: { role: 'member' },
+      });
+      await prisma.adminActionLog.create({
+        data: {
+          userId,
+          action: 'member_role_change',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({ leagueId, newRole: 'member' }),
+        },
       });
     }
 

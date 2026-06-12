@@ -34,17 +34,29 @@ export const RankingTable: React.FC<RankingTableProps> = ({ standings, currentUs
     );
   };
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '-';
+    }
+  };
+
   return (
     <div className="card-base overflow-hidden">
       {/* Table Header */}
       <div className="hidden sm:grid grid-cols-12 gap-2 px-4 py-3 border-b border-border-subtle bg-bg-secondary/40 font-semibold text-xs tracking-wider uppercase text-text-secondary text-center">
         <span className="col-span-1">#</span>
-        <span className="col-span-4 text-left">Jugador</span>
-        <span className="col-span-1.5 text-gold-400">Exactos</span>
+        <span className="col-span-3 text-left">Jugador</span>
+        <span className="col-span-1 text-gold-400">Exactos</span>
         <span className="col-span-1.5 text-blue-400">Tendencias</span>
-        <span className="col-span-1.5 text-amber-500">Consol.</span>
+        <span className="col-span-1 text-amber-500">Consol.</span>
         <span className="col-span-1 text-text-muted">Fallos</span>
-        <span className="col-span-1.5 text-text-primary text-right">Puntos</span>
+        <span className="col-span-1 text-text-secondary">Preds.</span>
+        <span className="col-span-1.5 text-text-muted">Últ. Act.</span>
+        <span className="col-span-1 text-text-primary text-right">Puntos</span>
       </div>
 
       {/* Standings Rows */}
@@ -64,7 +76,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({ standings, currentUs
               }`}
             >
               {/* Rank and Player info (Combined on Mobile) */}
-              <div className="flex items-center justify-between w-full sm:col-span-5 sm:justify-start gap-3">
+              <div className="flex items-center justify-between w-full sm:col-span-4 sm:justify-start gap-3">
                 <div className="flex items-center gap-2">
                   <span className={`w-6 text-center font-mono text-base font-bold ${rankColor}`}>
                     {s.rank}
@@ -90,17 +102,21 @@ export const RankingTable: React.FC<RankingTableProps> = ({ standings, currentUs
               </div>
 
               {/* Stats Breakdown (Hidden on Mobile, Grid on Desktop) */}
-              <div className="hidden sm:grid sm:grid-cols-6 sm:col-span-7 gap-2 w-full text-center items-center">
+              <div className="hidden sm:grid sm:grid-cols-8 sm:col-span-8 gap-2 w-full text-center items-center">
                 {/* Exacts */}
-                <span className="col-span-1.5 font-mono text-sm text-gold-400 font-semibold">{s.exacts}</span>
+                <span className="col-span-1 font-mono text-sm text-gold-400 font-semibold">{s.exacts}</span>
                 {/* Tendencies */}
                 <span className="col-span-1.5 font-mono text-sm text-blue-300">{s.tendencies}</span>
                 {/* Consolations */}
-                <span className="col-span-1.5 font-mono text-sm text-amber-500">{s.consolations}</span>
+                <span className="col-span-1 font-mono text-sm text-amber-500">{s.consolations}</span>
                 {/* Misses */}
                 <span className="col-span-1 font-mono text-sm text-text-muted">{s.misses}</span>
+                {/* Predictions Submitted */}
+                <span className="col-span-1 font-mono text-sm text-text-secondary">{s.predictionsSubmitted ?? 0}</span>
+                {/* Last Updated */}
+                <span className="col-span-1.5 font-mono text-xs text-text-muted">{formatDate(s.lastUpdated)}</span>
                 {/* Points & Movement */}
-                <div className="col-span-1.5 flex items-center justify-end gap-3.5">
+                <div className="col-span-1 flex items-center justify-end gap-3.5">
                   <span className="font-mono text-md font-bold text-text-primary">{s.points}</span>
                   <div className="w-8 flex justify-center">
                     <RankArrow rank={s.rank} prev={s.previousRank} />

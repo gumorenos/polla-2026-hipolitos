@@ -156,3 +156,30 @@
 - Enforces pool integrity: Prevents hedging or split-betting strategies across different leagues.
 - Simplifies standings: Leaderboard calculation queries are simple joins on a single global prediction row.
 
+---
+
+## ADR-009 — Snapshot-based League Standings with Tie-breakers
+
+**Date:** 2026-06-12  
+**Status:** Accepted
+
+**Decision:** We store league standings in a dedicated `Standing` snapshot table in the SQLite database. Standings are recalculated:
+1. Automatically when the admin enters/updates a match result.
+2. Automatically when a user joins a league.
+3. Manually by an admin via a trigger on the admin panel.
+
+We implement the following 6 tie-breakers sequentially:
+1. Total points (descending)
+2. More exact scores (descending)
+3. More correct tendencies (descending)
+4. More predictions submitted (descending)
+5. Earliest last successful prediction timestamp (ascending, nulls last)
+6. User name as a stable final fallback (ascending)
+
+**Rationale:**
+- Snapshotting avoids heavy SQL aggregate query overhead on every leaderboard view.
+- Provides a stable way to calculate `previousRank` and show movement (up/down rank indicators) between match scoring updates.
+- Tie-breakers ensure that ranking is fully deterministic and no two players share a position on the leaderboard, keeping competition clear.
+- Re-calculating standings on result entry and league join keeps the snapshots synchronized.
+
+

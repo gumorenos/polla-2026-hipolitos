@@ -269,8 +269,12 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
           <div className="space-y-4">
             <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Tabla de Posiciones</h3>
             {standings.length === 0 ? (
-              <div className="card-base p-8 text-center border-dashed border-border-default">
-                <p className="text-sm text-text-secondary">No hay clasificaciones disponibles todavía.</p>
+              <div className="card-base p-8 text-center border-dashed border-border-default/60 flex flex-col items-center justify-center min-h-[180px]">
+                <Users className="w-10 h-10 text-text-muted mb-2" />
+                <h3 className="font-bold text-text-primary text-sm">No hay clasificaciones todavía</h3>
+                <p className="text-xs text-text-secondary mt-1 max-w-xs">
+                  Los rankings aparecerán aquí tan pronto como los partidos comiencen y sean puntuados por el administrador.
+                </p>
               </div>
             ) : (
               <RankingTable standings={standings} currentUserId={currentUserId} />

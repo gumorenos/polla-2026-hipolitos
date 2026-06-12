@@ -20,9 +20,25 @@ const bebasNeue = Bebas_Neue({
   weight: ["400"],
 });
 
+import type { Viewport } from 'next';
+
+export const viewport: Viewport = {
+  themeColor: '#d4af37',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: "La Polla 2026 — World Cup Pool",
   description: "Private World Cup 2026 prediction pool application.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "La Polla 2026",
+  },
 };
 
 export default function RootLayout({

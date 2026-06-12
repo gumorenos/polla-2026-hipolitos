@@ -5,9 +5,9 @@ export const authClient = createAuthClient({
   plugins: [
     inferAdditionalFields({
       user: {
-        displayName: { type: 'string' },
-        whatsapp: { type: 'string' },
-        isSuperadmin: { type: 'boolean' },
+        displayName: { type: 'string', required: false },
+        whatsapp: { type: 'string', required: false },
+        isSuperadmin: { type: 'boolean', required: false },
       },
     }),
   ],

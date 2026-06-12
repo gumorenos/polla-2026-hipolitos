@@ -80,4 +80,6 @@ export interface Standing {
   misses: number;
   rank: number;
   previousRank: number;
+  predictionsSubmitted?: number;
+  lastUpdated?: string;
 }

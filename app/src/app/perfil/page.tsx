@@ -56,7 +56,7 @@ interface AuthUser {
   createdAt: Date;
   displayName?: string | null;
   whatsapp?: string | null;
-  isSuperadmin?: boolean;
+  isSuperadmin?: boolean | null;
 }
 
 function PerfilForm({ user }: { user: AuthUser }) {

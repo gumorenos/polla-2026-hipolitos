@@ -100,8 +100,10 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
 
           <div className="divide-y divide-border-subtle">
             {leagues.length === 0 ? (
-              <div className="p-8 text-center text-text-secondary">
-                No hay ligas creadas en el sistema.
+              <div className="p-8 text-center text-text-secondary flex flex-col items-center justify-center gap-2">
+                <Users className="w-8 h-8 text-text-muted" />
+                <span className="font-bold text-text-primary text-sm">No hay ligas creadas</span>
+                <span className="text-xs text-text-muted">Las ligas registradas por los usuarios aparecerán aquí.</span>
               </div>
             ) : (
               leagues.map((l) => {

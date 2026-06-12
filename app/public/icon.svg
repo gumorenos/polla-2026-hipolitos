@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1c1917" />
+      <stop offset="100%" stop-color="#0c0a09" />
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="50%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#854d0e" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" stroke="#eab308" stroke-width="8" />
+  <!-- Soccer ball pattern -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#gold)" stroke-width="12" />
+  <path d="M 256 96 L 256 150" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <path d="M 136 182 L 182 205" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <path d="M 136 330 L 182 307" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <path d="M 256 416 L 256 362" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <path d="M 376 330 L 330 307" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <path d="M 376 182 L 330 205" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" />
+  <!-- Center pentagon -->
+  <polygon points="256,210 298,241 282,291 230,291 214,241" fill="url(#gold)" />
+  <line x1="256" y1="210" x2="256" y2="150" stroke="url(#gold)" stroke-width="10" />
+  <line x1="298" y1="241" x2="330" y2="205" stroke="url(#gold)" stroke-width="10" />
+  <line x1="282" y1="291" x2="330" y2="307" stroke="url(#gold)" stroke-width="10" />
+  <line x1="230" y1="291" x2="182" y2="307" stroke="url(#gold)" stroke-width="10" />
+  <line x1="214" y1="241" x2="182" y2="205" stroke="url(#gold)" stroke-width="10" />
+</svg>

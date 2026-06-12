@@ -91,10 +91,10 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
         {/* Leagues List (Left 2 cols) */}
         <div className="lg:col-span-2 space-y-4">
           {memberships.length === 0 ? (
-            <div className="card-base p-8 text-center border-dashed border-border-default">
-              <Users className="w-12 h-12 text-text-muted mx-auto mb-3" />
+            <div className="card-base p-8 text-center border-dashed border-border-default/60 flex flex-col items-center justify-center min-h-[220px]">
+              <Users className="w-12 h-12 text-text-muted mb-3" />
               <h3 className="font-bold text-text-primary text-base">No perteneces a ninguna liga</h3>
-              <p className="text-xs text-text-secondary mt-1 max-w-sm mx-auto">
+              <p className="text-xs text-text-secondary mt-1 max-w-sm">
                 Crea una liga nueva con el botón superior o escribe un código de invitación para ingresar a una liga privada.
               </p>
             </div>

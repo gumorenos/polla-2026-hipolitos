@@ -8,3 +8,11 @@ dist
 build
 coverage
 reference/LAPOLLA2026/
+
+# SQLite files and journal/wal logs
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3

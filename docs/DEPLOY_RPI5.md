@@ -46,6 +46,7 @@ BETTER_AUTH_SECRET="<generate-random-32-byte-hex-key>"
 
 # Application URLs
 APP_URL="https://lapolla.yourdomain.com"
+BETTER_AUTH_URL="https://lapolla.yourdomain.com"
 NODE_ENV=production
 PORT=3000
 ```

@@ -4,9 +4,12 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings, Shield } from 'lucide-react';
+import { authClient } from '../../lib/auth-client';
 
 export const SidebarNav: React.FC = () => {
   const pathname = usePathname();
+  const { data: session } = authClient.useSession();
+  const isSuperadmin = session?.user?.isSuperadmin === true;
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
@@ -16,6 +19,8 @@ export const SidebarNav: React.FC = () => {
     { label: 'Perfil', path: '/perfil', icon: User },
     { label: 'Panel Admin', path: '/admin', icon: Settings, adminOnly: true },
   ];
+
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || isSuperadmin);
 
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen bg-bg-tertiary border-r border-border-default sticky top-0 p-4">
@@ -32,7 +37,7 @@ export const SidebarNav: React.FC = () => {
 
       {/* Main navigation list */}
       <nav className="flex-1 space-y-1">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
           return (
@@ -53,17 +58,28 @@ export const SidebarNav: React.FC = () => {
       </nav>
 
       {/* Footer / User status widget */}
-      <div className="pt-4 border-t border-border-subtle flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-bg-secondary border border-border-default flex items-center justify-center text-text-primary font-mono text-sm font-bold">
-          GH
+      {session?.user && (
+        <div className="pt-4 border-t border-border-subtle flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center text-gold-400 font-mono text-sm font-bold uppercase">
+            {session.user.name.slice(0, 2)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-text-primary truncate">
+              {session.user.displayName || session.user.name}
+            </p>
+            <span className="text-[10px] text-text-secondary flex items-center gap-1">
+              {isSuperadmin ? (
+                <>
+                  <Shield className="w-3 h-3 text-gold-400" /> Superadmin
+                </>
+              ) : (
+                'Jugador'
+              )}
+            </span>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-text-primary truncate">Gus_Hipolito</p>
-          <span className="text-[10px] text-rank-up flex items-center gap-1">
-            <Shield className="w-3 h-3 text-rank-up" /> Superadmin
-          </span>
-        </div>
-      </div>
+      )}
     </aside>
   );
 };
+

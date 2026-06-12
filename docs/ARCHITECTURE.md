@@ -170,7 +170,7 @@ export const auth = betterAuth({
 | League admin | Manage their own league (invite, remove members) |
 | Superadmin | All: match results, all leagues, all users |
 
-Superadmin flag: `User.is_superadmin` — set manually in DB or via seed.
+Superadmin flag: `User.isSuperadmin` — set manually in DB or via seed.
 
 ---
 

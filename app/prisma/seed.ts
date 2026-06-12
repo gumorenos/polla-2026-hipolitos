@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { auth } from '../src/lib/auth';
 
 const prisma = new PrismaClient();
 
@@ -347,9 +348,18 @@ async function main() {
 
   // 3. Seed Sample Users
   console.log('Sembrando usuarios de demostración...');
+  const ctx = await auth.$context;
+  const adminHash = await ctx.password.hash('Admin123!');
+  const userHash = await ctx.password.hash('User123!');
+
   const admin = await prisma.user.upsert({
     where: { email: 'gustavo@example.com' },
-    update: {},
+    update: {
+      name: 'Gustavo',
+      displayName: 'Gus_Hipolito',
+      isSuperadmin: true,
+      whatsapp: '+573000000000',
+    },
     create: {
       id: 'u-1',
       name: 'Gustavo',
@@ -363,9 +373,35 @@ async function main() {
     },
   });
 
+  const adminAcc = await prisma.account.findFirst({
+    where: { userId: admin.id, providerId: 'email' },
+  });
+  if (!adminAcc) {
+    await prisma.account.create({
+      data: {
+        id: 'acc-1',
+        accountId: 'gustavo@example.com',
+        providerId: 'email',
+        userId: admin.id,
+        password: adminHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: adminAcc.id },
+      data: { password: adminHash },
+    });
+  }
+
   const carlos = await prisma.user.upsert({
     where: { email: 'carlos@example.com' },
-    update: {},
+    update: {
+      name: 'Carlos Ruiz',
+      displayName: 'Carlos_CR7',
+      whatsapp: '+573000000001',
+    },
     create: {
       id: 'u-2',
       name: 'Carlos Ruiz',
@@ -379,9 +415,35 @@ async function main() {
     },
   });
 
+  const carlosAcc = await prisma.account.findFirst({
+    where: { userId: carlos.id, providerId: 'email' },
+  });
+  if (!carlosAcc) {
+    await prisma.account.create({
+      data: {
+        id: 'acc-2',
+        accountId: 'carlos@example.com',
+        providerId: 'email',
+        userId: carlos.id,
+        password: userHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: carlosAcc.id },
+      data: { password: userHash },
+    });
+  }
+
   const mariana = await prisma.user.upsert({
     where: { email: 'mariana@example.com' },
-    update: {},
+    update: {
+      name: 'Mariana Gomez',
+      displayName: 'Mariana_10',
+      whatsapp: '+573000000002',
+    },
     create: {
       id: 'u-3',
       name: 'Mariana Gomez',
@@ -394,6 +456,28 @@ async function main() {
       updatedAt: new Date(),
     },
   });
+
+  const marianaAcc = await prisma.account.findFirst({
+    where: { userId: mariana.id, providerId: 'email' },
+  });
+  if (!marianaAcc) {
+    await prisma.account.create({
+      data: {
+        id: 'acc-3',
+        accountId: 'mariana@example.com',
+        providerId: 'email',
+        userId: mariana.id,
+        password: userHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: marianaAcc.id },
+      data: { password: userHash },
+    });
+  }
 
   // 4. Seed Sample League
   console.log('Sembrando liga de demostración...');

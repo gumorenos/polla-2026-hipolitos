@@ -1,13 +1,19 @@
+'use client';
+
 import React from 'react';
 import { BottomNav } from './BottomNav';
 import { SidebarNav } from './SidebarNav';
 import { Shield } from 'lucide-react';
+import { authClient } from '../../lib/auth-client';
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
+  const { data: session } = authClient.useSession();
+  const isSuperadmin = session?.user?.isSuperadmin === true;
+
   return (
     <div className="flex min-h-screen bg-bg-primary text-text-primary">
       {/* Desktop Sidebar Navigation */}
@@ -25,9 +31,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-gold-400/15 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
-              <Shield className="w-2.5 h-2.5" /> Superadmin
-            </span>
+            {isSuperadmin && (
+              <span className="text-[10px] bg-gold-400/15 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
+                <Shield className="w-2.5 h-2.5" /> Superadmin
+              </span>
+            )}
           </div>
         </header>
 
@@ -42,3 +50,4 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     </div>
   );
 };
+

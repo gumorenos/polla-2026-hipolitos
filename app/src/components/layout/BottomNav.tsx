@@ -4,9 +4,12 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings } from 'lucide-react';
+import { authClient } from '../../lib/auth-client';
 
 export const BottomNav: React.FC = () => {
   const pathname = usePathname();
+  const { data: session } = authClient.useSession();
+  const isSuperadmin = session?.user?.isSuperadmin === true;
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
@@ -17,9 +20,11 @@ export const BottomNav: React.FC = () => {
     { label: 'Admin', path: '/admin', icon: Settings, adminOnly: true },
   ];
 
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || isSuperadmin);
+
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-bg-tertiary border-t border-border-default z-50 px-2 flex justify-around items-center">
-      {navItems.map((item) => {
+      {visibleNavItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
         return (
@@ -38,3 +43,4 @@ export const BottomNav: React.FC = () => {
     </nav>
   );
 };
+

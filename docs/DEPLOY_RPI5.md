@@ -1,6 +1,6 @@
 # Raspberry Pi 5 Production Deployment Guide — La Polla 2026
 
-This guide explains how to set up the production environment and deploy the **La Polla 2026** web application on a self-hosted Raspberry Pi 5.
+This guide explains how to set up the production environment, deploy the **La Polla 2026** web application on a self-hosted Raspberry Pi 5, perform updates, and configure daily backups.
 
 ---
 
@@ -8,110 +8,248 @@ This guide explains how to set up the production environment and deploy the **La
 
 - **Device:** Raspberry Pi 5 (4GB or 8GB RAM recommended)
 - **OS:** Raspberry Pi OS 64-bit (Debian Bookworm)
+- **User:** `gumorenos`
 - **Node.js:** version 22 (LTS) ARM64
 - **Database:** SQLite
 - **Process Manager:** PM2
 - **Proxy/SSL:** Cloudflare Tunnel (`cloudflared`)
+- **Default Application Port:** `3030`
 
 ---
 
-## 2. Directory & Database Setup
+## 2. Security & Database Directory Setup
 
-The production database is stored **outside** the application repository directory at `/var/lib/la-polla-2026/prod.db`. This isolates persistent database records from application pulls or reinstalls.
+For security, the production SQLite database is stored **outside** the application repository directory at `/var/lib/la-polla-2026/prod.db`. This prevents the database file from being accidentally exposed, overwritten, or committed to git.
 
-### Create Directories & Set Permissions
-Execute the following commands on the Raspberry Pi 5 terminal to create the database directory and assign write permissions to the application execution user (e.g., `pi` or `admin`):
+### Permissions Enforcements
+The database directory **must not be world-readable** (`chmod 770` or `chmod 700` is required) so that unauthorized local users cannot read prediction data or session cookies.
+
+Run the following commands on the Raspberry Pi 5 to set up the directory:
 
 ```bash
-# Create directories for DB and daily backups
-sudo mkdir -p /var/lib/la-polla-2026/backups
+# 1. Create the database directory
+sudo mkdir -p /var/lib/la-polla-2026
 
-# Change ownership to the active user (replace 'pi' with your application execution user)
-sudo chown -R pi:pi /var/lib/la-polla-2026/
-sudo chmod -R 770 /var/lib/la-polla-2026/
+# 2. Change ownership to the active user (gumorenos)
+sudo chown -R gumorenos:gumorenos /var/lib/la-polla-2026
+
+# 3. Restrict permissions (read/write/execute only for owner and group, no world access)
+sudo chmod 770 /var/lib/la-polla-2026
 ```
 
 ---
 
 ## 3. Environment Configuration
 
-Create a `.env` or `.env.local` file inside the cloned repository root folder (`/home/pi/lapolla2026/app/.env`) containing the production settings:
+The application expects its configuration in the `.env.local` file at the root of the `app` directory.
+
+> [!CRITICAL]
+> **NEVER commit `.env.local` to git.** This file contains secret keys and credentials. It is automatically ignored by git.
+
+Create `/home/gumorenos/lapolla2026/app/.env.local` with the following variables:
 
 ```env
-# Production SQLite Connection String
+# Production SQLite Connection String (WAL mode active, connection pool limit to 1 for SQLite concurrency)
 DATABASE_URL="file:/var/lib/la-polla-2026/prod.db?connection_limit=1&socket_timeout=20"
 
-# Hashed Secrets
-BETTER_AUTH_SECRET="<generate-random-32-byte-hex-key>"
+# Hashed Secrets (Generate using: openssl rand -hex 32)
+BETTER_AUTH_SECRET="your-32-byte-hex-secret-here"
 
 # Application URLs
 APP_URL="https://lapolla.yourdomain.com"
 BETTER_AUTH_URL="https://lapolla.yourdomain.com"
+
+# Server configuration
 NODE_ENV=production
-PORT=3000
+PORT=3030
 ```
 
-> [!WARNING]
-> Never commit this `.env` file to git. It is ignored by the root `.gitignore`.
+Refer to [.env.example](file:///d:/projects/antigravity/lapolla2026/.env.example) in the repository to verify all configuration keys.
 
 ---
 
-## 4. Deployment Steps
+## 4. Deployment Checklist (Fresh Setup)
 
-Deployment utilizes a direct **Git Pull** delivery pipeline. Executed on the Raspberry Pi 5:
+Follow these steps on the Raspberry Pi 5 to perform a clean deployment:
 
+1. **Install Node.js 22 & Git**:
+   ```bash
+   # Add NodeSource Node.js 22 repository
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt-get install -y nodejs git sqlite3 build-essential
+   ```
+
+2. **Install PM2 globally**:
+   ```bash
+   sudo npm install -y -g pm2
+   ```
+
+3. **Clone the repository**:
+   ```bash
+   cd /home/gumorenos
+   git clone https://github.com/gumorenos/polla-2026-hipolitos.git lapolla2026
+   ```
+
+4. **Prepare Database Directory**:
+   Set up `/var/lib/la-polla-2026` as described in Section 2.
+
+5. **Configure Environment**:
+   Create the `.env.local` file inside `/home/gumorenos/lapolla2026/app` as described in Section 3.
+
+6. **Install dependencies**:
+   ```bash
+   cd /home/gumorenos/lapolla2026/app
+   npm ci
+   ```
+
+7. **Generate Prisma Client**:
+   ```bash
+   npx prisma generate
+   ```
+
+8. **Apply database schema migrations**:
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+9. **Seed Initial Tournament Data**:
+   This seeds teams and matches safely. It can be run multiple times as it uses upsert logic.
+   ```bash
+   npx prisma db seed
+   ```
+
+10. **Build the production bundle**:
+    ```bash
+    npm run build
+    ```
+
+11. **Start the application with PM2**:
+    We use the configured `ecosystem.config.cjs` file to start the process:
+    ```bash
+    pm2 start ecosystem.config.cjs
+    ```
+
+12. **Save PM2 process list**:
+    This saves the currently running processes to be restored automatically:
+    ```bash
+    pm2 save
+    ```
+
+13. **Configure PM2 startup script**:
+    Generate and configure the systemd service to start PM2 on system reboots:
+    ```bash
+    pm2 startup
+    # Copy and run the command generated by the output of the command above
+    ```
+
+14. **Configure Cloudflare Tunnel**:
+    Deploy `cloudflared` on the RPi5 and configure a tunnel to route your public domain (e.g. `lapolla.yourdomain.com`) to `http://localhost:3030`.
+
+---
+
+## 5. Update Checklist (Pulling Changes)
+
+When pulling updates or new commits from the repository, execute the following commands on the Raspberry Pi 5:
+
+1. **Pull the latest code**:
+   ```bash
+   cd /home/gumorenos/lapolla2026
+   git pull origin main
+   ```
+
+2. **Install updated dependencies**:
+   ```bash
+   cd app
+   npm ci
+   ```
+
+3. **Re-generate Prisma Client**:
+   ```bash
+   npx prisma generate
+   ```
+
+4. **Apply any new migrations**:
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+5. **Rebuild the production bundle**:
+   ```bash
+   npm run build
+   ```
+
+6. **Restart the PM2 process**:
+   ```bash
+   pm2 restart la-polla-2026
+   ```
+
+---
+
+## 6. Daily Backups Configuration
+
+To guard against SQLite database corruption or hardware failure, backups are automated.
+
+### Backup Script
+A backup script is provided at [scripts/backup-sqlite.sh](file:///d:/projects/antigravity/lapolla2026/scripts/backup-sqlite.sh).
+It uses `sqlite3 .backup` to make a non-blocking snapshot, saves it to `/home/gumorenos/backups/la-polla-2026`, sets file permissions to `600`, and purges copies older than 30 days.
+
+Make the script executable:
 ```bash
-# 1. Pull the latest code from GitHub
-cd /home/pi/lapolla2026
-git pull origin main
+chmod +x /home/gumorenos/lapolla2026/scripts/backup-sqlite.sh
+```
 
-# 2. Install production dependencies
+### Cron Setup
+To execute this script daily at 3:00 AM, configure a cron job for the `gumorenos` user.
+
+Open the user's crontab editor:
+```bash
+crontab -e
+```
+
+Add the following line at the bottom of the file:
+```text
+0 3 * * * /bin/bash /home/gumorenos/lapolla2026/scripts/backup-sqlite.sh > /dev/null 2>&1
+```
+
+Save and exit. The cron daemon will automatically load the new configuration.
+
+---
+
+## 7. Rollback Notes
+
+If a production update fails or corrupts the database, execute a rollback using these steps:
+
+### Step 1: Restore Previous Code Commit
+Check the git log to locate a stable commit hash (e.g., `abc1234`) and checkout that commit:
+```bash
+cd /home/gumorenos/lapolla2026
+git checkout <stable-commit-hash>
 cd app
-npm install --omit=dev
-
-# 3. Apply database schema migrations
-npx prisma migrate deploy
-
-# 4. Seed teams and matches (safe for execution multiple times; runs upserts)
-npx prisma db seed
-
-# 5. Build Next.js production optimize bundle
+npm ci
+npx prisma generate
 npm run build
-
-# 6. Restart/Reload application via PM2
-pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
 ```
 
----
+### Step 2: Restore SQLite Database Backup
+Locate the last successful backup file in `/home/gumorenos/backups/la-polla-2026/` (e.g., `backup_20260612_030000.sqlite`):
 
-## 5. Automated Database Backups
+1. **Stop the running application** to release file locks:
+   ```bash
+   pm2 stop la-polla-2026
+   ```
 
-To protect against database corruption, configure a daily automated backup cron job. 
+2. **Replace the current production database** with the backup:
+   ```bash
+   cp /home/gumorenos/backups/la-polla-2026/backup_20260612_030000.sqlite /var/lib/la-polla-2026/prod.db
+   ```
 
-Create a cron file at `/etc/cron.d/lapolla-backup` on the Raspberry Pi:
+3. **Re-apply permissions** to ensure the database file is secure:
+   ```bash
+   chmod 600 /var/lib/la-polla-2026/prod.db
+   ```
 
+### Step 3: Restart PM2 Process
 ```bash
-# /etc/cron.d/lapolla-backup
-# Execute daily backup at 3:00 AM using the application user 'pi'
-0 3 * * * pi sqlite3 /var/lib/la-polla-2026/prod.db ".backup '/var/lib/la-polla-2026/backups/lapolla-$(date +\%Y\%m\%d).sqlite'" && find /var/lib/la-polla-2026/backups -name 'lapolla-*.sqlite' -mtime +30 -delete
+pm2 start la-polla-2026
 ```
-
-This script:
-1. Performs a non-blocking online backup of the SQLite database using `.backup`.
-2. Stores it with a date suffix.
-3. Automatically purges backups older than 30 days.
-
----
-
-## 6. PM2 Configuration
-
-Ensure PM2 is configured to restart the app on system reboots:
-
-```bash
-# Generate PM2 startup script
-pm2 startup
-
-# Follow the output instructions to copy-paste the sudo command
-# Save current running processes
-pm2 save
-```
+Verify the health check endpoint `/api/health` returns a healthy state.

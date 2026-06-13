@@ -33,6 +33,14 @@ Client-provided parameters are never trusted. All access control checks are vali
 
 ---
 
-## 4. Audit Trail
+## 4. API Key Protection and Rate Limiting
 
-All sensitive administrative events (league updates, user role promotions, match modifications, and results updates) write structured logs to the `AdminActionLog` table. This creates a transparent audit trail that can be viewed directly from the global Superadmin dashboard.
+- **Server-Only API Keys:** All third-party API keys (`ODDS_API_IO_KEY`, `THE_ODDS_API_KEY`, `API_FOOTBALL_KEY`) are kept strictly server-side in `.env.local`. They are never prefixed with `NEXT_PUBLIC_` or logged.
+- **Concurrency Rate-Limiting Protection:** Manual user odds refreshes are locked to 1 request per local day per user (America/Lima timezone). To prevent race conditions or double-click bypasses, this rate limit check and usage logging is executed in a single atomic database transaction.
+
+---
+
+## 5. Audit Trail
+
+All sensitive administrative events (league updates, user role promotions, match modifications, results updates, and global odds/H2H updates) write structured logs to the `AdminActionLog` table. This creates a transparent audit trail that can be viewed directly from the global Superadmin dashboard.
+

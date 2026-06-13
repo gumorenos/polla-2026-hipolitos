@@ -38,6 +38,8 @@ model User {
   winnerPredictions WinnerPrediction[]
   standings         Standing[]
   adminActionLogs   AdminActionLog[]
+  oddsSnapshots     OddsSnapshot[]
+  oddsRefreshUsages UserOddsRefreshUsage[]
 
   @@map("user")
 }
@@ -96,6 +98,9 @@ model Team {
   homeMatches       Match[]            @relation("HomeTeamMatches")
   awayMatches       Match[]            @relation("AwayTeamMatches")
   winnerPredictions WinnerPrediction[]
+  oddsSnapshots     OddsSnapshot[]
+  h2hHomeSnapshots  HeadToHeadSnapshot[] @relation("H2HHomeTeam")
+  h2hAwaySnapshots  HeadToHeadSnapshot[] @relation("H2HAwayTeam")
 
   @@map("team")
 }
@@ -117,8 +122,10 @@ model Match {
   homeTeam Team @relation("HomeTeamMatches", fields: [homeTeamCode], references: [code])
   awayTeam Team @relation("AwayTeamMatches", fields: [awayTeamCode], references: [code])
 
-  predictions   Prediction[]
-  oddsSnapshots OddsSnapshot[]
+  predictions       Prediction[]
+  oddsSnapshots     OddsSnapshot[]
+  oddsRefreshUsages UserOddsRefreshUsage[]
+  h2hSnapshot       HeadToHeadSnapshot?
 
   @@index([phase, status])
   @@index([kickoffUtc])
@@ -246,20 +253,69 @@ model WinnerPrediction {
 }
 
 model OddsSnapshot {
-  id              String   @id @default(cuid())
-  matchId         String
-  provider        String   // e.g. "manual", "api"
-  bookmaker       String   // e.g. "Betsson", "Bet365"
-  marketType      String   // e.g. "1X2"
-  homeOdds        Float
-  drawOdds        Float
-  awayOdds        Float
-  homeProbability Float    // implied probabilities (home)
-  drawProbability Float    // implied probabilities (draw)
-  awayProbability Float    // implied probabilities (away)
-  capturedAt      DateTime @default(now())
+  id                    String   @id @default(cuid())
+  matchId               String
+  provider              String   // e.g. "odds-api-io", "the-odds-api", "manual"
+  bookmaker             String   // e.g. "Betsson", "Bet365"
+  marketType            String   // e.g. "match_winner"
+  outcomeType           String   // e.g. "home", "draw", "away"
+  teamCode              String?  // References team selection if applicable
+  outcomeLabel          String   // e.g. "Argentina", "Empate"
+  decimalOdds           Float
+  impliedProbability    Float
+  normalizedProbability Float?
+  capturedAt            DateTime @default(now())
+  visibility            String   // "global" | "user_private"
+  userId                String?
+  sourceType            String   // "api" | "manual"
+  rawPayload            String?  // JSON string
+  createdAt             DateTime @default(now())
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team  Team? @relation(fields: [teamCode], references: [code], onDelete: Cascade)
 
+  @@index([matchId, marketType, visibility, userId, capturedAt])
   @@map("odds_snapshot")
 }
+
+model UserOddsRefreshUsage {
+  id             String   @id @default(cuid())
+  userId         String
+  dateKey        String   // YYYY-MM-DD
+  timezone       String   // e.g. "America/Lima"
+  usedAt         DateTime @default(now())
+  matchId        String
+  provider       String
+  oddsSnapshotId String?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@map("user_odds_refresh_usage")
+}
+
+model HeadToHeadSnapshot {
+  id              String   @id @default(cuid())
+  matchId         String   @unique
+  provider        String   @default("api-football")
+  homeTeamCode    String
+  awayTeamCode    String
+  totalMatches    Int
+  homeWins        Int
+  draws           Int
+  awayWins        Int
+  homeGoals       Int
+  awayGoals       Int
+  lastMatchesJson String?  // JSON string of past match details
+  capturedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  match    Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  homeTeam Team  @relation("H2HHomeTeam", fields: [homeTeamCode], references: [code], onDelete: Cascade)
+  awayTeam Team  @relation("H2HAwayTeam", fields: [awayTeamCode], references: [code], onDelete: Cascade)
+
+  @@map("head_to_head_snapshot")
+}
+

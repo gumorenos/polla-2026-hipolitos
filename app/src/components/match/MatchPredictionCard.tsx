@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Match, Prediction } from '../../types/domain';
 import { MatchCard } from './MatchCard';
 import { savePredictionAction } from '../../lib/actions/predictions';
+import { refreshUserOddsAction } from '../../lib/actions/odds';
 import { MatchStatusBadge, MatchVisualState } from '../ui/MatchStatusBadge';
 
 interface MatchPredictionCardProps {
@@ -10,15 +11,45 @@ interface MatchPredictionCardProps {
   variant?: 'scoreboard' | 'solari' | 'ticket';
   onPredictionSaved?: (pred: Prediction) => void;
   leagueId: string;
-  oddsSnapshot?: {
+  showOdds?: boolean;
+  globalOdds?: {
     homeOdds: number;
     drawOdds: number;
     awayOdds: number;
-    homeProbability: number;
-    drawProbability: number;
-    awayProbability: number;
+    homeProb: number;
+    drawProb: number;
+    awayProb: number;
+    bookmaker: string;
+    capturedAt: string;
   } | null;
-  showOdds?: boolean;
+  userOdds?: {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProb: number;
+    drawProb: number;
+    awayProb: number;
+    bookmaker: string;
+    capturedAt: string;
+  } | null;
+  h2h?: {
+    totalMatches: number;
+    homeWins: number;
+    draws: number;
+    awayWins: number;
+    homeGoals: number;
+    awayGoals: number;
+    lastMatches: {
+      date: string;
+      competition: string;
+      homeScore: number;
+      awayScore: number;
+      homeTeam: string;
+      awayTeam: string;
+    }[];
+  } | null;
+  canRefreshOddsToday?: boolean;
+  timeLeftUntilMidnight?: { hours: number; minutes: number } | null;
 }
 
 export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
@@ -27,10 +58,15 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
   variant = 'scoreboard',
   onPredictionSaved,
   leagueId,
-  oddsSnapshot,
-  showOdds,
+  showOdds = true,
+  globalOdds,
+  userOdds,
+  h2h,
+  canRefreshOddsToday = true,
+  timeLeftUntilMidnight,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [localPrediction, setLocalPrediction] = useState<Prediction | null>(prediction ?? null);
   const [prevPrediction, setPrevPrediction] = useState(prediction);
@@ -70,6 +106,19 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
     }
   };
 
+  const handleRefreshUserOdds = async () => {
+    setRefreshing(true);
+    setErrorMsg(null);
+
+    const result = await refreshUserOddsAction(match.id);
+
+    if (result.error) {
+      setErrorMsg(result.error);
+    }
+    
+    setRefreshing(false);
+  };
+
   const visualState = getVisualState();
 
   return (
@@ -84,8 +133,14 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
         prediction={localPrediction}
         variant={variant}
         onSavePrediction={handleSave}
-        oddsSnapshot={oddsSnapshot}
         showOdds={showOdds}
+        globalOdds={globalOdds}
+        userOdds={userOdds}
+        h2h={h2h}
+        canRefreshOddsToday={canRefreshOddsToday}
+        timeLeftUntilMidnight={timeLeftUntilMidnight}
+        onRefreshUserOdds={handleRefreshUserOdds}
+        refreshingOdds={refreshing}
       />
 
       {errorMsg && (

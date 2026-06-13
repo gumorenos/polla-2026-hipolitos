@@ -25,6 +25,7 @@ All administration pages are protected server-side. Unauthenticated users are re
 - **`/admin/partidos`**: Interface for Superadmins to update match schedules, kickoff timestamps, cities, venues, and status parameters.
 - **`/admin/ligas`**: Global auditer for Superadmins to view, archive, or delete private leagues.
 - **`/admin/usuarios`**: Interface for Superadmins to promote or demote other users to/from global Superadmin roles.
+- **`/admin/odds`**: Interface for Superadmins to monitor API integrations, refresh global match odds, and trigger Head-to-Head snapshot calculations.
 
 ---
 
@@ -39,3 +40,6 @@ Every critical administrative action is recorded in the `AdminActionLog` databas
 - `edit_match`: Logged when a Superadmin updates match parameters.
 - `update_match_result`: Logged when a Superadmin updates final scores.
 - `ranking_recalculation`: Logged when a Superadmin triggers a manual global standings recalculation.
+- `refresh_global_odds`: Logged when global odds are refreshed.
+- `refresh_h2h`: Logged when Head-to-Head stats are populated.
+

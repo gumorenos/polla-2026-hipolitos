@@ -29,8 +29,22 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Background Tasks & Odds Management
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This project includes a market probabilities and Head-to-Head (H2H) stats module with background automation:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Running TS Scripts
+To run the background scripts locally or on Raspberry Pi 5:
+
+1. **Refresh Global Odds for Upcoming Matches** (runs within the next hour kickoff window):
+   ```bash
+   npm run odds:refresh-upcoming
+   ```
+
+2. **Populate Missing Head-to-Head Statistics**:
+   ```bash
+   npm run h2h:fetch-missing
+   ```
+
+See the [Odds and H2H Module Documentation](../docs/ODDS.md) for more details.
+

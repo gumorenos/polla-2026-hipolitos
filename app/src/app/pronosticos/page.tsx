@@ -7,6 +7,8 @@ import { PronosticosClient } from '../../components/match/PronosticosClient';
 import { ScoreType, PhaseId, MatchStatus } from '../../types/domain';
 import Link from 'next/link';
 import { Users } from 'lucide-react';
+import { getLimaDateKey, getLimaTimeUntilMidnight } from '../../lib/actions/odds';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -80,33 +82,119 @@ export default async function PronosticosPage() {
     },
   });
 
-  // Fetch odds snapshots
-  const odds = await prisma.oddsSnapshot.findMany({
+  // Fetch all odds snapshots for this user or global
+  const oddsSnapshots = await prisma.oddsSnapshot.findMany({
+    where: {
+      OR: [
+        { visibility: 'global' },
+        { visibility: 'user_private', userId },
+      ],
+    },
     orderBy: { capturedAt: 'desc' },
   });
-  const oddsSnapshotsMap: Record<
-    string,
-    {
-      homeOdds: number;
-      drawOdds: number;
-      awayOdds: number;
-      homeProbability: number;
-      drawProbability: number;
-      awayProbability: number;
+
+  interface FormattedOdds {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProb: number;
+    drawProb: number;
+    awayProb: number;
+    bookmaker: string;
+    capturedAt: string;
+  }
+
+  const globalOddsMap: Record<string, FormattedOdds> = {};
+  const userOddsMap: Record<string, FormattedOdds> = {};
+
+  // Group outcome records by matchId + visibility + capturedAt
+  const groupedSnapshots: Record<string, Record<string, (typeof oddsSnapshots)>> = {};
+  
+  for (const o of oddsSnapshots) {
+    if (!groupedSnapshots[o.matchId]) {
+      groupedSnapshots[o.matchId] = {};
     }
-  > = {};
-  for (const o of odds) {
-    if (!oddsSnapshotsMap[o.matchId]) {
-      oddsSnapshotsMap[o.matchId] = {
-        homeOdds: o.homeOdds,
-        drawOdds: o.drawOdds,
-        awayOdds: o.awayOdds,
-        homeProbability: o.homeProbability,
-        drawProbability: o.drawProbability,
-        awayProbability: o.awayProbability,
-      };
+    if (!groupedSnapshots[o.matchId][o.visibility]) {
+      groupedSnapshots[o.matchId][o.visibility] = [];
+    }
+    const currentList = groupedSnapshots[o.matchId][o.visibility];
+    if (currentList.length === 0 || currentList[0].capturedAt.getTime() === o.capturedAt.getTime()) {
+      currentList.push(o);
     }
   }
+
+  for (const [matchId, visibilities] of Object.entries(groupedSnapshots)) {
+    for (const [visibility, outcomes] of Object.entries(visibilities)) {
+      const home = outcomes.find(o => o.outcomeType === 'home');
+      const draw = outcomes.find(o => o.outcomeType === 'draw');
+      const away = outcomes.find(o => o.outcomeType === 'away');
+
+      if (home && draw && away) {
+        const formatted = {
+          homeOdds: home.decimalOdds,
+          drawOdds: draw.decimalOdds,
+          awayOdds: away.decimalOdds,
+          homeProb: home.normalizedProbability ?? home.impliedProbability,
+          drawProb: draw.normalizedProbability ?? draw.impliedProbability,
+          awayProb: away.normalizedProbability ?? away.impliedProbability,
+          bookmaker: home.bookmaker,
+          capturedAt: home.capturedAt.toISOString(),
+        };
+
+        if (visibility === 'global') {
+          globalOddsMap[matchId] = formatted;
+        } else {
+          userOddsMap[matchId] = formatted;
+        }
+      }
+    }
+  }
+
+  // Fetch H2H snapshots
+  const h2hSnapshots = await prisma.headToHeadSnapshot.findMany({});
+  interface FormattedH2H {
+    totalMatches: number;
+    homeWins: number;
+    draws: number;
+    awayWins: number;
+    homeGoals: number;
+    awayGoals: number;
+    lastMatches: {
+      date: string;
+      competition: string;
+      homeScore: number;
+      awayScore: number;
+      homeTeam: string;
+      awayTeam: string;
+    }[];
+  }
+
+  const h2hMap: Record<string, FormattedH2H> = {};
+  for (const h of h2hSnapshots) {
+    h2hMap[h.matchId] = {
+      totalMatches: h.totalMatches,
+      homeWins: h.homeWins,
+      draws: h.draws,
+      awayWins: h.awayWins,
+      homeGoals: h.homeGoals,
+      awayGoals: h.awayGoals,
+      lastMatches: h.lastMatchesJson ? JSON.parse(h.lastMatchesJson) : [],
+    };
+  }
+
+  // Rate Limiting checks
+  const dateKey = await getLimaDateKey(new Date());
+  const todayUsage = await prisma.userOddsRefreshUsage.findUnique({
+    where: {
+      userId_dateKey: {
+        userId,
+        dateKey,
+      },
+    },
+  });
+
+  const canRefreshToday = !todayUsage;
+  const timeLeftToday = await getLimaTimeUntilMidnight();
 
   // Serialize Date fields to plain strings for the Client Component boundaries
   const serializedMatches = matches.map((m) => ({
@@ -159,7 +247,11 @@ export default async function PronosticosPage() {
         leagues={serializedLeagues}
         teams={teams}
         winnerPredictions={serializedWinnerPredictions}
-        oddsSnapshots={oddsSnapshotsMap}
+        globalOdds={globalOddsMap}
+        userOdds={userOddsMap}
+        h2hData={h2hMap}
+        canRefreshToday={canRefreshToday}
+        timeLeftToday={timeLeftToday}
       />
     </AppShell>
   );

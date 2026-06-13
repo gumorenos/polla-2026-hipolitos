@@ -199,4 +199,21 @@ We implement the following 6 tie-breakers sequentially:
 5. **Implied Probabilities & Odds:** Added an `OddsSnapshot` model to capture decimal bookmaker odds. If a league's `showOdds` settings is enabled, the UI displays implied probabilities (`1/odds` as %) next to matches to guide users.
 6. **Terminology Standardization:** Renamed "Liga" / "Ligas" to "Polla" / "Pollas", "Members" to "Participantes", and "Prize Pool" to "Pozo" in all user-facing views to align with local terms.
 
+---
+
+## ADR-011 — Informational Odds and H2H Statistics Integration
+
+**Date:** 2026-06-13  
+**Status:** Accepted
+
+**Decision:** Implement an informational odds and Head-to-Head (H2H) statistics module cached fully in SQLite database tables with simulation fallbacks and strict timezone-locked rate limits for manual user requests.
+
+**Rationale:**
+1. **Cache-First Caching:** Third-party sports and odds APIs charge per query and have limited quotas. To prevent depleting keys, we cache all odds snapshots and H2H records in SQLite and never execute live external API queries during page loads.
+2. **Simulation Adapter Fallbacks:** If API keys are missing/disabled, the adapters transparently return realistic, strength-based odds and randomized H2H histories. This makes the system fully testable and functional during local Windows development without incurring key quota usage.
+3. **Timezone-Locked Rate Limits:** Manual user-triggered refreshes are restricted to exactly **1 request per local day** (resets at midnight in the `America/Lima` timezone). This prevents spamming and key usage while allowing users to query updated odds closer to kickoff.
+4. **SQLite Atomic Lock Transactions:** To prevent double-clicks or concurrent requests from bypassing the rate-limit checks, we check previous usage and write the new `UserOddsRefreshUsage` log within a single atomic database transaction. If the unique constraint on `userId_dateKey` is violated, the transaction rolls back immediately.
+5. **Outcome-Based Odds Schema:** Modified `OddsSnapshot` to record individual outcome items (Home, Draw, Away) as independent rows. This allows storing outcomes separately and referencing selection keys easily.
+
+
 

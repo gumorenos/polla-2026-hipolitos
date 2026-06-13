@@ -26,14 +26,44 @@ interface PronosticosClientProps {
     leagueId: string;
     teamCode: string;
   }[];
-  oddsSnapshots: Record<string, {
+  globalOdds: Record<string, {
     homeOdds: number;
     drawOdds: number;
     awayOdds: number;
-    homeProbability: number;
-    drawProbability: number;
-    awayProbability: number;
+    homeProb: number;
+    drawProb: number;
+    awayProb: number;
+    bookmaker: string;
+    capturedAt: string;
   }>;
+  userOdds: Record<string, {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProb: number;
+    drawProb: number;
+    awayProb: number;
+    bookmaker: string;
+    capturedAt: string;
+  }>;
+  h2hData: Record<string, {
+    totalMatches: number;
+    homeWins: number;
+    draws: number;
+    awayWins: number;
+    homeGoals: number;
+    awayGoals: number;
+    lastMatches: {
+      date: string;
+      competition: string;
+      homeScore: number;
+      awayScore: number;
+      homeTeam: string;
+      awayTeam: string;
+    }[];
+  }>;
+  canRefreshToday: boolean;
+  timeLeftToday: { hours: number; minutes: number };
 }
 
 type PhaseFilter = 'all' | 'groups' | 'knockout';
@@ -45,7 +75,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   leagues,
   teams,
   winnerPredictions,
-  oddsSnapshots,
+  globalOdds,
+  userOdds,
+  h2hData,
+  canRefreshToday,
+  timeLeftToday,
 }) => {
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
@@ -363,7 +397,9 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-6 pb-12">
           {filteredMatches.map((match) => {
             const pred = activePreds[match.id];
-            const odds = oddsSnapshots[match.id] || null;
+            const gOdds = globalOdds[match.id] || null;
+            const uOdds = userOdds[match.id] || null;
+            const h2h = h2hData[match.id] || null;
             return (
               <MatchPredictionCard
                 key={match.id}
@@ -372,8 +408,12 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 variant="scoreboard"
                 onPredictionSaved={handlePredictionSaved}
                 leagueId={activeLeagueId}
-                oddsSnapshot={odds}
                 showOdds={activeLeague?.showOdds}
+                globalOdds={gOdds}
+                userOdds={uOdds}
+                h2h={h2h}
+                canRefreshOddsToday={canRefreshToday}
+                timeLeftUntilMidnight={timeLeftToday}
               />
             );
           })}

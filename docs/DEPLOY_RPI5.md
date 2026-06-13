@@ -216,8 +216,14 @@ crontab -e
 ```
 
 Add the following line at the bottom of the file:
-```text
 0 3 * * * /bin/bash /home/gumorenos/apps/polla-2026-hipolitos/scripts/backup-sqlite.sh > /dev/null 2>&1
+
+# Odds & H2H Background Automation Crons
+# Refresh global odds snapshots of upcoming matches every hour (minute 45 of each hour)
+45 * * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && /usr/bin/npm run odds:refresh-upcoming > /dev/null 2>&1
+
+# Populate missing Head-to-Head history snapshots once daily (at 3:30 AM)
+30 3 * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && /usr/bin/npm run h2h:fetch-missing > /dev/null 2>&1
 ```
 
 Save and exit. The cron daemon will automatically load the new configuration.

@@ -8,7 +8,55 @@ import { FlagDisc } from '../ui/FlagDisc';
 import { Stepper } from '../ui/Stepper';
 import { CountdownInline } from '../ui/Countdown';
 import { PredictionStatusBadge } from '../ui/PredictionStatusBadge';
-import { Calendar, MapPin, Check, Save } from 'lucide-react';
+import { Calendar, MapPin, Check, Save, RefreshCw, BarChart2, ShieldAlert, ChevronDown, ChevronUp, History } from 'lucide-react';
+
+interface OddsData {
+  homeOdds: number;
+  drawOdds: number;
+  awayOdds: number;
+  homeProb: number;
+  drawProb: number;
+  awayProb: number;
+  bookmaker: string;
+  capturedAt: string;
+}
+
+interface H2HData {
+  totalMatches: number;
+  homeWins: number;
+  draws: number;
+  awayWins: number;
+  homeGoals: number;
+  awayGoals: number;
+  lastMatches: H2HMeeting[];
+}
+
+interface H2HMeeting {
+  date: string;
+  competition: string;
+  homeScore: number;
+  awayScore: number;
+  homeTeam: string;
+  awayTeam: string;
+}
+
+interface MatchCardProps {
+  match: Match;
+  prediction?: Prediction | null;
+  mode?: 'predict' | 'display' | 'locked' | 'result';
+  variant?: 'scoreboard' | 'solari' | 'ticket';
+  onSavePrediction?: (home: number, away: number) => void;
+  
+  // Odds & H2H features
+  showOdds?: boolean;
+  globalOdds?: OddsData | null;
+  userOdds?: OddsData | null;
+  h2h?: H2HData | null;
+  canRefreshOddsToday?: boolean;
+  timeLeftUntilMidnight?: { hours: number; minutes: number } | null;
+  onRefreshUserOdds?: () => Promise<void>;
+  refreshingOdds?: boolean;
+}
 
 const Flap: React.FC<{ char: string | number }> = ({ char }) => (
   <span className="relative inline-flex items-center justify-center w-7 h-10 rounded-md bg-gradient-to-b from-[#15151e] to-[#0d0d14] border border-black shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] font-mono text-xl font-bold text-gold-400 overflow-hidden">
@@ -17,31 +65,20 @@ const Flap: React.FC<{ char: string | number }> = ({ char }) => (
   </span>
 );
 
-interface MatchCardProps {
-  match: Match;
-  prediction?: Prediction | null;
-  mode?: 'predict' | 'display' | 'locked' | 'result';
-  variant?: 'scoreboard' | 'solari' | 'ticket';
-  onSavePrediction?: (home: number, away: number) => void;
-  oddsSnapshot?: {
-    homeOdds: number;
-    drawOdds: number;
-    awayOdds: number;
-    homeProbability: number;
-    drawProbability: number;
-    awayProbability: number;
-  } | null;
-  showOdds?: boolean;
-}
-
 export const MatchCard: React.FC<MatchCardProps> = ({
   match,
   prediction,
   mode,
   variant = 'scoreboard',
   onSavePrediction,
-  oddsSnapshot,
-  showOdds,
+  showOdds = true,
+  globalOdds,
+  userOdds,
+  h2h,
+  canRefreshOddsToday = true,
+  timeLeftUntilMidnight,
+  onRefreshUserOdds,
+  refreshingOdds = false,
 }) => {
   const cardMode = mode ?? (
     match.status === 'result' ? 'result' :
@@ -57,6 +94,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     prediction ? prediction.awayPrediction : null
   );
   const [isSaved, setIsSaved] = useState<boolean>(!!prediction);
+  const [showH2HPanel, setShowH2HPanel] = useState<boolean>(false);
+  const [oddsTab, setOddsTab] = useState<'global' | 'user'>(userOdds ? 'user' : 'global');
+  const [confirmRefresh, setConfirmRefresh] = useState<boolean>(false);
 
   // Sync state if prediction prop changes (during render)
   const [prevPrediction, setPrevPrediction] = useState(prediction);
@@ -65,6 +105,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     setHomePred(prediction ? prediction.homePrediction : null);
     setAwayPred(prediction ? prediction.awayPrediction : null);
     setIsSaved(!!prediction);
+  }
+
+  // Sync tab if user odds suddenly become available
+  const [prevUserOdds, setPrevUserOdds] = useState(userOdds);
+  if (userOdds !== prevUserOdds) {
+    setPrevUserOdds(userOdds);
+    if (userOdds) {
+      setOddsTab('user');
+    }
   }
 
   const homeTeam = TEAMS[match.homeTeamCode] ?? { code: match.homeTeamCode, name: match.homeTeamCode, hue: 200 };
@@ -88,7 +137,223 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     }
   };
 
+  const triggerRefresh = async () => {
+    if (onRefreshUserOdds) {
+      setConfirmRefresh(false);
+      await onRefreshUserOdds();
+    }
+  };
+
   const hasPred = homePred !== null && awayPred !== null;
+  const activeOdds = oddsTab === 'user' && userOdds ? userOdds : globalOdds;
+
+  // Identify favorite selection based on probabilities
+  const getFavoriteText = (odds: OddsData) => {
+    const max = Math.max(odds.homeProb, odds.drawProb, odds.awayProb);
+    if (max === odds.homeProb) return `${homeTeam.name} es favorito`;
+    if (max === odds.awayProb) return `${awayTeam.name} es favorito`;
+    return 'Empate es el resultado más probable';
+  };
+
+  // Visual Probability & Odds module
+  const renderOddsModule = () => {
+    if (!showOdds) return null;
+    if (!globalOdds && !userOdds) return null;
+
+    return (
+      <div className="mt-4 pt-3.5 border-t border-border-subtle/50 space-y-3">
+        {/* Tab headers if user private odds are present */}
+        {userOdds && (
+          <div className="flex gap-2 border-b border-border-subtle pb-1">
+            <button
+              type="button"
+              onClick={() => setOddsTab('global')}
+              className={`text-[9px] font-mono uppercase tracking-wider pb-1 px-1 border-b-2 transition-all ${
+                oddsTab === 'global'
+                  ? 'border-gold-400 text-gold-400 font-bold'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Mercado Global
+            </button>
+            <button
+              type="button"
+              onClick={() => setOddsTab('user')}
+              className={`text-[9px] font-mono uppercase tracking-wider pb-1 px-1 border-b-2 transition-all ${
+                oddsTab === 'user'
+                  ? 'border-gold-400 text-gold-400 font-bold'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Tu Consulta Privada
+            </button>
+          </div>
+        )}
+
+        {activeOdds && (
+          <div className="space-y-2.5">
+            {/* Probabilities Percentage Bar */}
+            <div>
+              <div className="flex justify-between font-mono text-[9px] text-text-secondary mb-1">
+                <span>Local: {Math.round(activeOdds.homeProb * 100)}%</span>
+                <span>Empate: {Math.round(activeOdds.drawProb * 100)}%</span>
+                <span>Visita: {Math.round(activeOdds.awayProb * 100)}%</span>
+              </div>
+              <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-border-subtle border border-black/30">
+                <div
+                  className="bg-gold-500 h-full transition-all duration-300"
+                  style={{ width: `${activeOdds.homeProb * 100}%` }}
+                  title={`Local: ${Math.round(activeOdds.homeProb * 100)}%`}
+                />
+                <div
+                  className="bg-zinc-600 h-full transition-all duration-300"
+                  style={{ width: `${activeOdds.drawProb * 100}%` }}
+                  title={`Empate: ${Math.round(activeOdds.drawProb * 100)}%`}
+                />
+                <div
+                  className="bg-slate-400 h-full transition-all duration-300"
+                  style={{ width: `${activeOdds.awayProb * 100}%` }}
+                  title={`Visita: ${Math.round(activeOdds.awayProb * 100)}%`}
+                />
+              </div>
+            </div>
+
+            {/* Detailed Decimal Odds & Info */}
+            <div className="flex items-center justify-between text-[10px] font-mono text-text-secondary bg-black/15 p-2 rounded-lg border border-border-subtle/40">
+              <div className="flex gap-3">
+                <span>L: <strong className="text-gold-400">{activeOdds.homeOdds.toFixed(2)}</strong></span>
+                <span>E: <strong className="text-gold-400">{activeOdds.drawOdds.toFixed(2)}</strong></span>
+                <span>V: <strong className="text-gold-400">{activeOdds.awayOdds.toFixed(2)}</strong></span>
+              </div>
+              <div className="text-[8px] text-text-muted text-right flex flex-col">
+                <span>Proveedor: {activeOdds.bookmaker}</span>
+                <span>Refrescado: {new Date(activeOdds.capturedAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </div>
+
+            {/* Favorito según cuotas */}
+            <div className="flex items-center gap-1.5 text-[10px] font-sans font-medium text-gold-400/90 bg-gold-400/5 px-2.5 py-1 rounded-md border border-gold-400/10 w-fit">
+              <BarChart2 className="w-3.5 h-3.5 text-gold-400/90" />
+              <span>{getFavoriteText(activeOdds)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* User manual refresh button */}
+        {cardMode === 'predict' && onRefreshUserOdds && (
+          <div className="pt-1">
+            {confirmRefresh ? (
+              <div className="bg-bg-tertiary p-2 rounded-lg border border-gold-500/30 text-center space-y-2 animate-[slideUp_0.15s_ease-out]">
+                <p className="text-[10px] text-text-primary">¿Estás seguro? Esto consumirá tu única actualización privada del día.</p>
+                <div className="flex justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={triggerRefresh}
+                    disabled={refreshingOdds}
+                    className="bg-gold-500 hover:bg-gold-600 text-black text-[10px] font-mono font-bold px-2 py-0.5 rounded transition-colors"
+                  >
+                    Confirmar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRefresh(false)}
+                    className="bg-bg-hover hover:bg-bg-tertiary text-text-secondary text-[10px] font-mono px-2 py-0.5 rounded border border-border-default transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : canRefreshOddsToday ? (
+              <button
+                type="button"
+                onClick={() => setConfirmRefresh(true)}
+                disabled={refreshingOdds}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-secondary hover:text-text-primary text-[10px] font-mono font-semibold rounded-lg transition-all duration-200"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingOdds ? 'animate-spin' : ''}`} />
+                Actualizar probabilidades para mí (1 al día)
+              </button>
+            ) : (
+              <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary/40 border border-border-default/40 text-text-muted text-[9px] font-mono rounded-lg">
+                <ShieldAlert className="w-3.5 h-3.5 text-text-muted" />
+                <span>Actualización diaria consumida. Próxima en: {timeLeftUntilMidnight?.hours}h {timeLeftUntilMidnight?.minutes}m</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Collapsible Head-to-Head history module
+  const renderH2HModule = () => {
+    if (!h2h) return null;
+
+    const homePct = h2h.totalMatches > 0 ? (h2h.homeWins / h2h.totalMatches) * 100 : 0;
+    const drawPct = h2h.totalMatches > 0 ? (h2h.draws / h2h.totalMatches) * 100 : 0;
+    const awayPct = h2h.totalMatches > 0 ? (h2h.awayWins / h2h.totalMatches) * 100 : 0;
+
+    return (
+      <div className="mt-3 pt-2.5 border-t border-border-subtle/50">
+        <button
+          type="button"
+          onClick={() => setShowH2HPanel(!showH2HPanel)}
+          className="w-full flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors py-1"
+        >
+          <span className="flex items-center gap-1.5">
+            <History className="w-3.5 h-3.5 text-gold-400" />
+            Enfrentamientos Directos (H2H)
+          </span>
+          {showH2HPanel ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
+
+        {showH2HPanel && (
+          <div className="mt-2.5 space-y-3 animate-[fadeIn_0.15s_ease-out]">
+            {/* History stats overview */}
+            <div className="bg-black/15 p-2.5 rounded-lg border border-border-subtle/40 space-y-2">
+              <div className="flex justify-between text-[10px] font-mono">
+                <span className="text-text-secondary">Partidos Jugados: <strong className="text-text-primary">{h2h.totalMatches}</strong></span>
+                <span className="text-text-secondary">Goles: <strong className="text-text-primary">{h2h.homeGoals} - {h2h.awayGoals}</strong></span>
+              </div>
+
+              {/* Wins distribution bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[8px] font-mono text-text-secondary">
+                  <span>Ganó {match.homeTeamCode}: {h2h.homeWins}</span>
+                  <span>Empates: {h2h.draws}</span>
+                  <span>Ganó {match.awayTeamCode}: {h2h.awayWins}</span>
+                </div>
+                <div className="w-full h-2 rounded-full overflow-hidden flex bg-border-subtle">
+                  <div className="bg-emerald-500/80 h-full" style={{ width: `${homePct}%` }} title={`Gana ${match.homeTeamCode}: ${h2h.homeWins}`} />
+                  <div className="bg-zinc-600 h-full" style={{ width: `${drawPct}%` }} title={`Empates: ${h2h.draws}`} />
+                  <div className="bg-rose-500/80 h-full" style={{ width: `${awayPct}%` }} title={`Gana ${match.awayTeamCode}: ${h2h.awayWins}`} />
+                </div>
+              </div>
+            </div>
+
+            {/* Last matches list */}
+            {h2h.lastMatches && h2h.lastMatches.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[8px] font-mono uppercase tracking-wider text-text-muted px-1">Últimos encuentros</div>
+                <div className="space-y-1 text-[9px] font-mono">
+                  {h2h.lastMatches.map((m: H2HMeeting, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center py-1 px-2 bg-black/10 rounded border border-border-subtle/20 hover:border-border-default/40 transition-colors">
+                      <span className="text-text-secondary">{m.date.split('-')[0]} · {m.competition}</span>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span className="text-text-primary">{m.homeTeam}</span>
+                        <span className="text-gold-400 bg-black/25 px-1.5 py-0.5 rounded">{m.homeScore} - {m.awayScore}</span>
+                        <span className="text-text-primary">{m.awayTeam}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // 1. SCOREBOARD VARIANT
   if (variant === 'scoreboard') {
@@ -164,14 +429,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             </div>
           )}
 
-          {/* Implied Probabilities / Odds */}
-          {showOdds && oddsSnapshot && cardMode === 'predict' && (
-            <div className="mt-4 pt-2.5 border-t border-border-subtle/40 flex items-center justify-around text-[10px] text-text-secondary font-mono">
-              <span title="Cuota Local">Local: <strong className="text-gold-400">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
-              <span title="Cuota Empate">Empate: <strong className="text-gold-400">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
-              <span title="Cuota Visita">Visita: <strong className="text-gold-400">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
-            </div>
-          )}
+          {/* Market Odds module */}
+          {renderOddsModule()}
+
+          {/* H2H history module */}
+          {renderH2HModule()}
 
           {/* User Prediction Line */}
           {(cardMode === 'locked' || cardMode === 'result') && prediction && (
@@ -266,29 +528,26 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {/* Stepper inputs if predict */}
           {cardMode === 'predict' && (
-            <>
-              <div className="flex justify-between items-center gap-4 mt-3 pt-3 border-t border-border-subtle">
-                <Stepper value={homePred} onChange={handleHomeChange} />
-                {hasPred && !isSaved && (
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="btn-gold py-1 px-3 text-xs flex items-center gap-1"
-                  >
-                    <Save className="w-3 h-3" /> Guardar
-                  </button>
-                )}
-                <Stepper value={awayPred} onChange={handleAwayChange} />
-              </div>
-              {showOdds && oddsSnapshot && (
-                <div className="mt-3 pt-2 border-t border-border-subtle/40 flex items-center justify-around text-[9px] text-text-muted font-mono">
-                  <span>1: <strong className="text-gold">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
-                  <span>X: <strong className="text-gold">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
-                  <span>2: <strong className="text-gold">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
-                </div>
+            <div className="flex justify-between items-center gap-4 mt-3 pt-3 border-t border-border-subtle">
+              <Stepper value={homePred} onChange={handleHomeChange} />
+              {hasPred && !isSaved && (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="btn-gold py-1 px-3 text-xs flex items-center gap-1"
+                >
+                  <Save className="w-3 h-3" /> Guardar
+                </button>
               )}
-            </>
+              <Stepper value={awayPred} onChange={handleAwayChange} />
+            </div>
           )}
+
+          {/* Market Odds module */}
+          {renderOddsModule()}
+
+          {/* H2H history module */}
+          {renderH2HModule()}
 
           {/* Prediction summary */}
           {(cardMode === 'locked' || cardMode === 'result') && prediction && (
@@ -367,20 +626,17 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {/* Steppers */}
           {cardMode === 'predict' && (
-            <>
-              <div className="flex justify-center gap-8 mt-4">
-                <Stepper value={homePred} onChange={handleHomeChange} />
-                <Stepper value={awayPred} onChange={handleAwayChange} />
-              </div>
-              {showOdds && oddsSnapshot && (
-                <div className="mt-4 pt-2.5 border-t border-dashed border-border-active flex items-center justify-around text-[10px] text-text-secondary font-mono">
-                  <span>L: <strong className="text-gold">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
-                  <span>E: <strong className="text-gold">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
-                  <span>V: <strong className="text-gold">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
-                </div>
-              )}
-            </>
+            <div className="flex justify-center gap-8 mt-4">
+              <Stepper value={homePred} onChange={handleHomeChange} />
+              <Stepper value={awayPred} onChange={handleAwayChange} />
+            </div>
           )}
+
+          {/* Market Odds module */}
+          {renderOddsModule()}
+
+          {/* H2H history module */}
+          {renderH2HModule()}
         </div>
 
         {/* Ticket Result Area */}

@@ -87,3 +87,14 @@ The `savePredictionAction` performs the following server-side checks:
    - Scores cannot be negative: `val >= 0`.
 3. **Locking Check:** Verifies kickoff has not passed.
 4. **Completion Check:** Rejects submissions for matches that already have a final result (`status === 'result'`).
+
+---
+
+## 6. Informational Odds and H2H Statistics Helpers
+
+To help users make informed predictions, each match card can display two helper panels (if enabled in the league configuration via `showOdds`):
+
+1. **Market Probabilities:** Shows the decimal odds and implied percentages calculated from bookmakers (L/E/V), pointing out which team is considered the favorite according to market odds.
+2. **Head-to-Head (H2H):** Shows historical match statistics, including total matches played, wins per team, draws, and scores of the last 5 direct meetings between the two teams.
+3. **Private Odds Refresh:** Users can trigger exactly one private odds refresh per local day (resets at midnight in the America/Lima timezone) to get updated real-time odds snapshots for any match.
+

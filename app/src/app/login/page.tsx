@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Shield, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '../../lib/auth-client';
 
@@ -53,7 +53,8 @@ export default function LoginPage() {
           setErrorMsg(error.message || 'Error al registrarse. Inténtalo de nuevo.');
           setLoading(false);
         } else {
-          router.push('/');
+          // After registration, go to leagues page to join or create a league
+          router.push('/liga');
           router.refresh();
         }
       } catch (err) {
@@ -72,7 +73,8 @@ export default function LoginPage() {
           setErrorMsg(error.message || 'Credenciales incorrectas. Inténtalo de nuevo.');
           setLoading(false);
         } else {
-          router.push('/');
+          // After login, go to predictions
+          router.push('/pronosticos');
           router.refresh();
         }
       } catch (err) {
@@ -111,26 +113,34 @@ export default function LoginPage() {
 
         {/* Error Message Alert */}
         {errorMsg && (
-          <div className="mb-4 text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2 animate-[slideUp_0.2s_ease-out]">
-            <AlertCircle className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
+          <div
+            role="alert"
+            className="mb-4 text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2"
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {/* Auth Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {isRegister && (
             <>
               {/* Full Name */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                <label
+                  htmlFor="auth-name"
+                  className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+                >
                   Nombre Completo
                 </label>
                 <input
+                  id="auth-name"
                   type="text"
-                  placeholder="Ej. Gustavo MS"
+                  placeholder="Ej. Juan Pérez"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
                   className="field text-sm py-2 px-3"
                   required={isRegister}
                   disabled={loading}
@@ -139,14 +149,19 @@ export default function LoginPage() {
 
               {/* Username (Optional) */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                <label
+                  htmlFor="auth-displayname"
+                  className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+                >
                   Usuario / Apodo (Opcional)
                 </label>
                 <input
+                  id="auth-displayname"
                   type="text"
-                  placeholder="Ej. gustavoms"
+                  placeholder="Ej. juanp10"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
+                  autoComplete="nickname"
                   className="field text-sm py-2 px-3"
                   disabled={loading}
                 />
@@ -154,14 +169,19 @@ export default function LoginPage() {
 
               {/* WhatsApp (Optional) */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                <label
+                  htmlFor="auth-whatsapp"
+                  className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+                >
                   WhatsApp (Opcional)
                 </label>
                 <input
-                  type="text"
+                  id="auth-whatsapp"
+                  type="tel"
                   placeholder="Ej. +573001234567"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
+                  autoComplete="tel"
                   className="field text-sm py-2 px-3 font-mono"
                   disabled={loading}
                 />
@@ -171,14 +191,19 @@ export default function LoginPage() {
 
           {/* Email */}
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+            <label
+              htmlFor="auth-email"
+              className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+            >
               Correo electrónico
             </label>
             <input
+              id="auth-email"
               type="email"
               placeholder="correo@ejemplo.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               className="field text-sm py-2 px-3"
               required
               disabled={loading}
@@ -187,48 +212,45 @@ export default function LoginPage() {
 
           {/* Password */}
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+            <label
+              htmlFor="auth-password"
+              className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+            >
               Contraseña
             </label>
             <input
+              id="auth-password"
               type="password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
               className="field text-sm py-2 px-3"
               required
               disabled={loading}
             />
           </div>
 
-          {!isRegister && (
-            /* Dev credentials tips block */
-            <div className="text-[10px] text-text-muted leading-relaxed bg-bg-secondary p-2.5 rounded-lg border border-border-default flex flex-col gap-1.5">
-              <div className="flex items-start gap-1.5">
-                <Shield className="w-4 h-4 text-gold-500/80 flex-shrink-0 mt-0.5" />
-                <span className="font-semibold text-text-secondary uppercase tracking-wider">Cuentas de Desarrollo:</span>
-              </div>
-              <ul className="list-disc pl-4 space-y-0.5 font-mono">
-                <li>Admin: gustavo@example.com / Admin123!</li>
-                <li>User: carlos@example.com / User123!</li>
-              </ul>
-            </div>
-          )}
-
           <button
+            id="auth-submit"
             type="submit"
             disabled={loading}
             className="w-full btn-gold py-2.5 text-md mt-4 transition-all text-sm uppercase tracking-wider"
           >
             {loading
-              ? (isRegister ? 'Registrando...' : 'Iniciando sesión...')
-              : (isRegister ? 'Registrarse' : 'Ingresar')}
+              ? isRegister
+                ? 'Registrando...'
+                : 'Iniciando sesión...'
+              : isRegister
+              ? 'Registrarse'
+              : 'Ingresar'}
           </button>
         </form>
 
         {/* Toggle Mode Link */}
         <div className="mt-5 text-center text-xs">
           <button
+            id="auth-toggle"
             type="button"
             onClick={toggleMode}
             className="text-gold-400 hover:underline transition-all bg-transparent border-none cursor-pointer"
@@ -242,4 +264,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

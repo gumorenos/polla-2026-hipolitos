@@ -9,10 +9,18 @@ La Polla 2026 uses **Better Auth** with its built-in Prisma adapter configured f
 Better Auth is configured for local email & password login. It operates entirely self-hosted without external dependencies (no Supabase, no SaaS API keys, no social OAuth required by default).
 
 ### Key Components:
-- **Server Configuration (`app/src/lib/auth.ts`):** Defines database adapter, password providers, and custom fields mapping.
-- **React Client Wrapper (`app/src/lib/auth-client.ts`):** Exposes auth triggers and standard hooks like `useSession` for client-side pages.
+- **Server Configuration (`app/src/lib/auth.ts`):** Defines database adapter, password providers, trusted origins, and custom fields mapping.
+- **React Client Wrapper (`app/src/lib/auth-client.ts`):** Exposes auth triggers and standard hooks like `useSession` for client-side pages. Uses `NEXT_PUBLIC_APP_URL` to target the correct API origin.
 - **API Catch-All Route (`app/src/app/api/auth/[...all]/route.ts`):** Better Auth handler that maps REST endpoints to Next.js route handlers.
-- **Route Guard Middleware (`app/src/middleware.ts`):** Intercepts requests to protected pages, calls `/api/auth/get-session` internally forwarding cookies, and handles redirects.
+- **Route Guard Proxy (`app/src/proxy.ts`):** Next.js 16 `proxy.ts` that performs a **cookie-existence check only** — no internal HTTP fetch. If the `better-auth.session_token` cookie is absent, it redirects to `/login`. Real session validation (including superadmin checks) happens server-side inside each protected Server Component.
+
+### Layered Authentication:
+1. **`proxy.ts`** — Fast cookie presence check. Redirects unauthenticated users before page load.
+2. **Server Components** — Each protected page calls `getCurrentSession()` to validate the real session from the database.
+3. **Server Actions** — All data mutation actions re-validate the session before processing.
+
+> [!IMPORTANT]
+> The previous `middleware.ts` used an internal `fetch` to `/api/auth/get-session`, which caused `fetch failed` errors in production because the server cannot reliably call itself. This has been replaced with a lightweight cookie-existence check in `proxy.ts`.
 
 ---
 

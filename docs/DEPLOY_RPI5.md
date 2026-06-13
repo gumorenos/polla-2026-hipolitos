@@ -55,9 +55,13 @@ DATABASE_URL="file:/var/lib/la-polla-2026/prod.db?connection_limit=1&socket_time
 # Hashed Secrets (Generate using: openssl rand -hex 32)
 BETTER_AUTH_SECRET="your-32-byte-hex-secret-here"
 
-# Application URLs
+# Application URLs (server-side)
 APP_URL="https://pollahipolitos.todoestaaca.com"
 BETTER_AUTH_URL="https://pollahipolitos.todoestaaca.com"
+
+# Public URL exposed to the browser (auth client uses this to find the auth API)
+# Must match the domain users access the app from (Cloudflare public URL)
+NEXT_PUBLIC_APP_URL="https://pollahipolitos.todoestaaca.com"
 
 # Trusted Origins (Comma-separated list of additional URLs allowed to interact with auth)
 # For reverse proxies, Cloudflare tunnels, or alternate domains:

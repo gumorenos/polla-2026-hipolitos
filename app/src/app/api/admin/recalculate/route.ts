@@ -27,9 +27,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Redirect back to admin page
-    const url = new URL('/admin', req.url);
-    return NextResponse.redirect(url, { status: 303 });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error recalculating standings:', error);
     return new NextResponse('Internal Error', { status: 500 });

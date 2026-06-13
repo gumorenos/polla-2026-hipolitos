@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Mono, Bebas_Neue } from "next/font/google";
 import "./globals.css";
+import { AppLayoutWrapper } from "../components/layout/AppLayoutWrapper";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -51,7 +52,9 @@ export default function RootLayout({
       lang="es"
       className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AppLayoutWrapper>{children}</AppLayoutWrapper>
+      </body>
     </html>
   );
 }

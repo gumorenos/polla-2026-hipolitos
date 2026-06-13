@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AppShell } from '../layout/AppShell';
 import { Users, DollarSign, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -44,7 +43,7 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
   };
 
   return (
-    <AppShell>
+    <>
       <div className="max-w-md mx-auto pt-8">
         {errorMsg && (
           <div className="mb-4 text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2 animate-[slideUp_0.2s_ease-out]">
@@ -145,6 +144,6 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
-};
+};;

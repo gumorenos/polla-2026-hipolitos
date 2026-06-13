@@ -23,9 +23,38 @@ export default async function AdminLigasPage() {
       _count: {
         select: { members: true },
       },
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              displayName: true,
+              username: true,
+            },
+          },
+        },
+      },
     },
     orderBy: {
       createdAt: 'desc',
+    },
+  });
+
+  const approvedUsers = await prisma.user.findMany({
+    where: {
+      status: 'approved',
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      displayName: true,
+      username: true,
+    },
+    orderBy: {
+      name: 'asc',
     },
   });
 
@@ -38,7 +67,18 @@ export default async function AdminLigasPage() {
     createdAt: l.createdAt.toISOString(),
     owner: l.owner,
     _count: l._count,
+    members: l.members.map((m) => ({
+      userId: m.userId,
+      role: m.role,
+      user: {
+        id: m.user.id,
+        name: m.user.name,
+        email: m.user.email,
+        displayName: m.user.displayName,
+        username: m.user.username,
+      },
+    })),
   }));
 
-  return <AdminLigasClient leagues={serializedLeagues} />;
+  return <AdminLigasClient leagues={serializedLeagues} approvedUsers={approvedUsers} />;
 }

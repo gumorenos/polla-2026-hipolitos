@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
-import { AppShell } from '../../components/layout/AppShell';
-import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, RefreshCw, AlertCircle, Award } from 'lucide-react';
+import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award } from 'lucide-react';
 import Link from 'next/link';
+import { RecalculateButton } from './RecalculateButton';
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -94,7 +94,7 @@ export default async function AdminDashboardPage() {
   });
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6 max-w-4xl mx-auto py-2">
         {/* Page Header */}
         <div className="flex items-center justify-between pt-2 pb-1 border-b border-border-subtle">
@@ -111,15 +111,7 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
           
-          {/* Recalculate Form (Server Action bound button or similar) */}
-          <form action="/api/admin/recalculate" method="POST">
-            <button
-              type="submit"
-              className="px-4 py-2 border border-gold-500/30 bg-gold-400/10 hover:bg-gold-400/20 text-gold-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all uppercase font-mono"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Recalcular Posiciones
-            </button>
-          </form>
+          <RecalculateButton />
         </div>
 
         {/* Global Statistics Grid */}
@@ -140,7 +132,7 @@ export default async function AdminDashboardPage() {
 
           <div className="card-base p-4 flex flex-col justify-between">
             <span className="text-[10px] text-text-secondary uppercase font-mono font-bold flex items-center gap-1">
-              <ClipboardList className="w-3.5 h-3.5 text-gold-400" /> Pollas
+              <ClipboardList className="w-3.5 h-3.5 text-gold-400" /> Competencias
             </span>
             <div className="mt-2 space-y-1">
               <p className="text-2xl font-bold text-text-primary">{totalLeagues}</p>
@@ -173,7 +165,7 @@ export default async function AdminDashboardPage() {
             <div className="mt-2 space-y-1">
               <p className="text-2xl font-bold text-text-primary">{totalPredictions}</p>
               <p className="text-[9px] text-text-muted uppercase font-mono">
-                Sin Polla: {usersWithoutPool} Aprobados
+                Sin Competencia: {usersWithoutPool} Aprobados
               </p>
             </div>
           </div>
@@ -184,7 +176,7 @@ export default async function AdminDashboardPage() {
           <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
             <div className="flex justify-between items-center border-b border-border-subtle pb-2">
               <h3 className="font-display text-xl tracking-wide uppercase text-gold-400 flex items-center gap-1.5">
-                <CheckCircle className="w-5 h-5 text-green-400" /> Polla Principal: {defaultLeague.name}
+                <CheckCircle className="w-5 h-5 text-green-400" /> Competencia Principal: {defaultLeague.name}
               </h3>
               <span className="text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full uppercase">
                 Activa
@@ -234,7 +226,7 @@ export default async function AdminDashboardPage() {
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>
               <Link href="/admin/ligas" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
-                <span>Auditar y Configurar Pollas</span>
+                <span>Auditar y Configurar Competencias</span>
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>
               <Link href="/admin/odds" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
@@ -272,6 +264,6 @@ export default async function AdminDashboardPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

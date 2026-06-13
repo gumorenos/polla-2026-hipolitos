@@ -529,3 +529,109 @@ export async function updateLeagueSettingsAction(
     return { error: 'Error al guardar la configuración de la polla.' };
   }
 }
+
+/**
+ * Direct add of a user to a league by a Superadmin or League Owner/Admin.
+ */
+export async function addMemberAction(leagueId: string, targetUserId: string) {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado. Inicia sesión primero.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+    });
+
+    if (!league) {
+      return { error: 'Competencia no encontrada.' };
+    }
+
+    // Verify caller has permissions (Superadmin or Owner/Admin of league)
+    const callerMember = await prisma.leagueMember.findUnique({
+      where: { leagueId_userId: { leagueId, userId } },
+    });
+
+    const isAuthorized =
+      session.user.isSuperadmin ||
+      (callerMember && (callerMember.role === 'owner' || callerMember.role === 'admin'));
+
+    if (!isAuthorized) {
+      return { error: 'No tienes permisos para agregar miembros.' };
+    }
+
+    // Check if target user is approved
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { status: true },
+    });
+
+    if (!targetUser || targetUser.status !== 'approved') {
+      return { error: 'Solo se pueden agregar usuarios aprobados.' };
+    }
+
+    // Verify user is not already a member
+    const existingMembership = await prisma.leagueMember.findUnique({
+      where: {
+        leagueId_userId: {
+          leagueId,
+          userId: targetUserId,
+        },
+      },
+    });
+
+    if (existingMembership) {
+      return { error: 'El usuario ya es miembro de esta competencia.' };
+    }
+
+    // Create membership
+    const membership = await prisma.leagueMember.create({
+      data: {
+        leagueId,
+        userId: targetUserId,
+        role: 'member',
+      },
+    });
+
+    // Create Standing rows for the user in this league for all blocks
+    // to ensure they are ranked.
+    const blocks = ['groups', 'knockout', 'global'];
+    for (const block of blocks) {
+      await prisma.standing.upsert({
+        where: {
+          leagueId_userId_block: {
+            leagueId,
+            userId: targetUserId,
+            block,
+          },
+        },
+        update: {},
+        create: {
+          leagueId,
+          userId: targetUserId,
+          block,
+          points: 0,
+          exacts: 0,
+          tendencies: 0,
+          consolations: 0,
+          misses: 0,
+          rank: 0,
+          previousRank: 0,
+        },
+      });
+    }
+
+    revalidatePath('/liga');
+    revalidatePath(`/liga/${league.slug}`);
+    revalidatePath('/admin/ligas');
+    await recalculateAllStandings();
+
+    return { success: true, data: membership };
+  } catch (error) {
+    console.error('Error in addMemberAction:', error);
+    return { error: 'Ocurrió un error al agregar al participante.' };
+  }
+}

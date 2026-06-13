@@ -3,7 +3,6 @@ import { prisma } from '../../../../lib/db';
 import { getCurrentSession } from '../../../../lib/auth-helpers';
 export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
-import { AppShell } from '../../../../components/layout/AppShell';
 import { RankingTable } from '../../../../components/league/RankingTable';
 import Link from 'next/link';
 
@@ -94,7 +93,7 @@ export default async function LigaRankingPage({
   });
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6">
         <div className="flex items-center justify-between pt-2">
           <div className="space-y-1">
@@ -112,6 +111,6 @@ export default async function LigaRankingPage({
 
         <RankingTable standings={serializedStandings} currentUserId={userId} />
       </div>
-    </AppShell>
+    </>
   );
 }

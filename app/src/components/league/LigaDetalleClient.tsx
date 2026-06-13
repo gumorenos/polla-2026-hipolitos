@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AppShell } from '../layout/AppShell';
 import { RankingTable } from './RankingTable';
 import {
   Users,
@@ -160,7 +159,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
   };
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6">
         {/* Back Link and Header */}
         <div className="space-y-4 pt-2">
@@ -451,6 +450,6 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
-};
+};;

@@ -74,15 +74,15 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
       {/* Page Header */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h2 className="font-display text-3xl tracking-wide text-text-primary">MIS LIGAS</h2>
-          <p className="text-text-secondary text-sm">Crea ligas privadas o únete a ligas de tus amigos.</p>
+          <h2 className="font-display text-3xl tracking-wide text-text-primary">MIS COMPETENCIAS</h2>
+          <p className="text-text-secondary text-sm">Crea competencias privadas o únete a las de tus amigos.</p>
         </div>
         <button
           type="button"
           onClick={() => setShowCreateModal(true)}
           className="btn-gold text-sm py-2 px-4 flex items-center gap-1.5"
         >
-          <Plus className="w-4 h-4" /> Crear Liga
+          <Plus className="w-4 h-4" /> Crear Competencia
         </button>
       </div>
 
@@ -93,9 +93,9 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
           {memberships.length === 0 ? (
             <div className="card-base p-8 text-center border-dashed border-border-default/60 flex flex-col items-center justify-center min-h-[220px]">
               <Users className="w-12 h-12 text-text-muted mb-3" />
-              <h3 className="font-bold text-text-primary text-base">No perteneces a ninguna liga</h3>
+              <h3 className="font-bold text-text-primary text-base">No perteneces a ninguna competencia</h3>
               <p className="text-xs text-text-secondary mt-1 max-w-sm">
-                Crea una liga nueva con el botón superior o escribe un código de invitación para ingresar a una liga privada.
+                Crea una competencia nueva con el botón superior o escribe un código de invitación para ingresar a una competencia privada.
               </p>
             </div>
           ) : (
@@ -128,7 +128,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                       </span>
                       <span className="flex items-center gap-0.5">
                         <DollarSign className="w-3.5 h-3.5 text-gold-400" />
-                        Premio: $0 USD
+                        Pozo: $0 USD
                       </span>
                     </div>
                   </div>
@@ -164,9 +164,9 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
 
         {/* Join League Form (Right 1 col) */}
         <div className="card-base p-5 space-y-4">
-          <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Unirse a Liga</h3>
+          <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Unirse a Competencia</h3>
           <p className="text-xs text-text-secondary">
-            Ingresa el código de invitación que te compartió el administrador de la liga.
+            Ingresa el código de invitación que te compartió el administrador de la competencia.
           </p>
           <div className="space-y-3">
             <input
@@ -182,7 +182,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                 !inviteCodeInput.trim() ? 'opacity-50 pointer-events-none' : ''
               }`}
             >
-              Unirse a Liga
+              Unirse a Competencia
             </Link>
           </div>
         </div>
@@ -200,7 +200,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="font-display text-2xl tracking-wide text-text-primary">CREAR NUEVA LIGA</h3>
+            <h3 className="font-display text-2xl tracking-wide text-text-primary">CREAR NUEVA COMPETENCIA</h3>
 
             {errorMsg && (
               <div className="text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2 animate-[slideUp_0.2s_ease-out]">
@@ -212,7 +212,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
             <form onSubmit={handleCreateLeague} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
-                  Nombre de la Liga
+                  Nombre de la Competencia
                 </label>
                 <input
                   type="text"

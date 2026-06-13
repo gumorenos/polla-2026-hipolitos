@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
+    "prisma:seed-demo": "tsx prisma/seed-demo.ts",
     "odds:refresh-upcoming": "tsx scripts/refresh-odds.ts",
     "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts"
   },

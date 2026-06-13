@@ -1,6 +1,5 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { AppShell } from '../../components/layout/AppShell';
 import { getCurrentSession } from '../../lib/auth-helpers';
 import { prisma } from '../../lib/db';
 import { PerfilClient } from '../../components/profile/PerfilClient';
@@ -60,8 +59,8 @@ export default async function PerfilPage() {
   };
 
   return (
-    <AppShell>
+    <>
       <PerfilClient user={serializedUser} stats={stats} />
-    </AppShell>
+    </>
   );
 }

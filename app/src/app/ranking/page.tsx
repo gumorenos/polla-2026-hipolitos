@@ -1,5 +1,4 @@
 import React from 'react';
-import { AppShell } from '../../components/layout/AppShell';
 import { RankingTable } from '../../components/league/RankingTable';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
@@ -41,7 +40,7 @@ export default async function RankingPage({
 
   if (memberships.length === 0) {
     return (
-      <AppShell>
+      <>
         <div className="max-w-md mx-auto text-center space-y-4 py-12">
           <h2 className="font-display text-2xl text-gold">Sin Clasificación</h2>
           <p className="text-text-secondary text-sm">
@@ -53,7 +52,7 @@ export default async function RankingPage({
             </Link>
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
@@ -125,7 +124,7 @@ export default async function RankingPage({
   const currentStand = finalStandings.find(s => s.userId === userId) ?? finalStandings[0];
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6">
         {/* Page Header */}
         <div className="space-y-1.5 pt-2">
@@ -193,6 +192,6 @@ export default async function RankingPage({
           <RankingTable standings={finalStandings} currentUserId={userId} />
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

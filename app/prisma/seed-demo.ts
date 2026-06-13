@@ -302,7 +302,13 @@ const MATCHES: RawMatch[] = [
 ];
 
 async function main() {
-  console.log('Iniciando siembra de base de datos segura de producción...');
+  console.log('Iniciando siembra de base de datos de demostración...');
+  console.log('Limpiando datos antiguos...');
+  await prisma.leagueMember.deleteMany({});
+  await prisma.standing.deleteMany({});
+  await prisma.prediction.deleteMany({});
+  await prisma.winnerPrediction.deleteMany({});
+  await prisma.league.deleteMany({});
 
   // 1. Seed Teams
   console.log('Sembrando equipos...');
@@ -346,36 +352,47 @@ async function main() {
     });
   }
 
-  // 3. Find or create a Superadmin user to own the default competition
-  console.log('Buscando usuario administrador...');
-  let admin = await prisma.user.findFirst({
-    where: { isSuperadmin: true },
+  // 3. Seed Sample Users
+  console.log('Sembrando usuarios de demostración...');
+  const ctx = await auth.$context;
+  const adminHash = await ctx.password.hash('Admin123!');
+  const userHash = await ctx.password.hash('User123!');
+
+  const admin = await prisma.user.upsert({
+    where: { email: 'gustavo@example.com' },
+    update: {
+      name: 'Gustavo',
+      username: 'gustavo',
+      displayUsername: 'gustavo',
+      displayName: 'Gus_Hipolito',
+      isSuperadmin: true,
+      status: 'approved',
+      whatsapp: '+573000000000',
+    },
+    create: {
+      id: 'u-1',
+      name: 'Gustavo',
+      username: 'gustavo',
+      displayUsername: 'gustavo',
+      displayName: 'Gus_Hipolito',
+      email: 'gustavo@example.com',
+      emailVerified: true,
+      isSuperadmin: true,
+      status: 'approved',
+      whatsapp: '+573000000000',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
   });
 
-  if (!admin) {
-    console.log('No se encontró superadmin, creando uno por defecto...');
-    const ctx = await auth.$context;
-    const adminHash = await ctx.password.hash('Admin123!');
-    admin = await prisma.user.create({
-      data: {
-        id: 'u-admin',
-        name: 'Super Admin',
-        username: 'admin',
-        displayUsername: 'admin',
-        displayName: 'Admin',
-        email: 'admin@example.com',
-        emailVerified: true,
-        isSuperadmin: true,
-        status: 'approved',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
-
+  const adminAcc = await prisma.account.findFirst({
+    where: { userId: admin.id, providerId: 'email' },
+  });
+  if (!adminAcc) {
     await prisma.account.create({
       data: {
-        id: 'acc-admin',
-        accountId: 'admin@example.com',
+        id: 'acc-1',
+        accountId: 'gustavo@example.com',
         providerId: 'email',
         userId: admin.id,
         password: adminHash,
@@ -383,10 +400,111 @@ async function main() {
         updatedAt: new Date(),
       },
     });
+  } else {
+    await prisma.account.update({
+      where: { id: adminAcc.id },
+      data: { password: adminHash },
+    });
+  }
+
+  const carlos = await prisma.user.upsert({
+    where: { email: 'carlos@example.com' },
+    update: {
+      name: 'Carlos Ruiz',
+      username: 'carlos',
+      displayUsername: 'carlos',
+      displayName: 'Carlos_CR7',
+      status: 'approved',
+      whatsapp: '+573000000001',
+    },
+    create: {
+      id: 'u-2',
+      name: 'Carlos Ruiz',
+      username: 'carlos',
+      displayUsername: 'carlos',
+      displayName: 'Carlos_CR7',
+      email: 'carlos@example.com',
+      emailVerified: true,
+      isSuperadmin: false,
+      status: 'approved',
+      whatsapp: '+573000000001',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  const carlosAcc = await prisma.account.findFirst({
+    where: { userId: carlos.id, providerId: 'email' },
+  });
+  if (!carlosAcc) {
+    await prisma.account.create({
+      data: {
+        id: 'acc-2',
+        accountId: 'carlos@example.com',
+        providerId: 'email',
+        userId: carlos.id,
+        password: userHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: carlosAcc.id },
+      data: { password: userHash },
+    });
+  }
+
+  const mariana = await prisma.user.upsert({
+    where: { email: 'mariana@example.com' },
+    update: {
+      name: 'Mariana Gomez',
+      username: 'mariana',
+      displayUsername: 'mariana',
+      displayName: 'Mariana_10',
+      status: 'approved',
+      whatsapp: '+573000000002',
+    },
+    create: {
+      id: 'u-3',
+      name: 'Mariana Gomez',
+      username: 'mariana',
+      displayUsername: 'mariana',
+      displayName: 'Mariana_10',
+      email: 'mariana@example.com',
+      emailVerified: true,
+      isSuperadmin: false,
+      status: 'approved',
+      whatsapp: '+573000000002',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  const marianaAcc = await prisma.account.findFirst({
+    where: { userId: mariana.id, providerId: 'email' },
+  });
+  if (!marianaAcc) {
+    await prisma.account.create({
+      data: {
+        id: 'acc-3',
+        accountId: 'mariana@example.com',
+        providerId: 'email',
+        userId: mariana.id,
+        password: userHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: marianaAcc.id },
+      data: { password: userHash },
+    });
   }
 
   // 4. Seed Default/Main Pool
-  console.log('Sembrando competencia por defecto...');
+  console.log('Sembrando polla por defecto...');
   const league = await prisma.league.upsert({
     where: { slug: 'hipolitos-2026' },
     update: {
@@ -419,8 +537,8 @@ async function main() {
     },
   });
 
-  // 5. Add default admin to default league members
-  console.log('Asociando administrador a la competencia...');
+  // 5. Seed League Memberships
+  console.log('Asociando miembros a la liga...');
   await prisma.leagueMember.upsert({
     where: { leagueId_userId: { leagueId: league.id, userId: admin.id } },
     update: {},
@@ -431,12 +549,32 @@ async function main() {
     },
   });
 
-  console.log('Base de datos de producción sembrada con éxito.');
+  await prisma.leagueMember.upsert({
+    where: { leagueId_userId: { leagueId: league.id, userId: carlos.id } },
+    update: {},
+    create: {
+      leagueId: league.id,
+      userId: carlos.id,
+      role: 'member',
+    },
+  });
+
+  await prisma.leagueMember.upsert({
+    where: { leagueId_userId: { leagueId: league.id, userId: mariana.id } },
+    update: {},
+    create: {
+      leagueId: league.id,
+      userId: mariana.id,
+      role: 'member',
+    },
+  });
+
+  console.log('Base de datos sembrada con éxito.');
 }
 
 main()
   .catch((e) => {
-    console.error('Error durante la siembra de producción:', e);
+    console.error('Error durante la siembra de demostración:', e);
     process.exit(1);
   })
   .finally(async () => {

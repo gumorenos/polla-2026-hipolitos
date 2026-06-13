@@ -2,7 +2,6 @@ import React from 'react';
 import { prisma } from '../../../lib/db';
 import { getCurrentSession } from '../../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
-import { AppShell } from '../../../components/layout/AppShell';
 import { OddsAdminClient } from './OddsAdminClient';
 import { ArrowLeft, BarChart2 } from 'lucide-react';
 import Link from 'next/link';
@@ -109,7 +108,7 @@ export default async function AdminOddsPage() {
   };
 
   return (
-    <AppShell>
+    <>
       <div className="max-w-4xl mx-auto space-y-6 py-2">
         {/* Page Header */}
         <div className="flex items-center justify-between pb-1 border-b border-border-subtle pt-2">
@@ -133,6 +132,6 @@ export default async function AdminOddsPage() {
         {/* Client UI Panel */}
         <OddsAdminClient matches={serializedMatches} apiStatus={apiStatus} />
       </div>
-    </AppShell>
+    </>
   );
 }

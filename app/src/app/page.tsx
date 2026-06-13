@@ -1,6 +1,5 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { AppShell } from '../components/layout/AppShell';
 import { getCurrentSession } from '../lib/auth-helpers';
 import { prisma } from '../lib/db';
 import { ArrowRight, Zap, Users, Trophy, DollarSign, ShieldAlert, Award } from 'lucide-react';
@@ -51,7 +50,7 @@ export default async function Home() {
   // 2. Check pending approval status
   if (dbUser.status === 'pending') {
     return (
-      <AppShell>
+      <>
         <div className="space-y-6 max-w-xl mx-auto py-8">
           <div className="card-base p-6 border-yellow-500/30 space-y-4">
             <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 text-xl font-bold font-mono">
@@ -85,7 +84,7 @@ export default async function Home() {
             </p>
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
@@ -106,9 +105,9 @@ export default async function Home() {
   const membershipCount = memberships.length;
 
   // 4. Approved but has no pools
-  if (membershipCount === 0) {
+  if (membershipCount === 0 && !dbUser.isSuperadmin) {
     return (
-      <AppShell>
+      <>
         <div className="space-y-6 max-w-xl mx-auto py-8">
           <div className="card-base p-6 border-border-active space-y-5 text-center">
             <div className="w-14 h-14 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
@@ -118,7 +117,7 @@ export default async function Home() {
               <h2 className="font-display text-2xl tracking-wide uppercase text-text-primary">
                 ¡HOLA, {dbUser.name.toUpperCase()}!
               </h2>
-              <p className="text-xs text-text-secondary">Tu cuenta está aprobada, pero aún no perteneces a ninguna polla.</p>
+              <p className="text-xs text-text-secondary">Tu cuenta está aprobada, pero aún no perteneces a ninguna competencia.</p>
             </div>
             <p className="text-text-secondary text-sm leading-relaxed max-w-md mx-auto">
               Para empezar a pronosticar y participar en los rankings, introduce el código de invitación que te proporcionó el administrador.
@@ -129,14 +128,32 @@ export default async function Home() {
             </div>
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
-  // 5. Approved and in at least one pool
+  // 5. Approved and in at least one pool (or is superadmin)
   // Prefer default pool or take the first one
+  const defaultLeague = await prisma.league.findFirst({
+    where: { isDefault: true },
+  });
   const activeMembership = memberships.find((m) => m.league.isDefault) || memberships[0];
-  const league = activeMembership.league;
+  const league = activeMembership?.league || defaultLeague;
+
+  if (!league) {
+    return (
+      <div className="max-w-xl mx-auto py-8">
+        <div className="card-base p-6 text-center space-y-4">
+          <p className="text-text-secondary">No hay competencias creadas todavía.</p>
+          {dbUser.isSuperadmin && (
+            <Link href="/admin" className="btn-gold text-xs py-2 px-4 inline-block font-mono uppercase tracking-widest text-gold-400 bg-gold-400/10 hover:bg-gold-400/20 border border-gold-500/30 rounded-xl transition-all">
+              Ir a administración
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Fetch stats for this league
   const standing = await prisma.standing.findUnique({
@@ -182,7 +199,7 @@ export default async function Home() {
   const formattedName = dbUser.name.toUpperCase();
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6">
         {/* Welcome Header */}
         <div className="flex flex-col gap-1.5 pt-2">
@@ -277,12 +294,12 @@ export default async function Home() {
             {/* Pool details / Prize info */}
             <div className="card-base p-5 space-y-4">
               <h3 className="font-display text-xl tracking-wide uppercase text-text-primary border-b border-border-subtle pb-2">
-                Resumen de Polla
+                Resumen de Competencia
               </h3>
 
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-text-secondary">Polla Activa:</span>
+                  <span className="text-text-secondary">Competencia Activa:</span>
                   <span className="font-bold text-text-primary">{league.name}</span>
                 </div>
 
@@ -333,6 +350,6 @@ export default async function Home() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

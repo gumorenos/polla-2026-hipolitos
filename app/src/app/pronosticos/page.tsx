@@ -2,7 +2,6 @@ import React from 'react';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
-import { AppShell } from '../../components/layout/AppShell';
 import { PronosticosClient } from '../../components/match/PronosticosClient';
 import { ScoreType, PhaseId, MatchStatus } from '../../types/domain';
 import Link from 'next/link';
@@ -36,7 +35,7 @@ export default async function PronosticosPage() {
 
   if (memberships.length === 0) {
     return (
-      <AppShell>
+      <>
         <div className="max-w-md mx-auto text-center space-y-4 py-12 animate-[fadeIn_0.3s_ease-out]">
           <div className="w-14 h-14 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
             <Users className="w-7 h-7 text-gold-400" />
@@ -51,7 +50,7 @@ export default async function PronosticosPage() {
             </Link>
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
@@ -240,7 +239,7 @@ export default async function PronosticosPage() {
   }));
 
   return (
-    <AppShell>
+    <>
       <PronosticosClient
         matches={serializedMatches}
         predictions={serializedPredictions}
@@ -253,7 +252,7 @@ export default async function PronosticosPage() {
         canRefreshToday={canRefreshToday}
         timeLeftToday={timeLeftToday}
       />
-    </AppShell>
+    </>
   );
 }
 

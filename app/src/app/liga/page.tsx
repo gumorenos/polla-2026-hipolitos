@@ -4,11 +4,15 @@ import { getCurrentSession } from '../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
 import { LigasClient } from '../../components/league/LigasClient';
 
+export const dynamic = "force-dynamic";
+
 export default async function LigasPage() {
   const session = await getCurrentSession();
   if (!session || !session.user) {
     redirect('/login');
   }
+
+
 
   // Fetch only active leagues where the current user is a member
   const memberships = await prisma.leagueMember.findMany({

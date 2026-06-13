@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '../../../lib/db';
 import { getCurrentSession } from '../../../lib/auth-helpers';
+export const dynamic = "force-dynamic";
 import MatchesManagementClient from './MatchesManagementClient';
 import Link from 'next/link';
 

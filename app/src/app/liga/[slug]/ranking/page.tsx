@@ -1,6 +1,7 @@
 import React from 'react';
 import { prisma } from '../../../../lib/db';
 import { getCurrentSession } from '../../../../lib/auth-helpers';
+export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
 import { AppShell } from '../../../../components/layout/AppShell';
 import { RankingTable } from '../../../../components/league/RankingTable';

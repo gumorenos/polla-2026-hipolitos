@@ -4,6 +4,8 @@ import { getCurrentSession } from '../../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
 import { JoinLeagueClient } from '../../../components/league/JoinLeagueClient';
 
+export const dynamic = "force-dynamic";
+
 export default async function JoinLeaguePage({
   params,
 }: {

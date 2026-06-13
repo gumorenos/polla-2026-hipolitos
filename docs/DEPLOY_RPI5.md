@@ -56,8 +56,12 @@ DATABASE_URL="file:/var/lib/la-polla-2026/prod.db?connection_limit=1&socket_time
 BETTER_AUTH_SECRET="your-32-byte-hex-secret-here"
 
 # Application URLs
-APP_URL="https://lapolla.yourdomain.com"
-BETTER_AUTH_URL="https://lapolla.yourdomain.com"
+APP_URL="https://pollahipolitos.todoestaaca.com"
+BETTER_AUTH_URL="https://pollahipolitos.todoestaaca.com"
+
+# Trusted Origins (Comma-separated list of additional URLs allowed to interact with auth)
+# For reverse proxies, Cloudflare tunnels, or alternate domains:
+TRUSTED_ORIGINS="https://pollahipolitos.todoestaaca.com,http://localhost:3030,http://localhost:3000,http://192.168.100.53:3030"
 
 # Server configuration
 NODE_ENV=production
@@ -144,7 +148,7 @@ Follow these steps on the Raspberry Pi 5 to perform a clean deployment:
     ```
 
 14. **Configure Cloudflare Tunnel**:
-    Deploy `cloudflared` on the RPi5 and configure a tunnel to route your public domain (e.g. `lapolla.yourdomain.com`) to `http://localhost:3030`.
+    Deploy `cloudflared` on the RPi5 and configure a tunnel to route your public domain (e.g. `pollahipolitos.todoestaaca.com`) to `http://localhost:3030`.
 
 ---
 

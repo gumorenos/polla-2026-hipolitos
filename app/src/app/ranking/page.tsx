@@ -7,6 +7,8 @@ import { redirect } from 'next/navigation';
 import { Trophy, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: 'Tabla de Clasificación | La Polla 2026',
 };

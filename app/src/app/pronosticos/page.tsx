@@ -6,6 +6,8 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PronosticosClient } from '../../components/match/PronosticosClient';
 import { ScoreType, PhaseId, MatchStatus } from '../../types/domain';
 
+export const dynamic = "force-dynamic";
+
 export default async function PronosticosPage() {
   const session = await getCurrentSession();
   if (!session || !session.user) {

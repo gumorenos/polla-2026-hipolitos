@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { Shield, Settings, Trophy, Users, Calendar, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: 'Panel de Administración | La Polla 2026',
 };

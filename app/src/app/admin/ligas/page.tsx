@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/db';
 import { getCurrentSession } from '../../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
 import { AdminLigasClient } from '../../../components/league/AdminLigasClient';
+export const dynamic = "force-dynamic";
 
 export default async function AdminLigasPage() {
   const session = await getCurrentSession();

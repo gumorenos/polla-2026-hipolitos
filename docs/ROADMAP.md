@@ -107,17 +107,14 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 ### Tasks
 
-- [ ] Build `/pronosticos` server component: fetch open matches for user's league(s).
-- [ ] Migrate MatchCard (Scoreboard/Solari/Ticket variants) with real data wiring.
-- [ ] Migrate Stepper, Countdown UI components.
-- [ ] Build `upsertPrediction` Server Action:
-  - Validate session.
-  - Validate `match.kickoff_utc > now()` (HARD CUTOFF — no exceptions).
-  - Upsert Prediction row in DB.
-- [ ] Show prediction count progress bar.
-- [ ] Show saved/unsaved state per card.
+- [x] Build `/pronosticos` component: fetch matches, memberships, winner predictions, and odds.
+- [x] Migrate MatchCard (Scoreboard/Solari/Ticket variants) with real data, pool switching, and odds snapshots.
+- [x] Migrate Stepper, Countdown UI components.
+- [x] Build `savePredictionAction` Server Action with strict kickoff locking.
+- [x] Show prediction count progress bar.
+- [x] Show saved/unsaved state per card.
 - [ ] Build `/calendario` page with all matches grouped by day/phase.
-- [ ] Commit: "feat: predictions with server-side kickoff locking"
+- [x] Commit: "feat: predictions with server-side kickoff locking"
 
 **Validation:** Can predict scores. Cannot edit after kickoff. Predictions persist across browser sessions.
 
@@ -129,13 +126,13 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 ### Tasks
 
-- [ ] Migrate Podio, RankingTable, Charts components with real data.
-- [ ] Build `/ranking` server component: query Standing table for user's league.
-- [ ] Build `/perfil` page: user stats, points history, breakdown.
-- [ ] Build `recomputeStandings(leagueId)` function using `calculatePoints`.
-- [ ] Wire ranking computation to admin result entry.
-- [ ] Add block-level standings (GROUPS, ROUND32_16, QUARTERS_FINAL, GLOBAL).
-- [ ] Commit: "feat: ranking and scoring with real predictions"
+- [x] Migrate Podio, RankingTable, Charts components with real data.
+- [x] Build `/ranking` server component: query Standing table for user's league.
+- [x] Build `/perfil` page: user stats, points history, breakdown.
+- [x] Build `recalculateAllStandings` function using `calculatePoints` supporting custom points rules and winner predictions.
+- [x] Wire ranking computation to admin result entry.
+- [x] Add block-level standings (GROUPS, ROUND32_16, QUARTERS_FINAL, GLOBAL).
+- [x] Commit: "feat: ranking and scoring with real predictions"
 
 **Validation:** After admin enters a result, standings update for all league members.
 
@@ -147,13 +144,13 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 ### Tasks
 
-- [ ] Build admin layout with superadmin guard (`is_superadmin` check).
-- [ ] Admin match list: view all 72 matches, filter by phase/status.
-- [ ] Admin match result entry: enter home_score, away_score → triggers scoring recompute.
-- [ ] Admin match edit: update kickoff_utc, venue, status.
-- [ ] Admin league management: create league, view members, deactivate.
-- [ ] Admin user management: view all users, toggle superadmin.
-- [ ] Commit: "feat: admin panel with match results and league management"
+- [x] Build admin layout with superadmin guard (`isSuperadmin` check).
+- [x] Admin match list: view all 72 matches, filter by phase/status.
+- [x] Admin match result entry: enter home score, away score → triggers scoring recompute and standings recalculation.
+- [x] Admin match edit: update kickoffUtc, venue, city, phase, status.
+- [x] Admin league management: configure settings, view members, archive/delete.
+- [x] Admin user management: view all users, toggle superadmin, approve/reject/disable users, create users manually.
+- [x] Commit: "feat: admin panel with match results and league management"
 
 **Validation:** Superadmin can enter results. Predictions are scored. Standings update.
 

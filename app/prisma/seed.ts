@@ -303,6 +303,12 @@ const MATCHES: RawMatch[] = [
 
 async function main() {
   console.log('Iniciando siembra de base de datos...');
+  console.log('Limpiando datos antiguos...');
+  await prisma.leagueMember.deleteMany({});
+  await prisma.standing.deleteMany({});
+  await prisma.prediction.deleteMany({});
+  await prisma.winnerPrediction.deleteMany({});
+  await prisma.league.deleteMany({});
 
   // 1. Seed Teams
   console.log('Sembrando equipos...');
@@ -356,17 +362,23 @@ async function main() {
     where: { email: 'gustavo@example.com' },
     update: {
       name: 'Gustavo',
+      username: 'gustavo',
+      displayUsername: 'gustavo',
       displayName: 'Gus_Hipolito',
       isSuperadmin: true,
+      status: 'approved',
       whatsapp: '+573000000000',
     },
     create: {
       id: 'u-1',
       name: 'Gustavo',
+      username: 'gustavo',
+      displayUsername: 'gustavo',
       displayName: 'Gus_Hipolito',
       email: 'gustavo@example.com',
       emailVerified: true,
       isSuperadmin: true,
+      status: 'approved',
       whatsapp: '+573000000000',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -399,16 +411,22 @@ async function main() {
     where: { email: 'carlos@example.com' },
     update: {
       name: 'Carlos Ruiz',
+      username: 'carlos',
+      displayUsername: 'carlos',
       displayName: 'Carlos_CR7',
+      status: 'approved',
       whatsapp: '+573000000001',
     },
     create: {
       id: 'u-2',
       name: 'Carlos Ruiz',
+      username: 'carlos',
+      displayUsername: 'carlos',
       displayName: 'Carlos_CR7',
       email: 'carlos@example.com',
       emailVerified: true,
       isSuperadmin: false,
+      status: 'approved',
       whatsapp: '+573000000001',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -441,16 +459,22 @@ async function main() {
     where: { email: 'mariana@example.com' },
     update: {
       name: 'Mariana Gomez',
+      username: 'mariana',
+      displayUsername: 'mariana',
       displayName: 'Mariana_10',
+      status: 'approved',
       whatsapp: '+573000000002',
     },
     create: {
       id: 'u-3',
       name: 'Mariana Gomez',
+      username: 'mariana',
+      displayUsername: 'mariana',
       displayName: 'Mariana_10',
       email: 'mariana@example.com',
       emailVerified: true,
       isSuperadmin: false,
+      status: 'approved',
       whatsapp: '+573000000002',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -479,18 +503,36 @@ async function main() {
     });
   }
 
-  // 4. Seed Sample League
-  console.log('Sembrando liga de demostración...');
+  // 4. Seed Default/Main Pool
+  console.log('Sembrando polla por defecto...');
   const league = await prisma.league.upsert({
-    where: { slug: 'los-hipolitos-fc' },
-    update: {},
+    where: { slug: 'hipolitos-2026' },
+    update: {
+      name: 'La Polla Hipólitos 2026',
+      isDefault: true,
+      isActive: true,
+      entryFee: 50.0,
+      currency: 'PEN',
+      autoJoin: true,
+      inviteEnabled: true,
+      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championPoints: 10,
+    },
     create: {
       id: 'l-1',
-      name: 'Los Hipólitos F.C.',
-      slug: 'los-hipolitos-fc',
+      name: 'La Polla Hipólitos 2026',
+      slug: 'hipolitos-2026',
       inviteCode: 'HIPO2026',
       createdBy: admin.id,
       status: 'active',
+      isDefault: true,
+      isActive: true,
+      entryFee: 50.0,
+      currency: 'PEN',
+      autoJoin: true,
+      inviteEnabled: true,
+      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championPoints: 10,
       createdAt: new Date(),
     },
   });

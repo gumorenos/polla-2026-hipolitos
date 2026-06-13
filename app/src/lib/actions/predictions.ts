@@ -23,6 +23,7 @@ function isMatchLocked(kickoffUtc: Date | string, status: string): boolean {
  */
 export async function savePredictionAction(
   matchId: string,
+  leagueId: string,
   homePrediction: number,
   awayPrediction: number
 ) {
@@ -33,17 +34,39 @@ export async function savePredictionAction(
 
   const userId = session.user.id;
 
-  // Validate scores
-  if (
-    homePrediction < 0 ||
-    awayPrediction < 0 ||
-    !Number.isInteger(homePrediction) ||
-    !Number.isInteger(awayPrediction)
-  ) {
-    return { error: 'Los marcadores deben ser números enteros no negativos.' };
-  }
-
+  // Validate user status
   try {
+    const userStatusCheck = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (!userStatusCheck || userStatusCheck.status !== 'approved') {
+      return { error: 'Tu cuenta debe estar aprobada para realizar predicciones.' };
+    }
+
+    // Verify league membership
+    const membership = await prisma.leagueMember.findUnique({
+      where: {
+        leagueId_userId: {
+          leagueId,
+          userId,
+        },
+      },
+    });
+    if (!membership) {
+      return { error: 'No eres miembro registrado en esta polla.' };
+    }
+
+    // Validate scores
+    if (
+      homePrediction < 0 ||
+      awayPrediction < 0 ||
+      !Number.isInteger(homePrediction) ||
+      !Number.isInteger(awayPrediction)
+    ) {
+      return { error: 'Los marcadores deben ser números enteros no negativos.' };
+    }
+
     // Retrieve match details to check locking rules
     const match = await prisma.match.findUnique({
       where: { id: matchId },
@@ -61,8 +84,9 @@ export async function savePredictionAction(
     // Upsert user prediction
     const prediction = await prisma.prediction.upsert({
       where: {
-        userId_matchId: {
+        userId_leagueId_matchId: {
           userId,
+          leagueId,
           matchId,
         },
       },
@@ -73,6 +97,7 @@ export async function savePredictionAction(
       },
       create: {
         userId,
+        leagueId,
         matchId,
         homePrediction,
         awayPrediction,
@@ -112,7 +137,7 @@ export async function listMatchesAction() {
 /**
  * Fetches all predictions made by the authenticated user.
  */
-export async function getUserPredictionsAction() {
+export async function getUserPredictionsAction(leagueId?: string) {
   const session = await getCurrentSession();
   if (!session || !session.user) {
     return { error: 'No autorizado.' };
@@ -120,11 +145,74 @@ export async function getUserPredictionsAction() {
 
   try {
     const predictions = await prisma.prediction.findMany({
-      where: { userId: session.user.id },
+      where: {
+        userId: session.user.id,
+        ...(leagueId ? { leagueId } : {}),
+      },
     });
     return { data: predictions };
   } catch (error) {
     console.error('Error fetching user predictions:', error);
     return { error: 'Error al cargar las predicciones.' };
+  }
+}
+
+export async function saveWinnerPredictionAction(leagueId: string, teamCode: string) {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (!user || user.status !== 'approved') {
+      return { error: 'Tu cuenta debe estar aprobada para realizar predicciones.' };
+    }
+
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+    });
+    if (!league) {
+      return { error: 'La polla no existe.' };
+    }
+
+    if (league.championDeadline && new Date() > new Date(league.championDeadline)) {
+      return { error: 'El tiempo límite para predecir al campeón de la polla ha expirado.' };
+    }
+
+    const membership = await prisma.leagueMember.findUnique({
+      where: { leagueId_userId: { leagueId, userId } }
+    });
+    if (!membership) {
+      return { error: 'No eres miembro de esta polla.' };
+    }
+
+    const winnerPrediction = await prisma.winnerPrediction.upsert({
+      where: {
+        userId_leagueId: { userId, leagueId }
+      },
+      update: {
+        teamCode,
+        updatedAt: new Date(),
+      },
+      create: {
+        userId,
+        leagueId,
+        teamCode,
+      }
+    });
+
+    revalidatePath('/pronosticos');
+    revalidatePath('/liga');
+
+    return { success: true, data: winnerPrediction };
+  } catch (error) {
+    console.error('Error saving winner prediction:', error);
+    return { error: 'Error al guardar la predicción de campeón de la polla.' };
   }
 }

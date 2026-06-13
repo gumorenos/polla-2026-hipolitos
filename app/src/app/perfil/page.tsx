@@ -39,14 +39,24 @@ export default async function PerfilPage() {
     { points: 0, exacts: 0, tendencies: 0, consolations: 0, misses: 0 },
   );
 
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      username: true,
+      status: true,
+    }
+  });
+
   const serializedUser = {
     id: user.id,
     name: user.name,
     email: user.email,
+    username: dbUser?.username ?? null,
     createdAt: new Date(user.createdAt).toISOString(),
     displayName: user.displayName ?? null,
     whatsapp: user.whatsapp ?? null,
     isSuperadmin: user.isSuperadmin ?? false,
+    status: dbUser?.status ?? 'pending',
   };
 
   return (

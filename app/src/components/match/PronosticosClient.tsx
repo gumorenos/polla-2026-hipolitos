@@ -3,11 +3,37 @@
 import React, { useState, useMemo } from 'react';
 import { Match, Prediction } from '../../types/domain';
 import { MatchPredictionCard } from './MatchPredictionCard';
-import { CheckSquare, AlertCircle } from 'lucide-react';
+import { CheckSquare, AlertCircle, Trophy, Sparkles } from 'lucide-react';
+import { saveWinnerPredictionAction } from '../../lib/actions/predictions';
 
 interface PronosticosClientProps {
   matches: Match[];
-  predictions: Prediction[];
+  predictions: (Prediction & { leagueId: string })[];
+  leagues: {
+    id: string;
+    name: string;
+    slug: string;
+    isDefault: boolean;
+    championDeadline: string | null;
+    championPoints: number;
+    showOdds: boolean;
+  }[];
+  teams: {
+    code: string;
+    name: string;
+  }[];
+  winnerPredictions: {
+    leagueId: string;
+    teamCode: string;
+  }[];
+  oddsSnapshots: Record<string, {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProbability: number;
+    drawProbability: number;
+    awayProbability: number;
+  }>;
 }
 
 type PhaseFilter = 'all' | 'groups' | 'knockout';
@@ -16,24 +42,83 @@ type StateFilter = 'all' | 'pending' | 'predicted' | 'locked';
 export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   matches,
   predictions,
+  leagues,
+  teams,
+  winnerPredictions,
+  oddsSnapshots,
 }) => {
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
 
-  // Maintain local map of predictions for instant reactive UI updates
-  const [localPreds, setLocalPreds] = useState<Record<string, Prediction>>(() => {
-    const map: Record<string, Prediction> = {};
+  const [activeLeagueId, setActiveLeagueId] = useState<string>(() => {
+    const def = leagues.find(l => l.isDefault);
+    return def ? def.id : (leagues[0]?.id || '');
+  });
+
+  // Maintain local map of predictions per league for instant reactive UI updates
+  const [localPreds, setLocalPreds] = useState<Record<string, Record<string, Prediction>>>(() => {
+    const map: Record<string, Record<string, Prediction>> = {};
     predictions.forEach((p) => {
-      map[p.matchId] = p;
+      if (!map[p.leagueId]) map[p.leagueId] = {};
+      map[p.leagueId][p.matchId] = p;
     });
     return map;
   });
 
+  const [localWinners, setLocalWinners] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    winnerPredictions.forEach((wp) => {
+      map[wp.leagueId] = wp.teamCode;
+    });
+    return map;
+  });
+
+  const [savingWinner, setSavingWinner] = useState(false);
+  const [winnerError, setWinnerError] = useState<string | null>(null);
+  const [winnerSuccess, setWinnerSuccess] = useState<string | null>(null);
+
+  const activePreds = useMemo(() => {
+    return localPreds[activeLeagueId] || {};
+  }, [localPreds, activeLeagueId]);
+
+  const activeLeague = useMemo(() => {
+    return leagues.find(l => l.id === activeLeagueId);
+  }, [leagues, activeLeagueId]);
+
+  const isWinnerLocked = useMemo(() => {
+    if (!activeLeague?.championDeadline) return false;
+    return new Date(activeLeague.championDeadline) <= new Date();
+  }, [activeLeague]);
+
+  const realTeams = useMemo(() => {
+    return teams.filter(t => t.code.length === 3 && !/^\d/.test(t.code) && !/^[WR]/.test(t.code));
+  }, [teams]);
+
   const handlePredictionSaved = (savedPred: Prediction) => {
     setLocalPreds((prev) => ({
       ...prev,
-      [savedPred.matchId]: savedPred,
+      [activeLeagueId]: {
+        ...(prev[activeLeagueId] || {}),
+        [savedPred.matchId]: savedPred,
+      }
     }));
+  };
+
+  const handleSaveWinner = async (teamCode: string) => {
+    setSavingWinner(true);
+    setWinnerError(null);
+    setWinnerSuccess(null);
+    const res = await saveWinnerPredictionAction(activeLeagueId, teamCode);
+    if (res.error) {
+      setWinnerError(res.error);
+    } else {
+      setWinnerSuccess('Campeón guardado exitosamente.');
+      setLocalWinners(prev => ({
+        ...prev,
+        [activeLeagueId]: teamCode
+      }));
+    }
+    setSavingWinner(false);
   };
 
   // Helper to check if match is locked (kickoff passed or status is live/result)
@@ -50,7 +135,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       if (phaseFilter === 'knockout' && m.phase === 'groups') return false;
 
       // 2. Prediction State Filter
-      const hasPrediction = !!localPreds[m.id];
+      const hasPrediction = !!activePreds[m.id];
       const locked = isMatchLocked(m);
 
       if (stateFilter === 'pending') {
@@ -68,15 +153,15 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
 
       return true;
     });
-  }, [matches, phaseFilter, stateFilter, localPreds]);
+  }, [matches, phaseFilter, stateFilter, activePreds]);
 
   // Statistics
   const stats = useMemo(() => {
     const total = matches.length;
-    const predicted = matches.filter((m) => !!localPreds[m.id]).length;
+    const predicted = matches.filter((m) => !!activePreds[m.id]).length;
     const percent = total > 0 ? Math.round((predicted / total) * 100) : 0;
     return { total, predicted, percent };
-  }, [matches, localPreds]);
+  }, [matches, activePreds]);
 
   return (
     <div className="space-y-6">
@@ -104,6 +189,80 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Pool Selector (only visible if user has multiple memberships) */}
+      {leagues.length > 1 && (
+        <div className="flex items-center gap-2.5 bg-surface/50 border border-border/80 p-3 rounded-xl w-fit">
+          <label className="text-[10px] font-mono uppercase text-text-secondary font-bold">Polla Activa:</label>
+          <select
+            value={activeLeagueId}
+            onChange={(e) => {
+              setActiveLeagueId(e.target.value);
+              setWinnerError(null);
+              setWinnerSuccess(null);
+            }}
+            className="field py-1 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-fit font-semibold"
+          >
+            {leagues.map(l => (
+              <option key={l.id} value={l.id}>{l.name} {l.isDefault ? '(Principal)' : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Tournament Winner Prediction Widget */}
+      {activeLeague && (
+        <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
+          <div className="flex justify-between items-center border-b border-border-subtle pb-2">
+            <h3 className="font-display text-lg tracking-wide uppercase text-gold-400 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-gold-400" /> Campeón de la Copa Mundial 2026
+            </h3>
+            {isWinnerLocked ? (
+              <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
+                Bloqueado
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> Abierto
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs text-text-secondary">
+                Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
+              </p>
+              {activeLeague.championDeadline && (
+                <p className="text-[10px] text-text-muted font-mono">
+                  Límite de envío: {new Date(activeLeague.championDeadline).toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Perú)
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <select
+                disabled={isWinnerLocked || savingWinner}
+                value={localWinners[activeLeagueId] || ''}
+                onChange={(e) => handleSaveWinner(e.target.value)}
+                className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-50"
+              >
+                <option value="">-- Elige Campeón --</option>
+                {realTeams.map(t => (
+                  <option key={t.code} value={t.code}>{t.name} (@{t.code})</option>
+                ))}
+              </select>
+
+              {savingWinner && (
+                <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              )}
+            </div>
+          </div>
+
+          {winnerError && <p className="text-xs text-red-400 font-semibold mt-1">{winnerError}</p>}
+          {winnerSuccess && <p className="text-xs text-green-400 font-semibold mt-1">{winnerSuccess}</p>}
+        </div>
+      )}
 
       {/* Filter Options */}
       <div className="space-y-4">
@@ -203,7 +362,8 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-6 pb-12">
           {filteredMatches.map((match) => {
-            const pred = localPreds[match.id];
+            const pred = activePreds[match.id];
+            const odds = oddsSnapshots[match.id] || null;
             return (
               <MatchPredictionCard
                 key={match.id}
@@ -211,6 +371,9 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 prediction={pred}
                 variant="scoreboard"
                 onPredictionSaved={handlePredictionSaved}
+                leagueId={activeLeagueId}
+                oddsSnapshot={odds}
+                showOdds={activeLeague?.showOdds}
               />
             );
           })}

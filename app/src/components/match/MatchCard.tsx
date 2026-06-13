@@ -23,6 +23,15 @@ interface MatchCardProps {
   mode?: 'predict' | 'display' | 'locked' | 'result';
   variant?: 'scoreboard' | 'solari' | 'ticket';
   onSavePrediction?: (home: number, away: number) => void;
+  oddsSnapshot?: {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProbability: number;
+    drawProbability: number;
+    awayProbability: number;
+  } | null;
+  showOdds?: boolean;
 }
 
 export const MatchCard: React.FC<MatchCardProps> = ({
@@ -31,6 +40,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   mode,
   variant = 'scoreboard',
   onSavePrediction,
+  oddsSnapshot,
+  showOdds,
 }) => {
   const cardMode = mode ?? (
     match.status === 'result' ? 'result' :
@@ -153,6 +164,15 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             </div>
           )}
 
+          {/* Implied Probabilities / Odds */}
+          {showOdds && oddsSnapshot && cardMode === 'predict' && (
+            <div className="mt-4 pt-2.5 border-t border-border-subtle/40 flex items-center justify-around text-[10px] text-text-secondary font-mono">
+              <span title="Cuota Local">Local: <strong className="text-gold-400">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
+              <span title="Cuota Empate">Empate: <strong className="text-gold-400">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
+              <span title="Cuota Visita">Visita: <strong className="text-gold-400">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
+            </div>
+          )}
+
           {/* User Prediction Line */}
           {(cardMode === 'locked' || cardMode === 'result') && prediction && (
             <div className="mt-4 pt-3 border-t border-border-subtle flex items-center justify-center gap-2 text-xs text-text-secondary">
@@ -246,19 +266,28 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {/* Stepper inputs if predict */}
           {cardMode === 'predict' && (
-            <div className="flex justify-between items-center gap-4 mt-3 pt-3 border-t border-border-subtle">
-              <Stepper value={homePred} onChange={handleHomeChange} />
-              {hasPred && !isSaved && (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="btn-gold py-1 px-3 text-xs flex items-center gap-1"
-                >
-                  <Save className="w-3 h-3" /> Guardar
-                </button>
+            <>
+              <div className="flex justify-between items-center gap-4 mt-3 pt-3 border-t border-border-subtle">
+                <Stepper value={homePred} onChange={handleHomeChange} />
+                {hasPred && !isSaved && (
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="btn-gold py-1 px-3 text-xs flex items-center gap-1"
+                  >
+                    <Save className="w-3 h-3" /> Guardar
+                  </button>
+                )}
+                <Stepper value={awayPred} onChange={handleAwayChange} />
+              </div>
+              {showOdds && oddsSnapshot && (
+                <div className="mt-3 pt-2 border-t border-border-subtle/40 flex items-center justify-around text-[9px] text-text-muted font-mono">
+                  <span>1: <strong className="text-gold">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
+                  <span>X: <strong className="text-gold">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
+                  <span>2: <strong className="text-gold">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
+                </div>
               )}
-              <Stepper value={awayPred} onChange={handleAwayChange} />
-            </div>
+            </>
           )}
 
           {/* Prediction summary */}
@@ -338,10 +367,19 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
           {/* Steppers */}
           {cardMode === 'predict' && (
-            <div className="flex justify-center gap-8 mt-4">
-              <Stepper value={homePred} onChange={handleHomeChange} />
-              <Stepper value={awayPred} onChange={handleAwayChange} />
-            </div>
+            <>
+              <div className="flex justify-center gap-8 mt-4">
+                <Stepper value={homePred} onChange={handleHomeChange} />
+                <Stepper value={awayPred} onChange={handleAwayChange} />
+              </div>
+              {showOdds && oddsSnapshot && (
+                <div className="mt-4 pt-2.5 border-t border-dashed border-border-active flex items-center justify-around text-[10px] text-text-secondary font-mono">
+                  <span>L: <strong className="text-gold">{oddsSnapshot.homeOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.homeProbability * 100)}%)</span>
+                  <span>E: <strong className="text-gold">{oddsSnapshot.drawOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.drawProbability * 100)}%)</span>
+                  <span>V: <strong className="text-gold">{oddsSnapshot.awayOdds.toFixed(2)}</strong> ({Math.round(oddsSnapshot.awayProbability * 100)}%)</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 

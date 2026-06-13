@@ -8,11 +8,9 @@ import { authClient } from '../../lib/auth-client';
 export default function LoginPage() {
   const router = useRouter();
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -21,9 +19,11 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg(null);
 
+    const cleanUsername = username.trim().toLowerCase();
+
     // Basic Input Validations
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('El correo y la contraseña son requeridos.');
+    if (!cleanUsername || !password.trim()) {
+      setErrorMsg('El usuario y la contraseña son requeridos.');
       setLoading(false);
       return;
     }
@@ -41,20 +41,22 @@ export default function LoginPage() {
       }
 
       try {
+        const placeholderEmail = `${cleanUsername}@polla.local`;
         const { error } = await authClient.signUp.email({
-          email: email.trim(),
+          email: placeholderEmail,
           password: password,
           name: name.trim(),
-          displayName: displayName.trim() || name.trim(),
-          whatsapp: whatsapp.trim(),
+          username: cleanUsername,
+          displayUsername: cleanUsername,
+          displayName: name.trim(),
         });
 
         if (error) {
           setErrorMsg(error.message || 'Error al registrarse. Inténtalo de nuevo.');
           setLoading(false);
         } else {
-          // After registration, go to leagues page to join or create a league
-          router.push('/liga');
+          // After registration, go to Inicio/Home page
+          router.push('/');
           router.refresh();
         }
       } catch (err) {
@@ -64,17 +66,17 @@ export default function LoginPage() {
       }
     } else {
       try {
-        const { error } = await authClient.signIn.email({
-          email: email.trim(),
+        const { error } = await authClient.signIn.username({
+          username: cleanUsername,
           password: password,
         });
 
         if (error) {
-          setErrorMsg(error.message || 'Credenciales incorrectas. Inténtalo de nuevo.');
+          setErrorMsg(error.message || 'Credenciales incorrectas o cuenta no aprobada. Inténtalo de nuevo.');
           setLoading(false);
         } else {
-          // After login, go to predictions
-          router.push('/pronosticos');
+          // After login, go to Inicio/Home page
+          router.push('/');
           router.refresh();
         }
       } catch (err) {
@@ -106,7 +108,7 @@ export default function LoginPage() {
               {isRegister ? 'Registro de Cuenta' : 'La Polla 2026'}
             </h2>
             <p className="text-xs text-text-secondary uppercase tracking-widest font-mono mt-0.5">
-              {isRegister ? 'Crear perfil privado' : 'Prediction Pool Acceso'}
+              {isRegister ? 'Crear perfil privado' : 'Acceso a la Polla'}
             </p>
           </div>
         </div>
@@ -146,64 +148,24 @@ export default function LoginPage() {
                   disabled={loading}
                 />
               </div>
-
-              {/* Username (Optional) */}
-              <div className="space-y-1">
-                <label
-                  htmlFor="auth-displayname"
-                  className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
-                >
-                  Usuario / Apodo (Opcional)
-                </label>
-                <input
-                  id="auth-displayname"
-                  type="text"
-                  placeholder="Ej. juanp10"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  autoComplete="nickname"
-                  className="field text-sm py-2 px-3"
-                  disabled={loading}
-                />
-              </div>
-
-              {/* WhatsApp (Optional) */}
-              <div className="space-y-1">
-                <label
-                  htmlFor="auth-whatsapp"
-                  className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
-                >
-                  WhatsApp (Opcional)
-                </label>
-                <input
-                  id="auth-whatsapp"
-                  type="tel"
-                  placeholder="Ej. +573001234567"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  autoComplete="tel"
-                  className="field text-sm py-2 px-3 font-mono"
-                  disabled={loading}
-                />
-              </div>
             </>
           )}
 
-          {/* Email */}
+          {/* Username */}
           <div className="space-y-1">
             <label
-              htmlFor="auth-email"
+              htmlFor="auth-username"
               className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
             >
-              Correo electrónico
+              Nombre de usuario
             </label>
             <input
-              id="auth-email"
-              type="email"
-              placeholder="correo@ejemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              id="auth-username"
+              type="text"
+              placeholder="Ej. juanp10"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
               className="field text-sm py-2 px-3"
               required
               disabled={loading}

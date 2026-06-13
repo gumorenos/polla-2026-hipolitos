@@ -137,21 +137,27 @@ PRAGMA foreign_keys=ON;
 
 ---
 
-## 5. Authentication Design
+## 5. Authentication and Authorization Design
 
 ### Library: Better Auth
+
+Better Auth is configured with the `username()` plugin, allowing users to register and log in using usernames and passwords rather than emails. Internally, a placeholder email (`username@polla.local`) is generated to satisfy database constraints.
 
 Configuration (`lib/auth.ts`):
 ```ts
 import { betterAuth } from 'better-auth';
+import { username } from 'better-auth/plugins';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from './db';
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'sqlite' }),
   emailAndPassword: { enabled: true },
+  plugins: [username()],
   session: { cookieCache: { enabled: true, maxAge: 60 * 60 * 24 * 30 } },
-  trustedOrigins: [process.env.APP_URL!],
+  trustedOrigins: [
+    process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? 'http://localhost:3000',
+  ],
 });
 ```
 
@@ -161,57 +167,75 @@ export const auth = betterAuth({
 - 30-day session with sliding expiry.
 - On RPi5: runs completely self-contained, no external auth service dependency.
 
-### Authorization Model
+### User Status and Authorization Model
 
-| Role | Access |
-|------|--------|
+Users must undergo an approval workflow. When a user registers, their account is initialized as `pending`. An administrator must approve their account before they can join pollas or make predictions.
+
+| State | Access |
+|-------|--------|
 | Unauthenticated | Login/register page only |
-| Authenticated user | Own predictions, league ranking (if member), own profile |
-| League admin | Manage their own league (invite, remove members) |
-| Superadmin | All: match results, all leagues, all users |
-
-Superadmin flag: `User.isSuperadmin` — set manually in DB or via seed.
+| `pending` | Blocked screen: account pending approval |
+| `rejected` / `disabled` | Blocked screen: account blocked/deactivated |
+| `approved` (Normal User) | View/submit predictions, view standings, account settings |
+| `approved` + `isSuperadmin` | All the above + Admin Panel (approve users, edit matches, recalculate standings) |
 
 ---
 
 ## 6. Application Flow
 
-### Prediction Flow
+### Prediction Flow (Per-Match Predictions)
+
+Predictions are league-specific. Users submit their prediction associated with a specific `leagueId`.
 
 ```
 User opens /pronosticos
-  → Server component loads matches from DB for current user's league
-  → Client renders MatchCards with user's existing predictions
+  → Server component loads matches and user predictions for the active pool (leagueId)
+  → Client renders MatchCards with user's existing predictions and optional implied probabilities (OddsSnapshot)
   → User inputs score via Stepper widget
-  → Server Action called: upsertPrediction(matchId, home, away)
-    → Validate: session exists
+  → Server Action called: savePredictionAction(matchId, leagueId, home, away)
+    → Validate: session exists and user is 'approved'
+    → Validate: user is a member of the league (leagueId)
     → Validate: match.kickoff_utc > now() (HARD CUTOFF)
-    → Validate: user is member of league
-    → Upsert Prediction row
-  → Client updates savedMap state
+    → Upsert Prediction row in DB mapping (userId, leagueId, matchId)
+  → Client updates local state
 ```
 
-### Scoring Flow
+### Tournament Champion Prediction Flow
+
+Users submit their tournament winner pick for each league before the league's `championDeadline`.
+
+```
+User selects Champion Team Code in /pronosticos Champion Widget
+  → Server Action called: saveWinnerPredictionAction(leagueId, teamCode)
+    → Validate: session exists and user is 'approved'
+    → Validate: now() < league.championDeadline
+    → Validate: user is a member of the league
+    → Upsert WinnerPrediction row mapping (userId, leagueId)
+```
+
+### Scoring and Recalculation Flow
 
 ```
 Admin enters result for a match
-  → Server Action: setMatchResult(matchId, homeScore, awayScore)
+  → Server Action: updateMatchResultAction(matchId, homeScore, awayScore)
     → Validate: superadmin session
-    → Update Match row (home_score, away_score, status=FINISHED)
-    → Recompute scores: for all Prediction rows matching this matchId
-      → calculatePoints(prediction, result)
-      → Update Prediction.points_earned and Prediction.score_type
-    → Recompute Standing rows for all leagues with this match
+    → Update Match row (homeScore, awayScore, status='result')
+    → Grade predictions for this match (calculatePoints using league-specific points configurations)
+    → Trigger standings recalculation per league
+      → For each league, aggregate per-match prediction points
+      → If league championTeamCode is defined, add championPoints to users who predicted the correct winner
+      → Apply tie-breaker rules to sort standings and update rankings snapshot (Standing)
 ```
 
 ### League Join Flow
 
 ```
-User visits /liga/join?code=XXXX
-  → Validate: code matches a League.invite_code
+User visits /join/[code] (or inputs inviteCode in the UI)
+  → Validate: session exists and user is 'approved'
+  → Validate: code matches a League.inviteCode and league is active/inviteEnabled
   → Validate: user not already a member
   → Create LeagueMember row
-  → Redirect to /liga
+  → Redirect to home page (/)
 ```
 
 ---

@@ -9,6 +9,16 @@ interface MatchPredictionCardProps {
   prediction?: Prediction | null;
   variant?: 'scoreboard' | 'solari' | 'ticket';
   onPredictionSaved?: (pred: Prediction) => void;
+  leagueId: string;
+  oddsSnapshot?: {
+    homeOdds: number;
+    drawOdds: number;
+    awayOdds: number;
+    homeProbability: number;
+    drawProbability: number;
+    awayProbability: number;
+  } | null;
+  showOdds?: boolean;
 }
 
 export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
@@ -16,6 +26,9 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
   prediction,
   variant = 'scoreboard',
   onPredictionSaved,
+  leagueId,
+  oddsSnapshot,
+  showOdds,
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -39,7 +52,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
     setLoading(true);
     setErrorMsg(null);
 
-    const result = await savePredictionAction(match.id, home, away);
+    const result = await savePredictionAction(match.id, leagueId, home, away);
 
     if (result.error) {
       setErrorMsg(result.error);
@@ -71,6 +84,8 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
         prediction={localPrediction}
         variant={variant}
         onSavePrediction={handleSave}
+        oddsSnapshot={oddsSnapshot}
+        showOdds={showOdds}
       />
 
       {errorMsg && (

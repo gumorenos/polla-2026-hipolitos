@@ -94,7 +94,7 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
               <tr key={match.id} className="hover:bg-surface transition-colors">
                 <td className="p-3">
                   <div>{match.id.substring(0, 8)}</div>
-                  <div className="text-xs text-text-muted">{new Date(match.kickoffUtc).toLocaleString()}</div>
+                  <div className="text-xs text-text-muted">{new Date(match.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</div>
                 </td>
                 <td className="p-3 font-mono">
                   {match.homeTeamCode} vs {match.awayTeamCode}

@@ -18,25 +18,34 @@ export default async function PronosticosPage() {
 
   const userId = session.user.id;
 
+  // Check user status
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.status !== 'approved') {
+    redirect('/');
+  }
+
   // Check league membership — predictions only make sense within a league
-  const membershipCount = await prisma.leagueMember.count({
-    where: { userId },
+  const memberships = await prisma.leagueMember.findMany({
+    where: { userId, league: { isActive: true } },
+    include: {
+      league: true,
+    },
   });
 
-  if (membershipCount === 0) {
+  if (memberships.length === 0) {
     return (
       <AppShell>
-        <div className="max-w-md mx-auto text-center space-y-4 py-12">
+        <div className="max-w-md mx-auto text-center space-y-4 py-12 animate-[fadeIn_0.3s_ease-out]">
           <div className="w-14 h-14 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
             <Users className="w-7 h-7 text-gold-400" />
           </div>
-          <h2 className="font-display text-2xl text-text-primary">Sin Liga Activa</h2>
+          <h2 className="font-display text-2xl text-text-primary uppercase tracking-wide">Sin Polla Activa</h2>
           <p className="text-text-secondary text-sm">
-            Únete o crea una liga para comenzar a hacer predicciones y competir con otros jugadores.
+            Únete a una polla existente usando un código de invitación o contacta con el administrador para que te asigne a una.
           </p>
           <div className="pt-2">
-            <Link href="/liga" className="btn-gold text-sm py-2 px-6 inline-flex">
-              Ir a Ligas
+            <Link href="/" className="btn-gold text-xs py-2 px-6 inline-flex font-mono uppercase tracking-wider">
+              Ir al Inicio
             </Link>
           </div>
         </div>
@@ -58,6 +67,47 @@ export default async function PronosticosPage() {
     },
   });
 
+  // Fetch winner predictions for champion pick
+  const winnerPredictions = await prisma.winnerPrediction.findMany({
+    where: { userId },
+  });
+
+  // Fetch all teams
+  const teams = await prisma.team.findMany({
+    select: {
+      code: true,
+      name: true,
+    },
+  });
+
+  // Fetch odds snapshots
+  const odds = await prisma.oddsSnapshot.findMany({
+    orderBy: { capturedAt: 'desc' },
+  });
+  const oddsSnapshotsMap: Record<
+    string,
+    {
+      homeOdds: number;
+      drawOdds: number;
+      awayOdds: number;
+      homeProbability: number;
+      drawProbability: number;
+      awayProbability: number;
+    }
+  > = {};
+  for (const o of odds) {
+    if (!oddsSnapshotsMap[o.matchId]) {
+      oddsSnapshotsMap[o.matchId] = {
+        homeOdds: o.homeOdds,
+        drawOdds: o.drawOdds,
+        awayOdds: o.awayOdds,
+        homeProbability: o.homeProbability,
+        drawProbability: o.drawProbability,
+        awayProbability: o.awayProbability,
+      };
+    }
+  }
+
   // Serialize Date fields to plain strings for the Client Component boundaries
   const serializedMatches = matches.map((m) => ({
     id: m.id,
@@ -77,6 +127,7 @@ export default async function PronosticosPage() {
   const serializedPredictions = predictions.map((p) => ({
     id: p.id,
     userId: p.userId,
+    leagueId: p.leagueId,
     matchId: p.matchId,
     homePrediction: p.homePrediction,
     awayPrediction: p.awayPrediction,
@@ -85,11 +136,30 @@ export default async function PronosticosPage() {
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  const serializedLeagues = memberships.map(m => ({
+    id: m.league.id,
+    name: m.league.name,
+    slug: m.league.slug,
+    isDefault: m.league.isDefault,
+    championDeadline: m.league.championDeadline ? m.league.championDeadline.toISOString() : null,
+    championPoints: m.league.championPoints,
+    showOdds: m.league.showOdds,
+  }));
+
+  const serializedWinnerPredictions = winnerPredictions.map(wp => ({
+    leagueId: wp.leagueId,
+    teamCode: wp.teamCode,
+  }));
+
   return (
     <AppShell>
       <PronosticosClient
         matches={serializedMatches}
         predictions={serializedPredictions}
+        leagues={serializedLeagues}
+        teams={teams}
+        winnerPredictions={serializedWinnerPredictions}
+        oddsSnapshots={oddsSnapshotsMap}
       />
     </AppShell>
   );

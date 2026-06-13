@@ -19,20 +19,25 @@ model User {
   updatedAt     DateTime
 
   // Custom User fields
-  displayName   String?
-  whatsapp      String?
-  isSuperadmin  Boolean   @default(false)
+  username         String?   @unique
+  displayUsername  String?
+  status           String    @default("pending") // "pending" | "approved" | "rejected" | "disabled"
+  canCreateLeagues Boolean   @default(false)
+  displayName      String?
+  whatsapp         String?
+  isSuperadmin     Boolean   @default(false)
 
   // Auth Relations
   sessions      Session[]
   accounts      Account[]
 
   // Domain Relations
-  leaguesOwned    League[]        @relation("OwnedLeagues")
-  memberships     LeagueMember[]
-  predictions     Prediction[]
-  standings       Standing[]
-  adminActionLogs AdminActionLog[]
+  leaguesOwned      League[]           @relation("OwnedLeagues")
+  memberships       LeagueMember[]
+  predictions       Prediction[]
+  winnerPredictions WinnerPrediction[]
+  standings         Standing[]
+  adminActionLogs   AdminActionLog[]
 
   @@map("user")
 }
@@ -88,8 +93,9 @@ model Team {
   name String
   hue  Int    // For circular gradients
 
-  homeMatches Match[] @relation("HomeTeamMatches")
-  awayMatches Match[] @relation("AwayTeamMatches")
+  homeMatches       Match[]            @relation("HomeTeamMatches")
+  awayMatches       Match[]            @relation("AwayTeamMatches")
+  winnerPredictions WinnerPrediction[]
 
   @@map("team")
 }
@@ -111,7 +117,8 @@ model Match {
   homeTeam Team @relation("HomeTeamMatches", fields: [homeTeamCode], references: [code])
   awayTeam Team @relation("AwayTeamMatches", fields: [awayTeamCode], references: [code])
 
-  predictions Prediction[]
+  predictions   Prediction[]
+  oddsSnapshots OddsSnapshot[]
 
   @@index([phase, status])
   @@index([kickoffUtc])
@@ -119,17 +126,35 @@ model Match {
 }
 
 model League {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  inviteCode  String   @unique
-  createdBy   String
-  status      String   @default("active") // "active" | "archived"
-  createdAt   DateTime @default(now())
+  id                String             @id @default(cuid())
+  name              String
+  slug              String             @unique
+  inviteCode        String             @unique
+  createdBy         String
+  status            String             @default("active") // "active" | "archived"
+  createdAt         DateTime           @default(now())
+  isDefault         Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  entryFee          Float              @default(0.0) // Cuota por usuario
+  currency          String             @default("PEN") // Moneda, e.g. "PEN"
+  prizePoolOverride Float?             // Pozo override
+  payoutRules       String?            // Reglas de pago
+  autoJoin          Boolean            @default(false) // Whether approved users auto-join this pool
+  inviteEnabled     Boolean            @default(true)  // Whether joining by invite code is enabled
+  championDeadline  DateTime?
+  championPoints    Int                @default(10)
+  pointsExactScore  Int                @default(5)
+  pointsWinner      Int                @default(3)
+  pointsDraw        Int                @default(3)
+  pointsConsolation Int                @default(1)
+  showOdds          Boolean            @default(true)
+  championTeamCode  String?
 
-  owner     User           @relation("OwnedLeagues", fields: [createdBy], references: [id])
-  members   LeagueMember[]
-  standings Standing[]
+  owner             User               @relation("OwnedLeagues", fields: [createdBy], references: [id])
+  members           LeagueMember[]
+  predictions       Prediction[]
+  winnerPredictions WinnerPrediction[]
+  standings         Standing[]
 
   @@map("league")
 }
@@ -151,6 +176,7 @@ model LeagueMember {
 model Prediction {
   id             String   @id @default(cuid())
   userId         String
+  leagueId       String
   matchId        String
   homePrediction Int
   awayPrediction Int
@@ -158,12 +184,13 @@ model Prediction {
   scoreType      String?  // "exact" | "tendency" | "consolation" | "miss"
   updatedAt      DateTime @updatedAt
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, matchId])
+  @@unique([userId, leagueId, matchId])
   @@index([matchId])
-  @@index([userId])
+  @@index([userId, leagueId])
   @@map("prediction")
 }
 
@@ -199,4 +226,40 @@ model AdminActionLog {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("admin_action_log")
+}
+
+model WinnerPrediction {
+  id           String   @id @default(cuid())
+  userId       String
+  leagueId     String
+  teamCode     String
+  pointsEarned Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamCode], references: [code], onDelete: Cascade)
+
+  @@unique([userId, leagueId])
+  @@map("winner_prediction")
+}
+
+model OddsSnapshot {
+  id              String   @id @default(cuid())
+  matchId         String
+  provider        String   // e.g. "manual", "api"
+  bookmaker       String   // e.g. "Betsson", "Bet365"
+  marketType      String   // e.g. "1X2"
+  homeOdds        Float
+  drawOdds        Float
+  awayOdds        Float
+  homeProbability Float    // implied probabilities (home)
+  drawProbability Float    // implied probabilities (draw)
+  awayProbability Float    // implied probabilities (away)
+  capturedAt      DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("odds_snapshot")
 }

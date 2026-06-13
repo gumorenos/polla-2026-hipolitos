@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation';
 import { AppShell } from '../components/layout/AppShell';
 import { getCurrentSession } from '../lib/auth-helpers';
 import { prisma } from '../lib/db';
-import { ArrowRight, Zap, Users, Trophy } from 'lucide-react';
+import { ArrowRight, Zap, Users, Trophy, DollarSign, ShieldAlert, Award } from 'lucide-react';
 import Link from 'next/link';
+import { JoinPoolForm } from '../components/league/JoinPoolForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,27 +15,163 @@ export default async function Home() {
     redirect('/login');
   }
 
-  const user = session.user;
-  const displayName = (user as { displayName?: string | null }).displayName || user.name;
-
-  // Fetch the user's league memberships count
-  const membershipCount = await prisma.leagueMember.count({
-    where: { userId: user.id },
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
   });
 
-  // Fetch the user's best standing across all leagues (highest points)
-  const topStanding = await prisma.standing.findFirst({
-    where: { userId: user.id },
-    orderBy: { points: 'desc' },
-    include: { league: true },
+  if (!dbUser) {
+    redirect('/login');
+  }
+
+  // 1. Check blocked status (rejected or disabled)
+  if (dbUser.status === 'rejected' || dbUser.status === 'disabled') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary text-text-primary px-4">
+        <div className="max-w-md w-full card-base p-6 border-red-500/30 text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto text-red-500">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2 className="font-display text-2xl tracking-wide uppercase text-red-400">Acceso Restringido</h2>
+          <p className="text-text-secondary text-sm">
+            Tu cuenta ha sido deshabilitada o rechazada por el administrador de la polla.
+          </p>
+          <div className="pt-2">
+            <Link
+              href="/login"
+              className="px-4 py-2 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs uppercase font-mono tracking-widest transition-all"
+            >
+              Regresar
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Check pending approval status
+  if (dbUser.status === 'pending') {
+    return (
+      <AppShell>
+        <div className="space-y-6 max-w-xl mx-auto py-8">
+          <div className="card-base p-6 border-yellow-500/30 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 text-xl font-bold font-mono">
+              i
+            </div>
+            <div className="space-y-1">
+              <h2 className="font-display text-2xl tracking-wide uppercase text-yellow-500">Cuenta en Espera</h2>
+              <p className="text-xs text-text-secondary font-mono">Usuario: @{dbUser.username}</p>
+            </div>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Tu cuenta se ha registrado correctamente y se encuentra **pendiente de aprobación** por parte del administrador.
+            </p>
+            <div className="bg-bg-secondary p-4 rounded-xl border border-border-default space-y-3 text-xs">
+              <div>
+                <h4 className="font-bold text-text-primary uppercase tracking-wider">¿Qué puedes hacer ahora?</h4>
+                <ul className="list-disc pl-4 mt-1 space-y-1 text-text-muted">
+                  <li>Navegar por este panel de bienvenida.</li>
+                  <li>Actualizar tu perfil y contacto en <Link href="/cuenta" className="text-gold-400 hover:underline">Mi Cuenta</Link>.</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-bold text-text-primary uppercase tracking-wider mt-2">Acceso limitado temporalmente:</h4>
+                <ul className="list-disc pl-4 mt-1 space-y-1 text-text-muted">
+                  <li>No puedes ingresar pronósticos de partidos.</li>
+                  <li>No puedes unirte ni participar de los rankings.</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-xs text-text-muted italic">
+              Una vez aprobado por el administrador, recibirás acceso completo de forma automática.
+            </p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // 3. User is approved — Fetch memberships
+  const memberships = await prisma.leagueMember.findMany({
+    where: { userId: dbUser.id },
+    include: {
+      league: {
+        include: {
+          _count: {
+            select: { members: true },
+          },
+        },
+      },
+    },
   });
 
-  // Count predictions made by this user
+  const membershipCount = memberships.length;
+
+  // 4. Approved but has no pools
+  if (membershipCount === 0) {
+    return (
+      <AppShell>
+        <div className="space-y-6 max-w-xl mx-auto py-8">
+          <div className="card-base p-6 border-border-active space-y-5 text-center">
+            <div className="w-14 h-14 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
+              <Users className="w-7 h-7 text-gold-400" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="font-display text-2xl tracking-wide uppercase text-text-primary">
+                ¡HOLA, {dbUser.name.toUpperCase()}!
+              </h2>
+              <p className="text-xs text-text-secondary">Tu cuenta está aprobada, pero aún no perteneces a ninguna polla.</p>
+            </div>
+            <p className="text-text-secondary text-sm leading-relaxed max-w-md mx-auto">
+              Para empezar a pronosticar y participar en los rankings, introduce el código de invitación que te proporcionó el administrador.
+            </p>
+            
+            <div className="pt-2">
+              <JoinPoolForm />
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // 5. Approved and in at least one pool
+  // Prefer default pool or take the first one
+  const activeMembership = memberships.find((m) => m.league.isDefault) || memberships[0];
+  const league = activeMembership.league;
+
+  // Fetch stats for this league
+  const standing = await prisma.standing.findUnique({
+    where: {
+      leagueId_userId_block: {
+        leagueId: league.id,
+        userId: dbUser.id,
+        block: 'global',
+      },
+    },
+  });
+
+  // Count predictions in this league
   const predictionCount = await prisma.prediction.count({
-    where: { userId: user.id },
+    where: {
+      userId: dbUser.id,
+      leagueId: league.id,
+    },
   });
 
-  // Next upcoming match (status open or soon)
+  const totalMatchesCount = await prisma.match.count();
+  const pendingPredictionsCount = totalMatchesCount - predictionCount;
+
+  // Count approved members in this league
+  const approvedMembersCount = await prisma.leagueMember.count({
+    where: {
+      leagueId: league.id,
+      user: { status: 'approved' },
+    },
+  });
+
+  // Calculate prize pool (Pozo)
+  const estimatedPrizePool = league.prizePoolOverride ?? (approvedMembersCount * league.entryFee);
+
+  // Next upcoming match
   const nextMatch = await prisma.match.findFirst({
     where: {
       status: { in: ['open', 'soon'] },
@@ -42,39 +179,42 @@ export default async function Home() {
     orderBy: { kickoffUtc: 'asc' },
   });
 
+  const formattedName = dbUser.name.toUpperCase();
+
   return (
     <AppShell>
       <div className="space-y-6">
         {/* Welcome Header */}
         <div className="flex flex-col gap-1.5 pt-2">
           <h2 className="font-display text-3xl tracking-wide text-text-primary">
-            ¡HOLA, {displayName.toUpperCase()}!
+            ¡HOLA, {formattedName}!
           </h2>
           <p className="text-text-secondary text-sm">
-            Bienvenido al pozo oficial de la Copa del Mundo 2026.
+            Bienvenido al panel principal de <span className="text-gold-400 font-bold">{league.name}</span>.
           </p>
         </div>
 
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-3">
           <div className="card-base p-4 text-center">
-            <p className="font-mono text-2xl font-bold text-gold-400">{topStanding?.points ?? 0}</p>
+            <p className="font-mono text-2xl font-bold text-gold-400">{standing?.points ?? 0}</p>
             <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Puntos</p>
           </div>
           <div className="card-base p-4 text-center">
-            <p className="font-mono text-2xl font-bold text-text-primary">{predictionCount}</p>
-            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Predicciones</p>
+            <p className="font-mono text-2xl font-bold text-text-primary">{standing?.rank ?? '-'}</p>
+            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Puesto</p>
           </div>
           <div className="card-base p-4 text-center">
-            <p className="font-mono text-2xl font-bold text-text-primary">{membershipCount}</p>
-            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Ligas</p>
+            <p className="font-mono text-2xl font-bold text-text-primary">{predictionCount}</p>
+            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Pronósticos</p>
           </div>
         </div>
 
-        {/* Main action cards */}
+        {/* Main Dashboard Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left: Predictions CTA */}
+          {/* Left / Main Section */}
           <div className="lg:col-span-7 space-y-4">
+            {/* Next Match Card */}
             {nextMatch ? (
               <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-3">
                 <div className="flex items-center justify-between">
@@ -93,12 +233,12 @@ export default async function Home() {
                     {nextMatch.homeTeamCode} vs {nextMatch.awayTeamCode}
                   </span>
                   <span className="text-text-muted text-xs font-mono">
-                    {new Date(nextMatch.kickoffUtc).toLocaleString('es-ES', {
+                    {new Date(nextMatch.kickoffUtc).toLocaleString('es-PE', {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit',
-                      timeZone: 'America/Bogota',
+                      timeZone: 'America/Lima',
                     })}
                   </span>
                 </div>
@@ -110,73 +250,86 @@ export default async function Home() {
               </div>
             )}
 
-            {/* Quick Actions Panel */}
+            {/* Predictions Status / Quick Action */}
             <div className="card-base p-4 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h4 className="font-bold text-text-primary text-sm flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-gold-400" />
-                  ¿Tienes tus predicciones listas?
+                  {pendingPredictionsCount > 0
+                    ? `Tienes ${pendingPredictionsCount} pronósticos pendientes`
+                    : '¡Tienes todas tus predicciones completas!'}
                 </h4>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Los partidos se bloquean automáticamente en el momento del pitazo inicial.
+                  Los partidos se bloquean en el sistema en el momento exacto del pitazo inicial (kickoff).
                 </p>
               </div>
               <Link
                 href="/pronosticos"
-                className="btn-gold whitespace-nowrap self-start md:self-auto text-sm py-2 px-4"
+                className="btn-gold whitespace-nowrap self-start md:self-auto text-sm py-2 px-4 font-semibold uppercase tracking-wider"
               >
                 Pronosticar ahora
               </Link>
             </div>
           </div>
 
-          {/* Right: League CTA */}
+          {/* Right / Side section */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">
-                Mis Ligas
+            {/* Pool details / Prize info */}
+            <div className="card-base p-5 space-y-4">
+              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary border-b border-border-subtle pb-2">
+                Resumen de Polla
               </h3>
-              <Link
-                href="/liga"
-                className="text-xs text-gold-400 font-semibold hover:underline flex items-center gap-1"
-              >
-                Ver ligas <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
 
-            {membershipCount === 0 ? (
-              <div className="card-base p-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
-                  <Users className="w-6 h-6 text-gold-400" />
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-text-secondary">Polla Activa:</span>
+                  <span className="font-bold text-text-primary">{league.name}</span>
                 </div>
-                <p className="text-text-secondary text-sm">
-                  Aún no perteneces a ninguna liga.
-                </p>
-                <Link href="/liga" className="btn-gold text-sm py-2 px-4 inline-flex">
-                  Crear o unirse a una liga
-                </Link>
+
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-text-secondary">Participantes:</span>
+                  <span className="font-bold text-text-primary flex items-center gap-1">
+                    <Users className="w-4 h-4 text-gold-400" /> {approvedMembersCount}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-text-secondary">Cuota por Participante:</span>
+                  <span className="font-mono font-bold text-text-primary">
+                    {league.currency} {league.entryFee.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-sm pt-2 border-t border-dashed border-border-subtle">
+                  <span className="text-gold-400 font-semibold flex items-center gap-1">
+                    <DollarSign className="w-4 h-4" /> Pozo Estimado:
+                  </span>
+                  <span className="font-mono text-lg font-bold text-gold-400">
+                    {league.currency} {estimatedPrizePool.toFixed(2)}
+                  </span>
+                </div>
               </div>
-            ) : (
-              <div className="card-base p-4 space-y-2">
-                {topStanding && (
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gold-400/10 border border-gold-500/30 rounded-lg">
-                      <Trophy className="w-4 h-4 text-gold-400" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-text-muted uppercase font-mono">Liga activa</p>
-                      <p className="text-sm font-bold text-text-primary">{topStanding.league.name}</p>
-                    </div>
-                  </div>
-                )}
+
+              {league.payoutRules && (
+                <div className="bg-bg-secondary p-3 rounded-lg border border-border-default space-y-1">
+                  <span className="text-[9px] text-text-secondary uppercase font-mono font-bold flex items-center gap-1">
+                    <Award className="w-3 h-3 text-gold-400" /> Reglas de Distribución:
+                  </span>
+                  <p className="text-[11px] text-text-muted leading-relaxed whitespace-pre-wrap">
+                    {league.payoutRules}
+                  </p>
+                </div>
+              )}
+              
+              <div className="text-center pt-2">
                 <Link
                   href="/ranking"
-                  className="w-full text-center block text-xs text-gold-400 font-semibold hover:underline pt-2"
+                  className="text-xs text-gold-400 font-semibold hover:underline"
                 >
-                  Ver clasificación →
+                  Ver Clasificación Completa →
                 </Link>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

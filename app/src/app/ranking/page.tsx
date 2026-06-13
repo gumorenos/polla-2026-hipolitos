@@ -72,6 +72,7 @@ export default async function RankingPage({
       user: {
         include: {
           predictions: {
+            where: { leagueId: selectedLeague.id },
             orderBy: { updatedAt: 'desc' }
           }
         }

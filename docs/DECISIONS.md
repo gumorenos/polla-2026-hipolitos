@@ -182,4 +182,21 @@ We implement the following 6 tie-breakers sequentially:
 - Tie-breakers ensure that ranking is fully deterministic and no two players share a position on the leaderboard, keeping competition clear.
 - Re-calculating standings on result entry and league join keeps the snapshots synchronized.
 
+---
+
+## ADR-010 — Approval-based Pool Administration and Credentials Refinement
+
+**Date:** 2026-06-13  
+**Status:** Accepted
+
+**Decision:** Refine the product model of "La Polla 2026" from a SaaS model to a private pool model using username credentials, user approval workflows, and league-specific prediction spaces.
+
+**Key Refinements:**
+1. **Username Credentials:** Users register with a `username`, password, and display name. Better Auth email requirements are met by generating an internal placeholder (`username@polla.local`) when not provided. Login is performed via `username` + password credentials.
+2. **User Approval Flow:** A user status state machine is introduced (`pending`, `approved`, `rejected`, `disabled`). Pending users are blocked with an informative message. Disabled or rejected users are shown a blocked screen. Only approved users can view predictions, submit results, or join/create pools.
+3. **League-Specific Predictions:** Shifted prediction uniqueness constraint from `[userId, matchId]` to `[userId, leagueId, matchId]`. This allows users in multiple pools to have separate forecasts for each, with custom point configurations per league.
+4. **Tournament Winner Pick:** Added a `WinnerPrediction` model locked at `championDeadline`. Recalculates standings by fetching the user's champion pick and adding the league's `championPoints` if it matches the league's final designated champion.
+5. **Implied Probabilities & Odds:** Added an `OddsSnapshot` model to capture decimal bookmaker odds. If a league's `showOdds` settings is enabled, the UI displays implied probabilities (`1/odds` as %) next to matches to guide users.
+6. **Terminology Standardization:** Renamed "Liga" / "Ligas" to "Polla" / "Pollas", "Members" to "Participantes", and "Prize Pool" to "Pozo" in all user-facing views to align with local terms.
+
 

@@ -20,7 +20,8 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
     setSuccess(null);
 
     const formData = new FormData(e.currentTarget);
-    const kickoffUtc = formData.get('kickoffUtc') as string;
+    const kickoffLocal = formData.get('kickoffUtc') as string;
+    const kickoffUtc = kickoffLocal ? `${kickoffLocal}-05:00` : '';
     const venue = formData.get('venue') as string;
     const city = formData.get('city') as string;
     const status = formData.get('status') as string;
@@ -48,6 +49,12 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
     setLoading(null);
   };
 
+  const getLimaDateTimeLocalString = (utcDate: Date | string) => {
+    const d = new Date(utcDate);
+    const limaTime = new Date(d.getTime() - 5 * 60 * 60 * 1000);
+    return limaTime.toISOString().slice(0, 16);
+  };
+
   return (
     <div className="space-y-6">
       {error && (
@@ -68,7 +75,7 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
           <thead className="bg-surface border-b border-border text-text-muted">
             <tr>
               <th className="p-3">Partido</th>
-              <th className="p-3">Kickoff</th>
+              <th className="p-3">Kickoff (Perú)</th>
               <th className="p-3">Estadio / Ciudad</th>
               <th className="p-3">Fase / Jornada</th>
               <th className="p-3">Estado</th>
@@ -85,8 +92,8 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                       {match.homeTeamCode} vs {match.awayTeamCode}
                       {match.group && <span className="ml-2 text-xs text-gold border border-gold/30 px-1.5 py-0.5 rounded font-mono">Grupo {match.group}</span>}
                     </td>
-                    <td className="p-3 text-xs">
-                      {new Date(match.kickoffUtc).toLocaleString()}
+                    <td className="p-3 text-xs font-mono">
+                      {new Date(match.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}
                     </td>
                     <td className="p-3 text-xs">
                       {match.venue}, {match.city}
@@ -118,12 +125,12 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                       <td colSpan={6} className="bg-bg-secondary p-4 border border-gold/20">
                         <form onSubmit={(e) => handleSubmit(e, match.id)} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
-                            <label className="block text-xs text-text-muted mb-1 uppercase font-bold">Kickoff (Local Time)</label>
+                            <label className="block text-xs text-text-muted mb-1 uppercase font-bold">Kickoff (Hora Perú)</label>
                             <input
                               type="datetime-local"
                               name="kickoffUtc"
                               required
-                              defaultValue={new Date(match.kickoffUtc).toISOString().slice(0, 16)}
+                              defaultValue={getLimaDateTimeLocalString(match.kickoffUtc)}
                               className="w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-text-primary"
                             />
                           </div>

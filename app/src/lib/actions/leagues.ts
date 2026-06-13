@@ -15,12 +15,22 @@ export async function createLeagueAction(name: string) {
   }
 
   const userId = session.user.id;
-  const trimmedName = name.trim();
-  if (!trimmedName || trimmedName.length < 3) {
-    return { error: 'El nombre de la liga debe tener al menos 3 caracteres.' };
-  }
-
+  
   try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperadmin: true, canCreateLeagues: true },
+    });
+
+    if (!user?.isSuperadmin && !user?.canCreateLeagues) {
+      return { error: 'No tienes permiso para crear pollas.' };
+    }
+
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName.length < 3) {
+      return { error: 'El nombre de la polla debe tener al menos 3 caracteres.' };
+    }
+
     // Generate a unique URL slug
     const baseSlug = trimmedName
       .toLowerCase()
@@ -83,7 +93,7 @@ export async function createLeagueAction(name: string) {
     return { data: league };
   } catch (error) {
     console.error('Error in createLeagueAction:', error);
-    return { error: 'Ocurrió un error al crear la liga.' };
+    return { error: 'Ocurrió un error al crear la polla.' };
   }
 }
 
@@ -100,13 +110,26 @@ export async function joinLeagueAction(inviteCode: string) {
   const cleanCode = inviteCode.trim().toUpperCase();
 
   try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+
+    if (!user || user.status !== 'approved') {
+      return { error: 'Tu cuenta debe estar aprobada para unirte a una polla.' };
+    }
+
     // Find active league matching code
     const league = await prisma.league.findUnique({
       where: { inviteCode: cleanCode },
     });
 
-    if (!league || league.status !== 'active') {
-      return { error: 'Código de invitación inválido o la liga está inactiva.' };
+    if (!league || league.status !== 'active' || !league.isActive) {
+      return { error: 'Código de invitación inválido o la polla está inactiva.' };
+    }
+
+    if (!league.inviteEnabled) {
+      return { error: 'El registro por código de invitación está deshabilitado para esta polla.' };
     }
 
     // Verify user is not already a member
@@ -120,7 +143,7 @@ export async function joinLeagueAction(inviteCode: string) {
     });
 
     if (existingMembership) {
-      return { error: 'Ya eres miembro de esta liga.', slug: league.slug };
+      return { error: 'Ya eres miembro de esta polla.', slug: league.slug };
     }
 
     // Create membership
@@ -138,7 +161,7 @@ export async function joinLeagueAction(inviteCode: string) {
     return { data: membership, slug: league.slug };
   } catch (error) {
     console.error('Error in joinLeagueAction:', error);
-    return { error: 'Ocurrió un error al unirse a la liga.' };
+    return { error: 'Ocurrió un error al unirse a la polla.' };
   }
 }
 
@@ -406,5 +429,103 @@ export async function deleteLeagueAction(leagueId: string) {
   } catch (error) {
     console.error('Error in deleteLeagueAction:', error);
     return { error: 'Ocurrió un error al eliminar la liga.' };
+  }
+}
+
+export async function updateLeagueSettingsAction(
+  leagueId: string,
+  data: {
+    name: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+    entryFee: number;
+    currency: string;
+    prizePoolOverride?: number | null;
+    payoutRules?: string | null;
+    autoJoin?: boolean;
+    inviteEnabled?: boolean;
+    championDeadline?: string | null;
+    championPoints?: number;
+    pointsExactScore?: number;
+    pointsWinner?: number;
+    pointsDraw?: number;
+    pointsConsolation?: number;
+    showOdds?: boolean;
+    championTeamCode?: string | null;
+  }
+) {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+    });
+
+    if (!league) {
+      return { error: 'Polla no encontrada.' };
+    }
+
+    // Verify caller is owner or admin of the league, or global Superadmin
+    const callerMember = await prisma.leagueMember.findUnique({
+      where: { leagueId_userId: { leagueId, userId } },
+    });
+
+    const isAuthorized =
+      session.user.isSuperadmin ||
+      (callerMember && (callerMember.role === 'owner' || callerMember.role === 'admin'));
+
+    if (!isAuthorized) {
+      return { error: 'No tienes permisos para configurar esta polla.' };
+    }
+
+    // Update league
+    const updated = await prisma.league.update({
+      where: { id: leagueId },
+      data: {
+        name: data.name.trim(),
+        isDefault: data.isDefault ?? league.isDefault,
+        isActive: data.isActive ?? league.isActive,
+        entryFee: data.entryFee,
+        currency: data.currency,
+        prizePoolOverride: data.prizePoolOverride,
+        payoutRules: data.payoutRules,
+        autoJoin: data.autoJoin ?? league.autoJoin,
+        inviteEnabled: data.inviteEnabled ?? league.inviteEnabled,
+        championDeadline: data.championDeadline ? new Date(data.championDeadline) : null,
+        championPoints: data.championPoints ?? league.championPoints,
+        pointsExactScore: data.pointsExactScore ?? league.pointsExactScore,
+        pointsWinner: data.pointsWinner ?? league.pointsWinner,
+        pointsDraw: data.pointsDraw ?? league.pointsDraw,
+        pointsConsolation: data.pointsConsolation ?? league.pointsConsolation,
+        showOdds: data.showOdds ?? league.showOdds,
+        championTeamCode: data.championTeamCode,
+      },
+    });
+
+    // If isDefault is set to true, we must unset it for all other leagues
+    if (data.isDefault) {
+      await prisma.league.updateMany({
+        where: { id: { not: leagueId } },
+        data: { isDefault: false },
+      });
+    }
+
+    // Recalculate standings because rules or champion pick might have changed
+    await recalculateAllStandings();
+
+    revalidatePath('/liga');
+    revalidatePath(`/liga/${updated.slug}`);
+    revalidatePath('/admin/ligas');
+    revalidatePath('/admin');
+
+    return { success: true, data: updated };
+  } catch (error) {
+    console.error('Error updating league settings:', error);
+    return { error: 'Error al guardar la configuración de la polla.' };
   }
 }

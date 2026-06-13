@@ -34,7 +34,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
   const handleArchive = async (leagueId: string, currentStatus: string) => {
     const isArchived = currentStatus === 'archived';
     const actionLabel = isArchived ? 'reactivar' : 'archivar';
-    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} esta liga?`)) {
+    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} esta polla?`)) {
       return;
     }
 
@@ -50,7 +50,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
   };
 
   const handleDelete = async (leagueId: string) => {
-    if (!confirm('¡ADVERTENCIA CRÍTICA! Esto eliminará permanentemente la liga y todas sus predicciones y membresías. ¿Continuar?')) {
+    if (!confirm('¡ADVERTENCIA CRÍTICA! Esto eliminará permanentemente la polla y todas sus predicciones y membresías. ¿Continuar?')) {
       return;
     }
 
@@ -79,7 +79,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
               <Settings className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="font-display text-3xl tracking-wide text-text-primary">ADMINISTRAR LIGAS</h2>
+              <h2 className="font-display text-3xl tracking-wide text-text-primary">ADMINISTRAR POLLAS</h2>
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Shield className="w-3.5 h-3.5 text-rank-up" />
                 <span>Superadmin Dashboard</span>
@@ -91,9 +91,9 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
         {/* Leagues List Table */}
         <div className="card-base overflow-hidden">
           <div className="hidden md:grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold text-center">
-            <span className="col-span-3 text-left">Liga</span>
+            <span className="col-span-3 text-left">Polla</span>
             <span className="col-span-3 text-left">Creador</span>
-            <span className="col-span-2">Miembros</span>
+            <span className="col-span-2">Participantes</span>
             <span className="col-span-2">Estado</span>
             <span className="col-span-2 text-right">Acciones</span>
           </div>
@@ -102,8 +102,8 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
             {leagues.length === 0 ? (
               <div className="p-8 text-center text-text-secondary flex flex-col items-center justify-center gap-2">
                 <Users className="w-8 h-8 text-text-muted" />
-                <span className="font-bold text-text-primary text-sm">No hay ligas creadas</span>
-                <span className="text-xs text-text-muted">Las ligas registradas por los usuarios aparecerán aquí.</span>
+                <span className="font-bold text-text-primary text-sm">No hay pollas creadas</span>
+                <span className="text-xs text-text-muted">Las pollas registradas por los usuarios aparecerán aquí.</span>
               </div>
             ) : (
               leagues.map((l) => {
@@ -151,7 +151,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
                         type="button"
                         onClick={() => handleArchive(l.id, l.status)}
                         disabled={isLoading}
-                        title={isArchived ? 'Reactivar Liga' : 'Archivar Liga'}
+                        title={isArchived ? 'Reactivar Polla' : 'Archivar Polla'}
                         className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
                       >
                         <Archive className="w-4 h-4" />
@@ -160,7 +160,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues }) =
                         type="button"
                         onClick={() => handleDelete(l.id)}
                         disabled={isLoading}
-                        title="Eliminar Liga"
+                        title="Eliminar Polla"
                         className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-all"
                       >
                         <Trash2 className="w-4 h-4" />

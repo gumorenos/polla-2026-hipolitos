@@ -343,3 +343,53 @@ export async function fetchMissingH2HAction() {
     return { error: message };
   }
 }
+
+// Cleanup simulated data (Superadmin only)
+export async function cleanupSimulatedDataAction() {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado.' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+  });
+
+  if (!user?.isSuperadmin) {
+    return { error: 'Acción permitida solo para superadministradores.' };
+  }
+
+  try {
+    const deletedOdds = await prisma.oddsSnapshot.deleteMany({
+      where: {
+        OR: [
+          { provider: 'simulator' },
+          { bookmaker: 'LaPolla 2026 Simulator' },
+          { rawPayload: { contains: 'simulated=true' } },
+          { rawPayload: { contains: '"simulated":true' } },
+        ],
+      },
+    });
+
+    const deletedH2h = await prisma.headToHeadSnapshot.deleteMany({
+      where: {
+        provider: 'simulator',
+      },
+    });
+
+    revalidatePath('/admin/odds');
+    revalidatePath('/pronosticos');
+    revalidatePath('/');
+
+    return {
+      success: true,
+      deletedOddsCount: deletedOdds.count,
+      deletedH2hCount: deletedH2h.count,
+    };
+  } catch (error: unknown) {
+    console.error('Error cleaning up simulated data:', error);
+    const message = error instanceof Error ? error.message : 'Error al limpiar los datos simulados.';
+    return { error: message };
+  }
+}
+

@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History } from 'lucide-react';
+import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2 } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
 import {
   refreshGlobalOddsAction,
   refreshH2HAction,
   fetchMissingH2HAction,
+  cleanupSimulatedDataAction,
 } from '../../../lib/actions/odds';
 
 interface MatchAdminInfo {
@@ -45,6 +46,10 @@ interface OddsAdminClientProps {
   lastSuccessfulH2h: string | null;
   lastOddsError: string | null;
   lastH2hError: string | null;
+  realSnapshotsCount: { odds: number; h2h: number };
+  simulatedSnapshotsCount: { odds: number; h2h: number };
+  oddsDisplayEnabled: boolean;
+  oddsManualUserRefreshEnabled: boolean;
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -54,6 +59,10 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   lastSuccessfulH2h,
   lastOddsError,
   lastH2hError,
+  realSnapshotsCount,
+  simulatedSnapshotsCount,
+  oddsDisplayEnabled,
+  oddsManualUserRefreshEnabled,
 }) => {
   const [now] = useState(() => Date.now());
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
@@ -108,6 +117,24 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setGlobalLoading(null);
   };
 
+  const handleCleanupSimulatedData = async () => {
+    if (!confirm('¿Estás seguro de que deseas eliminar TODOS los datos simulados de la base de datos?')) {
+      return;
+    }
+    setGlobalLoading('h2h');
+    setStatusMsg(null);
+    const res = await cleanupSimulatedDataAction();
+    if (res.error) {
+      setStatusMsg({ type: 'error', text: res.error });
+    } else {
+      setStatusMsg({
+        type: 'success',
+        text: `Datos simulados eliminados correctamente (${res.deletedOddsCount} cuotas, ${res.deletedH2hCount} H2H).`,
+      });
+    }
+    setGlobalLoading(null);
+  };
+
   const hasRealOdds = matches.some(m => m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator');
   const hasRealH2h = matches.some(m => m.h2h !== null);
   const hasNoRealData = !hasRealOdds && !hasRealH2h;
@@ -115,13 +142,13 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   return (
     <div className="space-y-6">
       {/* API Providers Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">Odds-API.io (Primary)</span>
-            <p className="text-xs font-semibold text-text-primary">Proveedor Primario Cuotas</p>
+            <p className="text-[11px] font-semibold text-text-primary">Proveedor Primario</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.oddsApiIo 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
               : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -133,9 +160,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">The Odds API (Fallback)</span>
-            <p className="text-xs font-semibold text-text-primary">Proveedor Secundario Cuotas</p>
+            <p className="text-[11px] font-semibold text-text-primary">Proveedor Secundario</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.theOddsApi 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
               : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -147,9 +174,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">API-Football (H2H)</span>
-            <p className="text-xs font-semibold text-text-primary">Historial H2H</p>
+            <p className="text-[11px] font-semibold text-text-primary">Proveedor H2H</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.apiFootball 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
               : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -161,9 +188,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">Datos Simulados</span>
-            <p className="text-xs font-semibold text-text-primary">Fallback Local</p>
+            <p className="text-[11px] font-semibold text-text-primary">Fallback Local</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.simulatedAllowed 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
               : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
@@ -171,10 +198,38 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             {apiStatus.simulatedAllowed ? 'PERMITIDO' : 'BLOQUEADO'}
           </span>
         </div>
+
+        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
+          <div className="space-y-1">
+            <span className="text-[10px] text-text-secondary uppercase font-mono">Visualización</span>
+            <p className="text-[11px] font-semibold text-text-primary">ODDS_DISPLAY</p>
+          </div>
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+            oddsDisplayEnabled 
+              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}>
+            {oddsDisplayEnabled ? 'HABILITADO' : 'DESHABILITADO'}
+          </span>
+        </div>
+
+        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
+          <div className="space-y-1">
+            <span className="text-[10px] text-text-secondary uppercase font-mono">Act. Manual</span>
+            <p className="text-[11px] font-semibold text-text-primary">MANUAL_REFRESH</p>
+          </div>
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+            oddsManualUserRefreshEnabled 
+              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}>
+            {oddsManualUserRefreshEnabled ? 'HABILITADO' : 'DESHABILITADO'}
+          </span>
+        </div>
       </div>
 
       {/* Sync Status & Error Logs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
           <h4 className="font-semibold text-text-primary">Últimas Sincronizaciones Exitosas (Reales)</h4>
           <div className="space-y-1 text-xs text-text-secondary font-mono">
@@ -183,13 +238,27 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           </div>
         </div>
 
-        {(lastOddsError || lastH2hError) && (
+        <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
+          <h4 className="font-semibold text-text-primary">Conteo de Snapshots en BD</h4>
+          <div className="space-y-1 text-xs text-text-secondary font-mono">
+            <p>Cuotas Reales: <strong className="text-text-primary">{realSnapshotsCount.odds}</strong></p>
+            <p>H2H Reales: <strong className="text-text-primary">{realSnapshotsCount.h2h}</strong></p>
+            <p>Cuotas Simuladas: <strong className={simulatedSnapshotsCount.odds > 0 ? 'text-yellow-400 font-bold' : 'text-text-muted'}>{simulatedSnapshotsCount.odds}</strong></p>
+            <p>H2H Simulados: <strong className={simulatedSnapshotsCount.h2h > 0 ? 'text-yellow-400 font-bold' : 'text-text-muted'}>{simulatedSnapshotsCount.h2h}</strong></p>
+          </div>
+        </div>
+
+        {(lastOddsError || lastH2hError) ? (
           <div className="card-base p-4 border-red-500/20 bg-red-500/5 space-y-2 text-sm">
             <h4 className="font-semibold text-red-400">Últimos Errores de Proveedores</h4>
             <div className="space-y-1 text-xs text-red-400/90 font-mono">
               {lastOddsError && <p className="truncate">Cuotas: {lastOddsError}</p>}
               {lastH2hError && <p className="truncate">H2H: {lastH2hError}</p>}
             </div>
+          </div>
+        ) : (
+          <div className="card-base p-4 border-border-default/60 flex items-center justify-center text-xs text-text-muted">
+            Sin errores registrados recientemente.
           </div>
         )}
       </div>
@@ -213,7 +282,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           className="btn-gold py-2 px-4 text-xs font-mono uppercase tracking-wider flex items-center gap-1.5"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${globalLoading === 'odds' ? 'animate-spin' : ''}`} />
-          Actualizar Todas las Cuotas Globales
+          Actualizar cuotas globales próximas
         </button>
 
         <button
@@ -223,7 +292,17 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           className="px-4 py-2 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-xl text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all"
         >
           <Database className={`w-3.5 h-3.5 ${globalLoading === 'h2h' ? 'animate-spin' : ''}`} />
-          Buscar H2H Faltantes
+          Buscar H2H faltantes
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCleanupSimulatedData}
+          disabled={globalLoading !== null}
+          className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-xl text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Limpiar datos simulados
         </button>
       </div>
 
@@ -329,7 +408,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                     className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3 h-3 ${isLoadingOdds ? 'animate-spin' : ''}`} />
-                    Refrescar Cuotas
+                    Actualizar cuotas de este partido
                   </button>
 
                   <button
@@ -339,7 +418,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                     className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
                   >
                     <History className={`w-3 h-3 ${isLoadingH2H ? 'animate-spin' : ''}`} />
-                    Refrescar H2H
+                    Buscar H2H de este partido
                   </button>
                 </div>
               </div>

@@ -196,14 +196,14 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                     Nombre Completo
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3.5 top-3 w-4.5 h-4.5 text-text-muted" />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
                       id="perfil-name"
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       autoComplete="name"
-                      className="field pl-10"
+                      className="field pl-11"
                       required
                       disabled={loading}
                     />
@@ -219,14 +219,14 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                     Nombre de usuario
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3.5 top-3 w-4.5 h-4.5 text-text-muted" />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
                       id="perfil-username"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
-                      className="field pl-10"
+                      className="field pl-11"
                       required
                       disabled={loading}
                     />
@@ -242,7 +242,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                     Correo electrónico (Opcional)
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4.5 h-4.5 text-text-muted" />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
                       id="perfil-email"
                       type="email"
@@ -250,7 +250,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
-                      className="field pl-10"
+                      className="field pl-11"
                       disabled={loading}
                     />
                   </div>
@@ -265,7 +265,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                     WhatsApp (Opcional)
                   </label>
                   <div className="relative">
-                    <Phone className="absolute left-3.5 top-3 w-4.5 h-4.5 text-text-muted" />
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
                       id="perfil-whatsapp"
                       type="tel"
@@ -273,7 +273,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       onChange={(e) => setWhatsapp(e.target.value)}
                       placeholder="+51 999 999 999"
                       autoComplete="tel"
-                      className="field pl-10"
+                      className="field pl-11"
                       disabled={loading}
                     />
                   </div>

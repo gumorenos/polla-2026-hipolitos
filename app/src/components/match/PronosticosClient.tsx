@@ -5,6 +5,7 @@ import { Match, Prediction } from '../../types/domain';
 import { MatchPredictionCard } from './MatchPredictionCard';
 import { CheckSquare, AlertCircle, Trophy, Sparkles } from 'lucide-react';
 import { saveWinnerPredictionAction } from '../../lib/actions/predictions';
+import { FLAG_MAP } from '../ui/FlagDisc';
 
 interface PronosticosClientProps {
   matches: Match[];
@@ -65,6 +66,7 @@ interface PronosticosClientProps {
   }>;
   canRefreshToday: boolean;
   timeLeftToday: { hours: number; minutes: number };
+  manualRefreshEnabled: boolean;
 }
 
 type PhaseFilter = 'all' | 'groups' | 'knockout';
@@ -81,6 +83,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   h2hData,
   canRefreshToday,
   timeLeftToday,
+  manualRefreshEnabled,
 }) => {
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
@@ -101,6 +104,14 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   });
 
   const [localWinners, setLocalWinners] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    winnerPredictions.forEach((wp) => {
+      map[wp.leagueId] = wp.teamCode;
+    });
+    return map;
+  });
+
+  const [selectedWinners, setSelectedWinners] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     winnerPredictions.forEach((wp) => {
       map[wp.leagueId] = wp.teamCode;
@@ -135,7 +146,27 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     }));
   };
 
-  const handleSaveWinner = async (teamCode: string) => {
+  const handleSelectWinnerChange = (teamCode: string) => {
+    setSelectedWinners(prev => ({
+      ...prev,
+      [activeLeagueId]: teamCode
+    }));
+    setWinnerError(null);
+    setWinnerSuccess(null);
+  };
+
+  const handleSaveWinnerSubmit = async () => {
+    const teamCode = selectedWinners[activeLeagueId];
+    if (!teamCode) {
+      setWinnerError('Por favor selecciona un país.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      '¿Estás seguro de tu elección? Una vez guardado, no podrás cambiar tu campeón.'
+    );
+    if (!confirmed) return;
+
     setSavingWinner(true);
     setWinnerError(null);
     setWinnerSuccess(null);
@@ -253,6 +284,9 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
         const code = localWinners[activeLeagueId];
         const teamObj = teams.find(t => t.code === code);
         const selectedTeamName = teamObj ? teamObj.name : (code || '');
+        const selectedTeamFlag = code ? (FLAG_MAP[code.toUpperCase()] || '') : '';
+
+        const selectedCode = selectedWinners[activeLeagueId] || '';
 
         let effectiveDeadline = activeLeague.championDeadline ? new Date(activeLeague.championDeadline) : null;
         if (!effectiveDeadline) {
@@ -289,13 +323,13 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1">
+              <div className="space-y-1.5 max-w-xl">
                 <p className="text-xs text-text-secondary">
                   Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
                 </p>
                 {!hasSubmitted && !isDeadlinePassed && (
-                  <p className="text-xs text-yellow-400 font-semibold animate-pulse">
-                    Elige una vez. No podrás cambiar tu elección.
+                  <p className="text-xs text-yellow-400 font-semibold">
+                    Elige con cuidado. Una vez guardado, no podrás cambiar tu campeón.
                   </p>
                 )}
                 {effectiveDeadline && (
@@ -310,28 +344,60 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                <select
-                  disabled={hasSubmitted || isDeadlinePassed || savingWinner}
-                  value={localWinners[activeLeagueId] || ''}
-                  onChange={(e) => handleSaveWinner(e.target.value)}
-                  className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75"
-                >
-                  <option value="">-- Elige Campeón --</option>
-                  {realTeams.map(t => (
-                    <option key={t.code} value={t.code}>{t.name} (@{t.code})</option>
-                  ))}
-                </select>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                {!hasSubmitted && !isDeadlinePassed ? (
+                  <>
+                    <select
+                      disabled={savingWinner}
+                      value={selectedCode}
+                      onChange={(e) => handleSelectWinnerChange(e.target.value)}
+                      className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75"
+                    >
+                      <option value="">-- Elige Campeón --</option>
+                      {realTeams.map(t => {
+                        const flag = FLAG_MAP[t.code.toUpperCase()] || '';
+                        return (
+                          <option key={t.code} value={t.code}>
+                            {flag} {t.name} ({t.code})
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    {selectedCode && (
+                      <button
+                        type="button"
+                        onClick={handleSaveWinnerSubmit}
+                        disabled={savingWinner}
+                        className="btn-gold py-1.5 px-4 text-xs uppercase font-mono tracking-wider font-semibold whitespace-nowrap"
+                      >
+                        Guardar campeón
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  // Locked representation (Do not show an active dropdown)
+                  <div className="flex items-center gap-2 bg-bg-secondary/60 border border-border-default px-4 py-2 rounded-lg text-xs font-mono">
+                    <span className="text-text-secondary">Selección:</span>
+                    {hasSubmitted ? (
+                      <strong className="text-gold-400 font-bold uppercase">
+                        {selectedTeamFlag} {selectedTeamName} ({code})
+                      </strong>
+                    ) : (
+                      <strong className="text-red-400">Sin predicción</strong>
+                    )}
+                  </div>
+                )}
 
                 {savingWinner && (
-                  <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin flex-shrink-0 self-center" />
                 )}
               </div>
             </div>
 
             {hasSubmitted && (
               <p className="text-xs text-green-400 font-semibold mt-1">
-                Predicción registrada: <strong className="text-gold-400 uppercase">{selectedTeamName}</strong>.
+                Predicción registrada: <strong className="text-gold-400 uppercase">{selectedTeamFlag} {selectedTeamName}</strong>. Predicción bloqueada.
               </p>
             )}
             {!hasSubmitted && isDeadlinePassed && (
@@ -345,6 +411,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
           </div>
         );
       })()}
+
 
       {/* Filter Options */}
       <div className="space-y-4">
@@ -462,6 +529,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 h2h={h2h}
                 canRefreshOddsToday={canRefreshToday}
                 timeLeftUntilMidnight={timeLeftToday}
+                manualRefreshEnabled={manualRefreshEnabled}
               />
             );
           })}

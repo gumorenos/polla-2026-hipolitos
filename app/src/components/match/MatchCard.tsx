@@ -8,6 +8,7 @@ import { FlagDisc } from '../ui/FlagDisc';
 import { Stepper } from '../ui/Stepper';
 import { CountdownInline } from '../ui/Countdown';
 import { PredictionStatusBadge } from '../ui/PredictionStatusBadge';
+import { MatchStatusBadge, MatchVisualState } from '../ui/MatchStatusBadge';
 import { Calendar, MapPin, Check, Save, RefreshCw, BarChart2, ShieldAlert, ChevronDown, ChevronUp, History } from 'lucide-react';
 
 interface OddsData {
@@ -18,6 +19,7 @@ interface OddsData {
   drawProb: number;
   awayProb: number;
   bookmaker: string;
+  provider?: string;
   capturedAt: string;
 }
 
@@ -56,6 +58,7 @@ interface MatchCardProps {
   timeLeftUntilMidnight?: { hours: number; minutes: number } | null;
   onRefreshUserOdds?: () => Promise<void>;
   refreshingOdds?: boolean;
+  manualRefreshEnabled?: boolean;
 }
 
 const Flap: React.FC<{ char: string | number }> = ({ char }) => (
@@ -79,6 +82,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   timeLeftUntilMidnight,
   onRefreshUserOdds,
   refreshingOdds = false,
+  manualRefreshEnabled = false,
 }) => {
   const cardMode = mode ?? (
     match.status === 'result' ? 'result' :
@@ -119,6 +123,22 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const homeTeam = TEAMS[match.homeTeamCode] ?? { code: match.homeTeamCode, name: match.homeTeamCode, hue: 200 };
   const awayTeam = TEAMS[match.awayTeamCode] ?? { code: match.awayTeamCode, name: match.awayTeamCode, hue: 200 };
   const phaseInfo = PHASES[match.phase] ?? { label: match.phase.toUpperCase(), color: 'border-border-default bg-bg-secondary text-text-secondary' };
+
+  const getVisualState = (): MatchVisualState => {
+    if (match.status === 'result') return 'finished';
+    if (match.status === 'live') return 'live';
+    const now = new Date();
+    const kickoff = new Date(match.kickoffUtc);
+    if (kickoff <= now) {
+      const matchDurationMs = 2 * 60 * 60 * 1000;
+      if (now.getTime() - kickoff.getTime() > matchDurationMs) {
+        return 'pending_result';
+      }
+      return 'locked';
+    }
+    return 'open';
+  };
+  const visualState = getVisualState();
 
   const handleHomeChange = (val: number) => {
     setHomePred(val);
@@ -232,8 +252,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
                 <span>V: <strong className="text-gold-400">{activeOdds.awayOdds.toFixed(2)}</strong></span>
               </div>
               <div className="text-[8px] text-text-muted text-right flex flex-col">
-                <span>Proveedor: {activeOdds.bookmaker}</span>
-                <span>Refrescado: {new Date(activeOdds.capturedAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span>Proveedor: {activeOdds.provider || 'Desconocido'} ({activeOdds.bookmaker})</span>
+                <span>Capturado: {new Date(activeOdds.capturedAt).toLocaleString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })} (Hora Lima)</span>
               </div>
             </div>
 
@@ -246,43 +266,53 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         )}
 
         {/* User manual refresh button */}
-        {cardMode === 'predict' && onRefreshUserOdds && (
+        {manualRefreshEnabled && showOdds && cardMode === 'predict' && onRefreshUserOdds && (
           <div className="pt-1">
             {confirmRefresh ? (
               <div className="bg-bg-tertiary p-2 rounded-lg border border-gold-500/30 text-center space-y-2 animate-[slideUp_0.15s_ease-out]">
-                <p className="text-[10px] text-text-primary">¿Estás seguro? Esto consumirá tu única actualización privada del día.</p>
+                <p className="text-[10px] text-text-primary font-medium">Vas a usar tu única actualización manual del día para este partido. ¿Continuar?</p>
                 <div className="flex justify-center gap-2">
                   <button
                     type="button"
                     onClick={triggerRefresh}
                     disabled={refreshingOdds}
-                    className="bg-gold-500 hover:bg-gold-600 text-black text-[10px] font-mono font-bold px-2 py-0.5 rounded transition-colors"
+                    className="bg-gold-500 hover:bg-gold-600 text-black text-[10px] font-mono font-bold px-2.5 py-0.5 rounded transition-colors"
                   >
                     Confirmar
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmRefresh(false)}
-                    className="bg-bg-hover hover:bg-bg-tertiary text-text-secondary text-[10px] font-mono px-2 py-0.5 rounded border border-border-default transition-colors"
+                    className="bg-bg-hover hover:bg-bg-tertiary text-text-secondary text-[10px] font-mono px-2.5 py-0.5 rounded border border-border-default transition-colors"
                   >
                     Cancelar
                   </button>
                 </div>
               </div>
             ) : canRefreshOddsToday ? (
-              <button
-                type="button"
-                onClick={() => setConfirmRefresh(true)}
-                disabled={refreshingOdds}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-secondary hover:text-text-primary text-[10px] font-mono font-semibold rounded-lg transition-all duration-200"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshingOdds ? 'animate-spin' : ''}`} />
-                Actualizar probabilidades para mí (1 al día)
-              </button>
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setConfirmRefresh(true)}
+                  disabled={refreshingOdds}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-secondary hover:text-text-primary text-[10px] font-mono font-semibold rounded-lg transition-all duration-200"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingOdds ? 'animate-spin' : ''}`} />
+                  Actualizar probabilidades para mí
+                </button>
+                <p className="text-[9px] text-text-muted text-center font-mono">
+                  Tienes 1 actualización manual diaria. Solo se consume si se obtienen datos reales.
+                </p>
+              </div>
             ) : (
-              <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary/40 border border-border-default/40 text-text-muted text-[9px] font-mono rounded-lg">
-                <ShieldAlert className="w-3.5 h-3.5 text-text-muted" />
-                <span>Actualización diaria consumida. Próxima en: {timeLeftUntilMidnight?.hours}h {timeLeftUntilMidnight?.minutes}m</span>
+              <div className="w-full flex flex-col items-center justify-center gap-1 py-1.5 px-3 bg-bg-secondary/40 border border-border-default/40 text-text-muted text-[9px] font-mono rounded-lg">
+                <div className="flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-text-muted" />
+                  <span>Actualización diaria usada</span>
+                </div>
+                {timeLeftUntilMidnight && (
+                  <span>Restablece en {timeLeftUntilMidnight.hours}h {timeLeftUntilMidnight.minutes}m (Hora Lima)</span>
+                )}
               </div>
             )}
           </div>
@@ -372,28 +402,25 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return (
       <div className="card-base overflow-hidden flex flex-col justify-between">
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${phaseInfo.color}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${phaseInfo.color} w-fit`}>
             {phaseInfo.label} {match.group ? `· Grupo ${match.group}` : ''} · {match.jornada}
           </span>
-          {match.status === 'live' ? (
-            <span className="flex items-center gap-1.5 font-mono text-xs font-semibold text-rank-down">
-              <span className="live-dot" /> LIVE
-            </span>
-          ) : match.status !== 'result' && new Date(match.kickoffUtc) <= new Date() ? (
-            <span className="flex items-center gap-1.5 font-mono text-xs font-semibold text-yellow-400">
-              Resultado pendiente
-            </span>
-          ) : match.status === 'soon' ? (
-            <div className="flex items-center gap-1">
-              <CountdownInline targetIso={match.kickoffUtc} />
-            </div>
-          ) : (
-            <span className="text-xs text-text-secondary font-mono flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {fmtDate(match.kickoffUtc)} · {fmtTime(match.kickoffUtc)} (Hora Lima)
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between sm:justify-end w-full sm:w-auto">
+            <MatchStatusBadge status={visualState} />
+            {match.status === 'soon' ? (
+              <div className="flex items-center gap-1 text-xs text-text-secondary font-mono">
+                <CountdownInline targetIso={match.kickoffUtc} />
+              </div>
+            ) : (
+              match.status !== 'live' && match.status !== 'result' && new Date(match.kickoffUtc) > new Date() && (
+                <span className="text-xs text-text-secondary font-mono flex items-center gap-1 whitespace-nowrap">
+                  <Calendar className="w-3 h-3" />
+                  {fmtDate(match.kickoffUtc)} · {fmtTime(match.kickoffUtc)} (Hora Lima)
+                </span>
+              )
+            )}
+          </div>
         </div>
 
         {/* Content Panel */}

@@ -153,13 +153,13 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         {/* Search */}
         <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-text-muted" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por nombre, usuario, etc..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="field pl-9 text-xs"
+            className="field pl-11 text-xs"
           />
         </div>
 

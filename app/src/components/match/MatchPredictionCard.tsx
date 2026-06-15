@@ -3,7 +3,6 @@ import { Match, Prediction } from '../../types/domain';
 import { MatchCard } from './MatchCard';
 import { savePredictionAction } from '../../lib/actions/predictions';
 import { refreshUserOddsAction } from '../../lib/actions/odds';
-import { MatchStatusBadge, MatchVisualState } from '../ui/MatchStatusBadge';
 
 interface MatchPredictionCardProps {
   match: Match;
@@ -50,6 +49,7 @@ interface MatchPredictionCardProps {
   } | null;
   canRefreshOddsToday?: boolean;
   timeLeftUntilMidnight?: { hours: number; minutes: number } | null;
+  manualRefreshEnabled?: boolean;
 }
 
 export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
@@ -64,6 +64,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
   h2h,
   canRefreshOddsToday = true,
   timeLeftUntilMidnight,
+  manualRefreshEnabled = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,13 +77,6 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
     setPrevPrediction(prediction);
     setLocalPrediction(prediction ?? null);
   }
-
-  const getVisualState = (): MatchVisualState => {
-    if (match.status === 'result') return 'finished';
-    if (match.status === 'live') return 'live';
-    if (new Date(match.kickoffUtc) <= new Date()) return 'pending_result';
-    return 'open';
-  };
 
   const handleSave = async (home: number, away: number) => {
     setLoading(true);
@@ -119,15 +113,8 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
     setRefreshing(false);
   };
 
-  const visualState = getVisualState();
-
   return (
-    <div className="relative group pt-2">
-      {/* Floated Status Badge */}
-      <div className="absolute top-0 left-4 z-10">
-        <MatchStatusBadge status={visualState} />
-      </div>
-
+    <div className="relative group">
       <MatchCard
         match={match}
         prediction={localPrediction}
@@ -141,6 +128,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
         timeLeftUntilMidnight={timeLeftUntilMidnight}
         onRefreshUserOdds={handleRefreshUserOdds}
         refreshingOdds={refreshing}
+        manualRefreshEnabled={manualRefreshEnabled}
       />
 
       {errorMsg && (

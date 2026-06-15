@@ -3,12 +3,84 @@
 import React from 'react';
 import { TEAMS } from '../../lib/mockData';
 
+export const FLAG_MAP: Record<string, string> = {
+  USA: '🇺🇸',
+  MEX: '🇲🇽',
+  CAN: '🇨🇦',
+  PAN: '🇵🇦',
+  ARG: '🇦🇷',
+  BRA: '🇧🇷',
+  COL: '🇨🇴',
+  URU: '🇺🇾',
+  ECU: '🇪🇨',
+  PAR: '🇵🇾',
+  FRA: '🇫🇷',
+  ESP: '🇪🇸',
+  GER: '🇩🇪',
+  ENG: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  POR: '🇵🇹',
+  NED: '🇳🇱',
+  BEL: '🇧🇪',
+  CRO: '🇭🇷',
+  SUI: '🇨🇭',
+  AUT: '🇦🇹',
+  SCO: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  TUR: '🇹🇷',
+  SWE: '🇸🇪',
+  NOR: '🇳🇴',
+  CZE: '🇨🇿',
+  BIH: '🇧🇦',
+  MAR: '🇲🇦',
+  SEN: '🇸🇳',
+  EGY: '🇪🇬',
+  CIV: '🇨🇮',
+  ALG: '🇩🇿',
+  TUN: '🇹🇳',
+  RSA: '🇿🇦',
+  GHA: '🇬🇭',
+  COD: '🇨🇩',
+  JPN: '🇯🇵',
+  KOR: '🇰🇷',
+  IRI: '🇮🇷',
+  KSA: '🇸🇦',
+  AUS: '🇦🇺',
+  IRQ: '🇮🇶',
+  UZB: '🇺🇿',
+  QAT: '🇶🇦',
+  JOR: '🇯🇴',
+  NZL: '🇳🇿',
+  HAI: '🇭🇹',
+  CPV: '🇨🇻',
+  CUR: '🇨🇼'
+};
+
 interface FlagDiscProps {
   code: string;
   size?: number;
 }
 
 export const FlagDisc: React.FC<FlagDiscProps> = ({ code, size = 38 }) => {
+  const upperCode = code.toUpperCase();
+  const flag = FLAG_MAP[upperCode];
+
+  if (flag) {
+    return (
+      <div
+        className="flex items-center justify-center flex-shrink-0 select-none"
+        style={{
+          width: size,
+          height: size,
+          fontSize: size * 0.75,
+          lineHeight: 1,
+        }}
+        title={code}
+      >
+        {flag}
+      </div>
+    );
+  }
+
+  // Fallback to team abbreviation circle
   const team = TEAMS[code] ?? { hue: 220, name: code };
   const bg = `hsl(${team.hue}, 40%, 15%)`;
   const ring = `hsl(${team.hue}, 50%, 35%)`;
@@ -34,3 +106,4 @@ export const FlagDisc: React.FC<FlagDiscProps> = ({ code, size = 38 }) => {
     </div>
   );
 };
+

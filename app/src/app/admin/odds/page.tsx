@@ -125,6 +125,42 @@ export default async function AdminOddsPage() {
   const lastSuccessfulOdds = latestOddsSnapshot?.capturedAt ? latestOddsSnapshot.capturedAt.toISOString() : null;
   const lastSuccessfulH2h = latestH2hSnapshot?.capturedAt ? latestH2hSnapshot.capturedAt.toISOString() : null;
 
+  // Count of real and simulated odds snapshots
+  const realOddsCount = await prisma.oddsSnapshot.count({
+    where: {
+      provider: { not: 'simulator' },
+      bookmaker: { not: 'LaPolla 2026 Simulator' },
+    },
+  });
+
+  const simulatedOddsCount = await prisma.oddsSnapshot.count({
+    where: {
+      OR: [
+        { provider: 'simulator' },
+        { bookmaker: 'LaPolla 2026 Simulator' },
+      ],
+    },
+  });
+
+  // Count of real and simulated H2H snapshots
+  const realH2hCount = await prisma.headToHeadSnapshot.count({
+    where: {
+      provider: { not: 'simulator' },
+    },
+  });
+
+  const simulatedH2hCount = await prisma.headToHeadSnapshot.count({
+    where: {
+      provider: 'simulator',
+    },
+  });
+
+  const realSnapshotsCount = { odds: realOddsCount, h2h: realH2hCount };
+  const simulatedSnapshotsCount = { odds: simulatedOddsCount, h2h: simulatedH2hCount };
+
+  const oddsDisplayEnabled = process.env.ODDS_DISPLAY_ENABLED === 'true';
+  const oddsManualUserRefreshEnabled = process.env.ODDS_MANUAL_USER_REFRESH_ENABLED === 'true';
+
   const apiStatus = {
     oddsApiIo: process.env.ODDS_API_IO_ENABLED === 'true' && !!process.env.ODDS_API_IO_KEY,
     theOddsApi: process.env.THE_ODDS_API_ENABLED === 'true' && !!process.env.THE_ODDS_API_KEY,
@@ -148,7 +184,7 @@ export default async function AdminOddsPage() {
               <BarChart2 className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="font-display text-3xl tracking-wide text-text-primary">GENTIÓN DE CUOTAS Y H2H</h2>
+              <h2 className="font-display text-3xl tracking-wide text-text-primary">GESTIÓN DE CUOTAS Y H2H</h2>
               <p className="text-xs text-text-secondary">Monitorea y actualiza las cuotas del mercado e historiales de los partidos.</p>
             </div>
           </div>
@@ -162,6 +198,10 @@ export default async function AdminOddsPage() {
           lastSuccessfulH2h={lastSuccessfulH2h}
           lastOddsError={lastOddsError}
           lastH2hError={lastH2hError}
+          realSnapshotsCount={realSnapshotsCount}
+          simulatedSnapshotsCount={simulatedSnapshotsCount}
+          oddsDisplayEnabled={oddsDisplayEnabled}
+          oddsManualUserRefreshEnabled={oddsManualUserRefreshEnabled}
         />
       </div>
     </>

@@ -199,6 +199,7 @@ export default async function PronosticosPage() {
 
   const canRefreshToday = !todayUsage;
   const timeLeftToday = await getLimaTimeUntilMidnight();
+  const manualRefreshEnabled = process.env.ODDS_MANUAL_USER_REFRESH_ENABLED === 'true';
 
   // Serialize Date fields to plain strings for the Client Component boundaries
   const serializedMatches = matches.map((m) => ({
@@ -257,8 +258,8 @@ export default async function PronosticosPage() {
         h2hData={h2hMap}
         canRefreshToday={canRefreshToday}
         timeLeftToday={timeLeftToday}
+        manualRefreshEnabled={manualRefreshEnabled}
       />
     </>
   );
 }
-

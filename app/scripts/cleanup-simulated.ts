@@ -1,8 +1,9 @@
-import { prisma } from '../src/lib/db';
 import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
+
+import { prisma } from '../src/lib/db';
 
 async function main() {
-  loadEnvConfig(process.cwd());
   console.log('Running cleanup-simulated script...');
 
   // 1. Delete simulated odds snapshots

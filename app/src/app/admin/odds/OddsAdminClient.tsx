@@ -50,6 +50,15 @@ interface OddsAdminClientProps {
   simulatedSnapshotsCount: { odds: number; h2h: number };
   oddsDisplayEnabled: boolean;
   oddsManualUserRefreshEnabled: boolean;
+  futureMatchesCount: number;
+  nextFutureMatch: {
+    id: string;
+    homeTeamCode: string;
+    homeTeamName: string;
+    awayTeamCode: string;
+    awayTeamName: string;
+    kickoffUtc: string;
+  } | null;
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -63,6 +72,8 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   simulatedSnapshotsCount,
   oddsDisplayEnabled,
   oddsManualUserRefreshEnabled,
+  futureMatchesCount,
+  nextFutureMatch,
 }) => {
   const [now] = useState(() => Date.now());
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
@@ -229,7 +240,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
       </div>
 
       {/* Sync Status & Error Logs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
           <h4 className="font-semibold text-text-primary">Últimas Sincronizaciones Exitosas (Reales)</h4>
           <div className="space-y-1 text-xs text-text-secondary font-mono">
@@ -261,6 +272,24 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             Sin errores registrados recientemente.
           </div>
         )}
+
+        <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
+          <h4 className="font-semibold text-text-primary">Diagnóstico de Fechas (Epoch)</h4>
+          <div className="space-y-1 text-xs text-text-secondary font-mono">
+            <p>Partidos Futuros: <strong className="text-text-primary">{futureMatchesCount}</strong></p>
+            {nextFutureMatch ? (
+              <div className="mt-1 border-t border-border-subtle/40 pt-1 space-y-0.5 text-[10px]">
+                <p className="font-bold text-gold-400">Próximo Partido:</p>
+                <p>ID: {nextFutureMatch.id.substring(0, 8)} ({nextFutureMatch.homeTeamCode} vs {nextFutureMatch.awayTeamCode})</p>
+                <p>Raw: {new Date(nextFutureMatch.kickoffUtc).getTime()}</p>
+                <p>UTC: {new Date(nextFutureMatch.kickoffUtc).toUTCString()}</p>
+                <p>Lima: {new Date(nextFutureMatch.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</p>
+              </div>
+            ) : (
+              <p className="text-[10px] text-text-muted italic">No hay partidos futuros detectados.</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {hasNoRealData && (
@@ -346,6 +375,15 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                     <span className="font-bold text-sm text-text-primary">{m.awayTeamCode}</span>
                     <FlagDisc code={m.awayTeamCode} size={24} />
                   </div>
+                </div>
+
+                {/* Diagnostics Block */}
+                <div className="mt-3 bg-black/25 p-2 rounded-lg border border-border-default/60 text-[10px] font-mono text-text-secondary space-y-1">
+                  <span className="font-semibold text-text-primary text-[11px] block border-b border-border-subtle pb-0.5">Diagnóstico de Tiempo (Admin)</span>
+                  <p>Raw: <span className="text-text-primary">{new Date(m.kickoffUtc).getTime()} (ms)</span></p>
+                  <p>UTC: <span className="text-text-primary">{new Date(m.kickoffUtc).toUTCString()}</span></p>
+                  <p>Lima: <span className="text-text-primary">{new Date(m.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span></p>
+                  <p>Estado: <span className={new Date(m.kickoffUtc).getTime() > now ? "text-green-400 font-bold" : "text-red-400"}>{new Date(m.kickoffUtc).getTime() > now ? "Futuro (Abierto)" : "Pasado (Cerrado)"}</span></p>
                 </div>
 
                 {/* Odds Status Area */}

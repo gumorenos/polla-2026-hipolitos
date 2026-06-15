@@ -172,9 +172,10 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
 
   const isEnabled = process.env.API_FOOTBALL_ENABLED === 'true';
   const apiKey = process.env.API_FOOTBALL_KEY;
+  const allowSimulation = process.env.NODE_ENV !== 'production' && process.env.ODDS_ALLOW_SIMULATED_DATA === 'true';
 
   if (!isEnabled || !apiKey) {
-    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+    if (allowSimulation) {
       return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
     }
     setLastH2hError('API-Football H2H no está habilitado o no está configurado.');
@@ -199,7 +200,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     if (!homeId || !awayId) {
       const msg = `Could not resolve API-Football IDs for ${match.homeTeamCode} or ${match.awayTeamCode}`;
       console.warn(msg);
-      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      if (allowSimulation) {
         return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
       }
       setLastH2hError(msg);
@@ -218,7 +219,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     if (!res.ok) {
       const msg = `API-Football H2H request failed with status ${res.status}`;
       console.warn(msg);
-      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      if (allowSimulation) {
         return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
       }
       setLastH2hError(msg);
@@ -229,7 +230,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     if (!data || !data.response || !Array.isArray(data.response)) {
       const msg = 'API-Football H2H response format invalid';
       console.warn(msg);
-      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      if (allowSimulation) {
         return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
       }
       setLastH2hError(msg);
@@ -300,7 +301,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     const rawMsg = `Error fetching Head-to-Head from API-Football: ${error instanceof Error ? error.message : String(error)}`;
     const msg = redactApiKey(rawMsg, apiKey);
     console.error(msg);
-    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+    if (allowSimulation) {
       return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
     }
     setLastH2hError(msg);

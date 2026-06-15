@@ -338,7 +338,7 @@ export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds | n
 
   // 3. Fallback to Simulation if both failed or if keys/enabled checks failed
   if (!result) {
-    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+    if (process.env.NODE_ENV !== 'production' && process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
       result = generateSimulatedOdds(match.homeTeamCode, match.awayTeamCode);
     } else {
       if (!lastOddsError) {

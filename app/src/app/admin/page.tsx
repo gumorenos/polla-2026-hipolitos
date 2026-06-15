@@ -64,12 +64,14 @@ export default async function AdminDashboardPage() {
   const finishedMatchesCount = await prisma.match.count({ where: { status: 'result' } });
   
   // Matches past kickoff but status is not result/finished
-  const resultsPending = await prisma.match.count({
+  const allNotFinished = await prisma.match.findMany({
     where: {
       status: { not: 'result' },
-      kickoffUtc: { lt: new Date() }
-    }
+    },
   });
+  const resultsPending = allNotFinished.filter(
+    (m) => new Date(m.kickoffUtc) < new Date()
+  ).length;
 
   // Fetch recent audit logs
   const logs = await prisma.adminActionLog.findMany({

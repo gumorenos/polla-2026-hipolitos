@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { updateMatchResultAction, manuallyRecalculateStandingsAction } from '../../../lib/actions/admin';
 import { Match } from '@prisma/client';
 import { AlertCircle, CheckCircle } from 'lucide-react';
+import { FlagDisc } from '../../../components/ui/FlagDisc';
 
 export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
   const [loading, setLoading] = useState<string | null>(null);
@@ -96,8 +97,14 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
                   <div>{match.id.substring(0, 8)}</div>
                   <div className="text-xs text-text-muted">{new Date(match.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</div>
                 </td>
-                <td className="p-3 font-mono">
-                  {match.homeTeamCode} vs {match.awayTeamCode}
+                <td className="p-3">
+                  <div className="flex items-center gap-1.5 font-sans font-semibold">
+                    <FlagDisc code={match.homeTeamCode} size={20} />
+                    <span>{match.homeTeamCode}</span>
+                    <span className="text-text-muted font-normal text-xs">vs</span>
+                    <FlagDisc code={match.awayTeamCode} size={20} />
+                    <span>{match.awayTeamCode}</span>
+                  </div>
                 </td>
                 <td className="p-3">
                   <span className={`px-2 py-1 text-xs rounded-full ${match.status === 'result' ? 'bg-gold/20 text-gold' : 'bg-surface border border-border text-text-muted'}`}>

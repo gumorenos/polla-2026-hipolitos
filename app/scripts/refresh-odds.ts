@@ -24,14 +24,16 @@ async function main() {
     matches = [singleMatch];
     console.log(`Processing single match refresh for match ID: ${targetMatchId}`);
   } else {
-    // Find all matches that are open/soon
-    matches = await prisma.match.findMany({
+    // Find all matches that are open/soon and filter to only future matches
+    const activeMatches = await prisma.match.findMany({
       where: {
         status: { in: ['open', 'soon'] },
       },
       orderBy: { kickoffUtc: 'asc' },
     });
-    console.log(`Found ${matches.length} active/open matches to refresh.`);
+    const now = new Date();
+    matches = activeMatches.filter(m => new Date(m.kickoffUtc) > now);
+    console.log(`Found ${matches.length} active future matches to refresh.`);
   }
 
   let matchesProcessed = 0;

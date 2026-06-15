@@ -203,7 +203,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       autoComplete="name"
-                      className="field pl-11"
+                      className="field !pl-11"
                       required
                       disabled={loading}
                     />
@@ -226,7 +226,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
-                      className="field pl-11"
+                      className="field !pl-11"
                       required
                       disabled={loading}
                     />
@@ -250,7 +250,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
-                      className="field pl-11"
+                      className="field !pl-11"
                       disabled={loading}
                     />
                   </div>
@@ -273,7 +273,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       onChange={(e) => setWhatsapp(e.target.value)}
                       placeholder="+51 999 999 999"
                       autoComplete="tel"
-                      className="field pl-11"
+                      className="field !pl-11"
                       disabled={loading}
                     />
                   </div>

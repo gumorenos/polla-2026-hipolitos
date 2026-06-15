@@ -168,6 +168,21 @@ export default async function AdminOddsPage() {
     simulatedAllowed: process.env.ODDS_ALLOW_SIMULATED_DATA === 'true',
   };
 
+  // Compute future matches count and next future match details
+  const now = new Date();
+  const futureMatchesList = matches.filter(m => new Date(m.kickoffUtc) > now);
+  const futureMatchesCount = futureMatchesList.length;
+  const nextFutureMatch = futureMatchesList[0] 
+    ? {
+        id: futureMatchesList[0].id,
+        homeTeamCode: futureMatchesList[0].homeTeamCode,
+        homeTeamName: futureMatchesList[0].homeTeam.name,
+        awayTeamCode: futureMatchesList[0].awayTeamCode,
+        awayTeamName: futureMatchesList[0].awayTeam.name,
+        kickoffUtc: futureMatchesList[0].kickoffUtc.toISOString(),
+      }
+    : null;
+
   return (
     <>
       <div className="max-w-4xl mx-auto space-y-6 py-2">
@@ -202,6 +217,8 @@ export default async function AdminOddsPage() {
           simulatedSnapshotsCount={simulatedSnapshotsCount}
           oddsDisplayEnabled={oddsDisplayEnabled}
           oddsManualUserRefreshEnabled={oddsManualUserRefreshEnabled}
+          futureMatchesCount={futureMatchesCount}
+          nextFutureMatch={nextFutureMatch}
         />
       </div>
     </>

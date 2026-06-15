@@ -5,6 +5,7 @@ import { prisma } from '../lib/db';
 import { ArrowRight, Zap, Users, Trophy, DollarSign, ShieldAlert, Award } from 'lucide-react';
 import Link from 'next/link';
 import { JoinPoolForm } from '../components/league/JoinPoolForm';
+import { FlagDisc } from '../components/ui/FlagDisc';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,12 +190,11 @@ export default async function Home() {
   const estimatedPrizePool = league.prizePoolOverride ?? (approvedMembersCount * league.entryFee);
 
   // Next upcoming match (chronologically after current time)
-  const nextMatch = await prisma.match.findFirst({
-    where: {
-      kickoffUtc: { gt: new Date() },
-    },
+  const allMatches = await prisma.match.findMany({
     orderBy: { kickoffUtc: 'asc' },
   });
+  const now = new Date();
+  const nextMatch = allMatches.find(m => new Date(m.kickoffUtc) > now) || null;
 
   const formattedName = dbUser.name.toUpperCase();
 
@@ -246,8 +246,12 @@ export default async function Home() {
                   </Link>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-mono font-bold text-text-primary text-base">
-                    {nextMatch.homeTeamCode} vs {nextMatch.awayTeamCode}
+                  <span className="flex items-center gap-1.5 font-sans font-bold text-text-primary text-base">
+                    <FlagDisc code={nextMatch.homeTeamCode} size={20} />
+                    <span>{nextMatch.homeTeamCode}</span>
+                    <span className="text-text-muted font-normal text-xs">vs</span>
+                    <FlagDisc code={nextMatch.awayTeamCode} size={20} />
+                    <span>{nextMatch.awayTeamCode}</span>
                   </span>
                   <span className="text-text-muted text-xs font-mono">
                     {new Date(nextMatch.kickoffUtc).toLocaleString('es-PE', {

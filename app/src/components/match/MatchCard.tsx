@@ -413,7 +413,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return (
       <div className="card-base overflow-hidden flex flex-col justify-between">
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
           <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${phaseInfo.color} w-fit`}>
             {phaseInfo.label} {match.group ? `· Grupo ${match.group}` : ''} · {match.jornada}
           </span>

@@ -122,8 +122,8 @@ export async function refreshUserOddsAction(matchId: string) {
   try {
     // Fetch odds from API or simulator
     const odds = await getMatchWinnerOdds(matchId);
-    if (!odds) {
-      return { error: 'No se pudieron obtener probabilidades del mercado reales en este momento.' };
+    if (!odds || odds.provider === 'simulator' || odds.bookmaker === 'LaPolla 2026 Simulator') {
+      return { error: 'No se pudieron obtener probabilidades reales. Los proveedores de datos no retornaron información.' };
     }
 
     // Save snapshot and log usage in an atomic transaction to avoid race conditions

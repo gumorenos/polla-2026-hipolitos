@@ -24,13 +24,16 @@ async function main() {
     matches = [singleMatch];
     console.log(`Processing single H2H fetch for match ID: ${targetMatchId}`);
   } else {
-    // Find matches that do not have a HeadToHeadSnapshot in the database
-    matches = await prisma.match.findMany({
+    // Find matches that do not have a HeadToHeadSnapshot and filter to only future matches
+    const missingH2h = await prisma.match.findMany({
       where: {
         h2hSnapshot: null,
       },
+      orderBy: { kickoffUtc: 'asc' },
     });
-    console.log(`Found ${matches.length} matches missing H2H snapshots.`);
+    const now = new Date();
+    matches = missingH2h.filter(m => new Date(m.kickoffUtc) > now);
+    console.log(`Found ${matches.length} future matches missing H2H snapshots.`);
   }
 
   let matchesProcessed = 0;

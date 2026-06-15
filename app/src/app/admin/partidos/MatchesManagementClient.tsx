@@ -6,6 +6,7 @@ import { updateMatchDetailsAction } from '../../../lib/actions/admin';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { parseLimaDateTimeToUtc } from '../../../lib/utils/dates';
+import { FlagDisc } from '../../../components/ui/FlagDisc';
 
 export default function MatchesManagementClient({ matches }: { matches: Match[] }) {
   const router = useRouter();
@@ -89,9 +90,15 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
               return (
                 <React.Fragment key={match.id}>
                   <tr className="hover:bg-surface transition-colors">
-                    <td className="p-3 font-semibold">
-                      {match.homeTeamCode} vs {match.awayTeamCode}
-                      {match.group && <span className="ml-2 text-xs text-gold border border-gold/30 px-1.5 py-0.5 rounded font-mono">Grupo {match.group}</span>}
+                    <td className="p-3">
+                      <div className="flex items-center gap-1.5 font-sans font-semibold">
+                        <FlagDisc code={match.homeTeamCode} size={20} />
+                        <span>{match.homeTeamCode}</span>
+                        <span className="text-text-muted font-normal text-xs">vs</span>
+                        <FlagDisc code={match.awayTeamCode} size={20} />
+                        <span>{match.awayTeamCode}</span>
+                        {match.group && <span className="ml-2 text-xs text-gold border border-gold/30 px-1.5 py-0.5 rounded font-mono">Grupo {match.group}</span>}
+                      </div>
                     </td>
                     <td className="p-3 text-xs font-mono">
                       {new Date(match.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}

@@ -27,6 +27,22 @@ interface PronosticosClientProps {
     leagueId: string;
     teamCode: string;
     createdAt: string;
+    correctionAllowed?: boolean;
+    correctionAllowedUntil?: string | null;
+    correctionReason?: string | null;
+  }[];
+  winnerPredictionHistories: {
+    id: string;
+    leagueId: string;
+    userId: string;
+    userName: string;
+    oldTeamCode: string | null;
+    newTeamCode: string;
+    actionType: string;
+    authorizedById: string | null;
+    changedById: string | null;
+    reason: string | null;
+    createdAt: string;
   }[];
   globalOdds: Record<string, {
     homeOdds: number;
@@ -78,6 +94,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   leagues,
   teams,
   winnerPredictions,
+  winnerPredictionHistories,
   globalOdds,
   userOdds,
   h2hData,
@@ -162,9 +179,14 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      '¿Estás seguro de tu elección? Una vez guardado, no podrás cambiar tu campeón.'
-    );
+    const wpRecord = winnerPredictions.find(wp => wp.leagueId === activeLeagueId);
+    const isCorrectionActive = !!(wpRecord?.correctionAllowed && wpRecord?.correctionAllowedUntil && new Date(wpRecord.correctionAllowedUntil) > new Date());
+
+    const confirmMsg = isCorrectionActive
+      ? '¿Confirmas tu corrección de campeón? Esta elección quedará bloqueada nuevamente.'
+      : '¿Confirmas tu campeón? Esta elección quedará bloqueada.';
+
+    const confirmed = window.confirm(confirmMsg);
     if (!confirmed) return;
 
     setSavingWinner(true);
@@ -174,7 +196,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     if (res.error) {
       setWinnerError(res.error);
     } else {
-      setWinnerSuccess('Campeón guardado exitosamente.');
+      setWinnerSuccess(isCorrectionActive ? 'Corrección de campeón guardada exitosamente.' : 'Campeón guardado exitosamente.');
       setLocalWinners(prev => ({
         ...prev,
         [activeLeagueId]: teamCode
@@ -274,9 +296,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
 
       {/* Tournament Winner Prediction Widget */}
       {activeLeague && (() => {
+        const wpRecord = winnerPredictions.find(wp => wp.leagueId === activeLeagueId);
+        const isCorrectionActive = !!(wpRecord?.correctionAllowed && wpRecord?.correctionAllowedUntil && new Date(wpRecord.correctionAllowedUntil) > new Date());
+
         const hasSubmitted = !!localWinners[activeLeagueId];
-        const submission = winnerPredictions.find(wp => wp.leagueId === activeLeagueId);
-        const submittedAtRaw = submission?.createdAt || null;
+        const submittedAtRaw = wpRecord?.createdAt || null;
         const submittedAtStr = submittedAtRaw 
           ? new Date(submittedAtRaw).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)'
           : '';
@@ -297,6 +321,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
           }
         }
         const isDeadlinePassed = effectiveDeadline ? new Date() > effectiveDeadline : false;
+        const canEdit = (!hasSubmitted && !isDeadlinePassed) || isCorrectionActive;
 
         return (
           <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
@@ -307,7 +332,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                   <Trophy className="w-5 h-5 text-gold-400" /> Campeón del Mundial
                 </h3>
               </div>
-              {hasSubmitted ? (
+              {isCorrectionActive ? (
+                <span className="text-[10px] font-mono bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Corrección Autorizada
+                </span>
+              ) : hasSubmitted ? (
                 <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
                   Predicción bloqueada
                 </span>
@@ -327,6 +356,17 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 <p className="text-xs text-text-secondary">
                   Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
                 </p>
+                {isCorrectionActive && wpRecord && (
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs space-y-1 text-yellow-400">
+                    <p className="font-semibold uppercase tracking-wider text-[9px] font-mono">Corrección Autorizada por Administrador:</p>
+                    <p className="italic">Motivo: &quot;{wpRecord.correctionReason}&quot;</p>
+                    {wpRecord.correctionAllowedUntil && (
+                      <p className="text-[10px] text-yellow-500/70 font-mono">
+                        Vence: {new Date(wpRecord.correctionAllowedUntil).toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Lima)
+                      </p>
+                    )}
+                  </div>
+                )}
                 {!hasSubmitted && !isDeadlinePassed && (
                   <p className="text-xs text-yellow-400 font-semibold">
                     Elige con cuidado. Una vez guardado, no podrás cambiar tu campeón.
@@ -334,7 +374,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 )}
                 {effectiveDeadline && (
                   <p className="text-[10px] text-text-muted font-mono">
-                    Límite de envío: {effectiveDeadline.toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Lima)
+                    Límite de envío original: {effectiveDeadline.toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Lima)
                   </p>
                 )}
                 {hasSubmitted && submittedAtStr && (
@@ -345,13 +385,13 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-                {!hasSubmitted && !isDeadlinePassed ? (
+                {canEdit ? (
                   <>
                     <select
                       disabled={savingWinner}
                       value={selectedCode}
                       onChange={(e) => handleSelectWinnerChange(e.target.value)}
-                      className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75"
+                      className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75 font-sans"
                     >
                       <option value="">-- Elige Campeón --</option>
                       {realTeams.map(t => {
@@ -371,7 +411,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                         disabled={savingWinner}
                         className="btn-gold py-1.5 px-4 text-xs uppercase font-mono tracking-wider font-semibold whitespace-nowrap"
                       >
-                        Guardar campeón
+                        {isCorrectionActive ? 'Guardar corrección' : 'Guardar campeón'}
                       </button>
                     )}
                   </>
@@ -395,7 +435,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
               </div>
             </div>
 
-            {hasSubmitted && (
+            {hasSubmitted && !isCorrectionActive && (
               <p className="text-xs text-green-400 font-semibold mt-1">
                 Predicción registrada: <strong className="text-gold-400 uppercase">{selectedTeamFlag} {selectedTeamName}</strong>. Predicción bloqueada.
               </p>
@@ -408,6 +448,58 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
 
             {winnerError && <p className="text-xs text-red-400 font-semibold mt-1">{winnerError}</p>}
             {winnerSuccess && <p className="text-xs text-green-400 font-semibold mt-1">{winnerSuccess}</p>}
+
+            {/* Winner Prediction History Log */}
+            {(() => {
+              const historiesForLeague = winnerPredictionHistories.filter(h => h.leagueId === activeLeagueId);
+              if (historiesForLeague.length === 0) return null;
+
+              return (
+                <div className="mt-4 pt-3 border-t border-border-subtle/50 space-y-2">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400/90 font-bold flex items-center gap-1.5">
+                    Historial de Cambios de Campeón
+                  </h4>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {historiesForLeague.map((h) => {
+                      const dateStr = new Date(h.createdAt).toLocaleString('es-PE', {
+                        timeZone: 'America/Lima',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                      
+                      const oldTeamFlag = h.oldTeamCode ? (FLAG_MAP[h.oldTeamCode.toUpperCase()] || '') : '';
+                      const oldTeamName = h.oldTeamCode ? (teams.find(t => t.code === h.oldTeamCode)?.name || h.oldTeamCode) : '';
+                      const newTeamFlag = FLAG_MAP[h.newTeamCode.toUpperCase()] || '';
+                      const newTeamName = teams.find(t => t.code === h.newTeamCode)?.name || h.newTeamCode;
+
+                      let detailsText = '';
+                      if (h.actionType === 'created') {
+                        detailsText = `Eligió a ${newTeamFlag} ${newTeamName} como campeón`;
+                      } else if (h.actionType === 'correction_authorized') {
+                        detailsText = `Se autorizó corrección. Motivo: "${h.reason}"`;
+                      } else if (h.actionType === 'changed_by_user') {
+                        detailsText = `Corrigió su elección de ${oldTeamFlag ? `${oldTeamFlag} ${oldTeamName}` : 'sin elección'} a ${newTeamFlag} ${newTeamName}`;
+                      } else if (h.actionType === 'changed_by_admin') {
+                        detailsText = `Superadmin corrigió la elección de ${oldTeamFlag ? `${oldTeamFlag} ${oldTeamName}` : 'sin elección'} a ${newTeamFlag} ${newTeamName}. Motivo: "${h.reason}"`;
+                      }
+
+                      return (
+                        <div key={h.id} className="text-[10px] font-mono bg-bg-secondary/30 p-2 rounded border border-border-default/40 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="text-text-secondary">
+                            <strong className="text-text-primary">{h.userName}</strong>:{' '}
+                            <span>{detailsText}</span>
+                          </div>
+                          <span className="text-text-muted text-[9px] whitespace-nowrap self-end sm:self-center">{dateStr}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}

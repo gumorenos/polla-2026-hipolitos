@@ -73,6 +73,26 @@ export default async function PronosticosPage() {
     where: { userId },
   });
 
+  // Fetch winner prediction histories for user's leagues
+  const histories = await prisma.winnerPredictionHistory.findMany({
+    where: {
+      leagueId: { in: memberships.map(m => m.leagueId) },
+      visibleToParticipants: true,
+    },
+    include: {
+      user: {
+        select: {
+          name: true,
+          displayName: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+
   // Fetch all teams
   const teams = await prisma.team.findMany({
     select: {
@@ -243,6 +263,23 @@ export default async function PronosticosPage() {
     leagueId: wp.leagueId,
     teamCode: wp.teamCode,
     createdAt: wp.createdAt.toISOString(),
+    correctionAllowed: wp.correctionAllowed,
+    correctionAllowedUntil: wp.correctionAllowedUntil ? wp.correctionAllowedUntil.toISOString() : null,
+    correctionReason: wp.correctionReason,
+  }));
+
+  const serializedHistories = histories.map(h => ({
+    id: h.id,
+    leagueId: h.leagueId,
+    userId: h.userId,
+    userName: h.user.displayName || h.user.name,
+    oldTeamCode: h.oldTeamCode,
+    newTeamCode: h.newTeamCode,
+    actionType: h.actionType,
+    authorizedById: h.authorizedById,
+    changedById: h.changedById,
+    reason: h.reason,
+    createdAt: h.createdAt.toISOString(),
   }));
 
   return (
@@ -253,6 +290,7 @@ export default async function PronosticosPage() {
         leagues={serializedLeagues}
         teams={teams}
         winnerPredictions={serializedWinnerPredictions}
+        winnerPredictionHistories={serializedHistories}
         globalOdds={globalOddsMap}
         userOdds={userOddsMap}
         h2hData={h2hMap}

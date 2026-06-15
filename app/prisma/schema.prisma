@@ -36,6 +36,7 @@ model User {
   memberships       LeagueMember[]
   predictions       Prediction[]
   winnerPredictions WinnerPrediction[]
+  winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
   adminActionLogs   AdminActionLog[]
   oddsSnapshots     OddsSnapshot[]
@@ -161,6 +162,7 @@ model League {
   members           LeagueMember[]
   predictions       Prediction[]
   winnerPredictions WinnerPrediction[]
+  winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
 
   @@map("league")
@@ -236,13 +238,19 @@ model AdminActionLog {
 }
 
 model WinnerPrediction {
-  id           String   @id @default(cuid())
-  userId       String
-  leagueId     String
-  teamCode     String
-  pointsEarned Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                       String    @id @default(cuid())
+  userId                   String
+  leagueId                 String
+  teamCode                 String
+  pointsEarned             Int?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  
+  // Correction System Fields
+  correctionAllowed        Boolean   @default(false)
+  correctionAllowedUntil   DateTime?
+  correctionReason         String?
+  correctionAuthorizedById String?
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
@@ -250,6 +258,25 @@ model WinnerPrediction {
 
   @@unique([userId, leagueId])
   @@map("winner_prediction")
+}
+
+model WinnerPredictionHistory {
+  id                   String   @id @default(cuid())
+  leagueId             String
+  userId               String
+  oldTeamCode          String?
+  newTeamCode          String
+  actionType           String   // "created" | "correction_authorized" | "changed_by_user" | "changed_by_admin" | "correction_rejected"
+  authorizedById       String?
+  changedById          String?
+  reason               String?
+  createdAt            DateTime @default(now())
+  visibleToParticipants Boolean  @default(true)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@map("winner_prediction_history")
 }
 
 model OddsSnapshot {

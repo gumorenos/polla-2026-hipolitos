@@ -156,6 +156,7 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
   }
 
   const userId = session.user.id;
+  const isSuperadmin = !!session.user.isSuperadmin;
 
   try {
     const user = await prisma.user.findUnique({
@@ -173,16 +174,6 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
       return { error: 'La polla no existe.' };
     }
 
-    // Check if user already submitted a champion prediction (locked after first submission)
-    const existing = await prisma.winnerPrediction.findUnique({
-      where: {
-        userId_leagueId: { userId, leagueId }
-      }
-    });
-    if (existing) {
-      return { error: 'Ya has registrado tu predicción de campeón y no puedes cambiarla.' };
-    }
-
     // Determine deadline
     let deadline = league.championDeadline;
     if (!deadline) {
@@ -195,7 +186,10 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
       }
     }
 
-    if (deadline && new Date() > deadline) {
+    const isDeadlinePassed = deadline ? new Date() > deadline : false;
+
+    // Normal users cannot submit after deadline
+    if (isDeadlinePassed && !isSuperadmin) {
       return { error: 'El plazo para elegir campeón ya cerró.' };
     }
 
@@ -206,13 +200,77 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
       return { error: 'No eres miembro de esta polla.' };
     }
 
-    const winnerPrediction = await prisma.winnerPrediction.create({
-      data: {
-        userId,
-        leagueId,
-        teamCode,
+    // Check if user already submitted a champion prediction
+    const existing = await prisma.winnerPrediction.findUnique({
+      where: {
+        userId_leagueId: { userId, leagueId }
       }
     });
+
+    let winnerPrediction;
+
+    if (existing) {
+      // If it exists, they can only edit if correction is allowed (and not expired) OR if caller is superadmin
+      const now = new Date();
+      const isCorrectionActive = existing.correctionAllowed && existing.correctionAllowedUntil && existing.correctionAllowedUntil > now;
+
+      if (!isCorrectionActive && !isSuperadmin) {
+        return { error: 'Ya has registrado tu predicción de campeón y no puedes cambiarla sin autorización del administrador.' };
+      }
+
+      // Update existing prediction
+      winnerPrediction = await prisma.winnerPrediction.update({
+        where: { id: existing.id },
+        data: {
+          teamCode,
+          correctionAllowed: false,
+          correctionAllowedUntil: null,
+          correctionReason: null,
+          correctionAuthorizedById: null,
+          updatedAt: new Date(),
+        }
+      });
+
+      // Create history entry
+      await prisma.winnerPredictionHistory.create({
+        data: {
+          leagueId,
+          userId,
+          oldTeamCode: existing.teamCode,
+          newTeamCode: teamCode,
+          actionType: isSuperadmin ? 'changed_by_admin' : 'changed_by_user',
+          authorizedById: existing.correctionAuthorizedById || (isSuperadmin ? session.user.id : null),
+          changedById: session.user.id,
+          reason: existing.correctionReason || (isSuperadmin ? 'Corrección directa de superadmin' : 'Corrección autorizada de usuario'),
+          createdAt: new Date(),
+          visibleToParticipants: true,
+        }
+      });
+    } else {
+      // First submission
+      winnerPrediction = await prisma.winnerPrediction.create({
+        data: {
+          userId,
+          leagueId,
+          teamCode,
+        }
+      });
+
+      // Create history entry
+      await prisma.winnerPredictionHistory.create({
+        data: {
+          leagueId,
+          userId,
+          oldTeamCode: null,
+          newTeamCode: teamCode,
+          actionType: 'created',
+          changedById: session.user.id,
+          reason: 'Elección inicial de campeón',
+          createdAt: new Date(),
+          visibleToParticipants: true,
+        }
+      });
+    }
 
     revalidatePath('/pronosticos');
     revalidatePath('/liga');
@@ -223,3 +281,157 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
     return { error: 'Error al guardar la predicción de campeón de la polla.' };
   }
 }
+
+export async function allowWinnerPredictionCorrectionAction(
+  leagueId: string,
+  targetUserId: string,
+  durationMinutes: number,
+  reason: string
+) {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado.' };
+  }
+
+  const callerUserId = session.user.id;
+  const isSuperadmin = !!session.user.isSuperadmin;
+
+  if (!isSuperadmin) {
+    return { error: 'Solo los superadministradores pueden autorizar correcciones.' };
+  }
+
+  if (!reason.trim()) {
+    return { error: 'El motivo de la corrección es obligatorio.' };
+  }
+
+  try {
+    const existing = await prisma.winnerPrediction.findUnique({
+      where: {
+        userId_leagueId: { userId: targetUserId, leagueId }
+      }
+    });
+
+    if (!existing) {
+      return { error: 'El usuario no tiene una predicción de campeón guardada para autorizar su corrección.' };
+    }
+
+    const expirationDate = new Date(Date.now() + durationMinutes * 60 * 1000);
+
+    // Update WinnerPrediction
+    await prisma.winnerPrediction.update({
+      where: { id: existing.id },
+      data: {
+        correctionAllowed: true,
+        correctionAllowedUntil: expirationDate,
+        correctionReason: reason,
+        correctionAuthorizedById: callerUserId,
+      }
+    });
+
+    // Create WinnerPredictionHistory
+    await prisma.winnerPredictionHistory.create({
+      data: {
+        leagueId,
+        userId: targetUserId,
+        oldTeamCode: existing.teamCode,
+        newTeamCode: existing.teamCode,
+        actionType: 'correction_authorized',
+        authorizedById: callerUserId,
+        changedById: callerUserId,
+        reason: reason,
+        createdAt: new Date(),
+        visibleToParticipants: true,
+      }
+    });
+
+    revalidatePath('/pronosticos');
+    revalidatePath('/liga');
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error authorizing winner prediction correction:', error);
+    return { error: 'Error al autorizar la corrección de campeón.' };
+  }
+}
+
+export async function directCorrectWinnerPredictionAction(
+  leagueId: string,
+  targetUserId: string,
+  teamCode: string,
+  reason: string
+) {
+  const session = await getCurrentSession();
+  if (!session || !session.user) {
+    return { error: 'No autorizado.' };
+  }
+
+  const callerUserId = session.user.id;
+  const isSuperadmin = !!session.user.isSuperadmin;
+
+  if (!isSuperadmin) {
+    return { error: 'Solo los superadministradores pueden realizar correcciones directas.' };
+  }
+
+  if (!reason.trim()) {
+    return { error: 'El motivo del cambio es obligatorio.' };
+  }
+
+  try {
+    const existing = await prisma.winnerPrediction.findUnique({
+      where: {
+        userId_leagueId: { userId: targetUserId, leagueId }
+      }
+    });
+
+    let oldTeamCode = null;
+    let winnerPrediction;
+
+    if (existing) {
+      oldTeamCode = existing.teamCode;
+      winnerPrediction = await prisma.winnerPrediction.update({
+        where: { id: existing.id },
+        data: {
+          teamCode,
+          correctionAllowed: false,
+          correctionAllowedUntil: null,
+          correctionReason: null,
+          correctionAuthorizedById: null,
+          updatedAt: new Date(),
+        }
+      });
+    } else {
+      winnerPrediction = await prisma.winnerPrediction.create({
+        data: {
+          userId: targetUserId,
+          leagueId,
+          teamCode,
+        }
+      });
+    }
+
+    // Create WinnerPredictionHistory
+    await prisma.winnerPredictionHistory.create({
+      data: {
+        leagueId,
+        userId: targetUserId,
+        oldTeamCode,
+        newTeamCode: teamCode,
+        actionType: 'changed_by_admin',
+        authorizedById: callerUserId,
+        changedById: callerUserId,
+        reason: reason,
+        createdAt: new Date(),
+        visibleToParticipants: true,
+      }
+    });
+
+    revalidatePath('/pronosticos');
+    revalidatePath('/liga');
+
+    return { success: true, data: winnerPrediction };
+  } catch (error) {
+    console.error('Error performing direct winner prediction correction:', error);
+    return { error: 'Error al cambiar la predicción de campeón.' };
+  }
+}
+

@@ -178,10 +178,71 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   // Visual Probability & Odds module
   const renderOddsModule = () => {
     if (!showOdds) return null;
+
+    const isFutureMatch = new Date(match.kickoffUtc) > new Date() && (match.status === 'open' || match.status === 'soon');
+    const showRefreshButton = manualRefreshEnabled && cardMode === 'predict' && onRefreshUserOdds && isFutureMatch;
+
+    const renderRefreshButtonSection = () => {
+      return (
+        <div className="pt-1">
+          {confirmRefresh ? (
+            <div className="bg-bg-tertiary p-2 rounded-lg border border-gold-500/30 text-center space-y-2 animate-[slideUp_0.15s_ease-out]">
+              <p className="text-[10px] text-text-primary font-medium">Vas a usar tu única actualización manual del día para este partido. ¿Continuar?</p>
+              <div className="flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={triggerRefresh}
+                  disabled={refreshingOdds}
+                  className="bg-gold-500 hover:bg-gold-600 text-black text-[10px] font-mono font-bold px-2.5 py-0.5 rounded transition-colors"
+                >
+                  Confirmar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmRefresh(false)}
+                  className="bg-bg-hover hover:bg-bg-tertiary text-text-secondary text-[10px] font-mono px-2.5 py-0.5 rounded border border-border-default transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : canRefreshOddsToday ? (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setConfirmRefresh(true)}
+                disabled={refreshingOdds}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-secondary hover:text-text-primary text-[10px] font-mono font-semibold rounded-lg transition-all duration-200"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingOdds ? 'animate-spin' : ''}`} />
+                Actualizar probabilidades para mí
+              </button>
+              <p className="text-[9px] text-text-muted text-center font-mono">
+                Tienes 1 actualización manual diaria. Solo se consume si se obtienen datos reales.
+              </p>
+            </div>
+          ) : (
+            <div className="w-full flex flex-col items-center justify-center gap-1 py-1.5 px-3 bg-bg-secondary/40 border border-border-default/40 text-text-muted text-[9px] font-mono rounded-lg">
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-text-muted" />
+                <span>Actualización diaria usada</span>
+              </div>
+              {timeLeftUntilMidnight && (
+                <span>Restablece en {timeLeftUntilMidnight.hours}h {timeLeftUntilMidnight.minutes}m (Hora Lima)</span>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
     if (!globalOdds && !userOdds) {
       return (
-        <div className="mt-4 pt-3.5 border-t border-border-subtle/50 text-[10px] text-text-muted italic">
-          Probabilidades no disponibles
+        <div className="mt-4 pt-3.5 border-t border-border-subtle/50 space-y-3">
+          <div className="text-[10px] text-text-muted italic">
+            Probabilidades no disponibles
+          </div>
+          {showRefreshButton && renderRefreshButtonSection()}
         </div>
       );
     }
@@ -266,57 +327,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         )}
 
         {/* User manual refresh button */}
-        {manualRefreshEnabled && showOdds && cardMode === 'predict' && onRefreshUserOdds && (
-          <div className="pt-1">
-            {confirmRefresh ? (
-              <div className="bg-bg-tertiary p-2 rounded-lg border border-gold-500/30 text-center space-y-2 animate-[slideUp_0.15s_ease-out]">
-                <p className="text-[10px] text-text-primary font-medium">Vas a usar tu única actualización manual del día para este partido. ¿Continuar?</p>
-                <div className="flex justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={triggerRefresh}
-                    disabled={refreshingOdds}
-                    className="bg-gold-500 hover:bg-gold-600 text-black text-[10px] font-mono font-bold px-2.5 py-0.5 rounded transition-colors"
-                  >
-                    Confirmar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRefresh(false)}
-                    className="bg-bg-hover hover:bg-bg-tertiary text-text-secondary text-[10px] font-mono px-2.5 py-0.5 rounded border border-border-default transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : canRefreshOddsToday ? (
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => setConfirmRefresh(true)}
-                  disabled={refreshingOdds}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-secondary hover:text-text-primary text-[10px] font-mono font-semibold rounded-lg transition-all duration-200"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingOdds ? 'animate-spin' : ''}`} />
-                  Actualizar probabilidades para mí
-                </button>
-                <p className="text-[9px] text-text-muted text-center font-mono">
-                  Tienes 1 actualización manual diaria. Solo se consume si se obtienen datos reales.
-                </p>
-              </div>
-            ) : (
-              <div className="w-full flex flex-col items-center justify-center gap-1 py-1.5 px-3 bg-bg-secondary/40 border border-border-default/40 text-text-muted text-[9px] font-mono rounded-lg">
-                <div className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-3.5 h-3.5 text-text-muted" />
-                  <span>Actualización diaria usada</span>
-                </div>
-                {timeLeftUntilMidnight && (
-                  <span>Restablece en {timeLeftUntilMidnight.hours}h {timeLeftUntilMidnight.minutes}m (Hora Lima)</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        {showRefreshButton && renderRefreshButtonSection()}
       </div>
     );
   };

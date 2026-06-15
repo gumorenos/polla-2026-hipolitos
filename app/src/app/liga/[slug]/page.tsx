@@ -99,6 +99,33 @@ export default async function LigaDetallePage({
     where: { leagueId: league.id },
   });
 
+  // Fetch winner prediction histories
+  const histories = await prisma.winnerPredictionHistory.findMany({
+    where: {
+      leagueId: league.id,
+      visibleToParticipants: true,
+    },
+    include: {
+      user: {
+        select: {
+          name: true,
+          displayName: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  // Fetch teams for the direct correction selection
+  const teams = await prisma.team.findMany({
+    select: {
+      code: true,
+      name: true,
+    },
+  });
+
   const championPointsMap: Record<string, number> = {};
   winnerPreds.forEach((wp) => {
     championPointsMap[wp.userId] = wp.pointsEarned || 0;
@@ -173,6 +200,27 @@ export default async function LigaDetallePage({
           lastUpdated: new Date().toISOString(),
         }));
 
+  const serializedWinnerPredictions = winnerPreds.map(wp => ({
+    userId: wp.userId,
+    teamCode: wp.teamCode,
+    correctionAllowed: wp.correctionAllowed,
+    correctionAllowedUntil: wp.correctionAllowedUntil ? wp.correctionAllowedUntil.toISOString() : null,
+    correctionReason: wp.correctionReason,
+  }));
+
+  const serializedHistories = histories.map(h => ({
+    id: h.id,
+    userId: h.userId,
+    userName: h.user.displayName || h.user.name,
+    oldTeamCode: h.oldTeamCode,
+    newTeamCode: h.newTeamCode,
+    actionType: h.actionType,
+    authorizedById: h.authorizedById,
+    changedById: h.changedById,
+    reason: h.reason,
+    createdAt: h.createdAt.toISOString(),
+  }));
+
   return (
     <LigaDetalleClient
       league={serializedLeague}
@@ -181,6 +229,9 @@ export default async function LigaDetallePage({
       currentUserId={userId}
       members={serializedMembers}
       standings={finalStandings}
+      winnerPredictions={serializedWinnerPredictions}
+      winnerPredictionHistories={serializedHistories}
+      teams={teams}
     />
   );
 }

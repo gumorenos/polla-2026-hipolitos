@@ -5,6 +5,7 @@ import { Match } from '@prisma/client';
 import { updateMatchDetailsAction } from '../../../lib/actions/admin';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle } from 'lucide-react';
+import { parseLimaDateTimeToUtc } from '../../../lib/utils/dates';
 
 export default function MatchesManagementClient({ matches }: { matches: Match[] }) {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
 
     const formData = new FormData(e.currentTarget);
     const kickoffLocal = formData.get('kickoffUtc') as string;
-    const kickoffUtc = kickoffLocal ? `${kickoffLocal}-05:00` : '';
+    const kickoffUtc = kickoffLocal ? parseLimaDateTimeToUtc(kickoffLocal) : '';
     const venue = formData.get('venue') as string;
     const city = formData.get('city') as string;
     const status = formData.get('status') as string;
@@ -125,7 +126,7 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                       <td colSpan={6} className="bg-bg-secondary p-4 border border-gold/20">
                         <form onSubmit={(e) => handleSubmit(e, match.id)} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
-                            <label className="block text-xs text-text-muted mb-1 uppercase font-bold">Kickoff (Hora Perú)</label>
+                            <label className="block text-xs text-text-muted mb-1 uppercase font-bold">Kickoff (Hora Perú / Lima)</label>
                             <input
                               type="datetime-local"
                               name="kickoffUtc"
@@ -133,6 +134,9 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                               defaultValue={getLimaDateTimeLocalString(match.kickoffUtc)}
                               className="w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-text-primary"
                             />
+                            <span className="text-[10px] text-text-muted mt-1 block">
+                              Almacenado UTC: <code className="bg-[#0f0f13] px-1 rounded">{new Date(match.kickoffUtc).toISOString()}</code>
+                            </span>
                           </div>
 
                           <div>

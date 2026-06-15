@@ -80,7 +80,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
   const getVisualState = (): MatchVisualState => {
     if (match.status === 'result') return 'finished';
     if (match.status === 'live') return 'live';
-    if (new Date(match.kickoffUtc) <= new Date()) return 'locked';
+    if (new Date(match.kickoffUtc) <= new Date()) return 'pending_result';
     return 'open';
   };
 

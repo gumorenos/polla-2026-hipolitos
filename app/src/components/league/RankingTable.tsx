@@ -5,7 +5,21 @@ import { Standing } from '../../types/domain';
 import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 interface RankingTableProps {
-  standings: Standing[];
+  standings: {
+    userId: string;
+    displayName: string;
+    points: number;
+    champPoints?: number;
+    matchPoints?: number;
+    exacts: number;
+    tendencies: number;
+    consolations: number;
+    misses: number;
+    rank: number;
+    previousRank: number;
+    predictionsSubmitted: number;
+    lastUpdated: string;
+  }[];
   currentUserId: string;
 }
 
@@ -95,9 +109,14 @@ export const RankingTable: React.FC<RankingTableProps> = ({ standings, currentUs
                   </div>
                 </div>
                 {/* Movement display on mobile */}
-                <div className="sm:hidden flex items-center gap-4">
-                  <RankArrow rank={s.rank} prev={s.previousRank} />
-                  <span className="font-mono text-base font-bold text-text-primary">{s.points} pts</span>
+                <div className="sm:hidden flex flex-col items-end gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <RankArrow rank={s.rank} prev={s.previousRank} />
+                    <span className="font-mono text-base font-bold text-text-primary">{s.points} pts</span>
+                  </div>
+                  <span className="text-[9px] text-text-muted font-mono">
+                    ⚽ {s.matchPoints ?? 0} partidos | 🏆 {s.champPoints ?? 0} campeón
+                  </span>
                 </div>
               </div>
 
@@ -116,11 +135,16 @@ export const RankingTable: React.FC<RankingTableProps> = ({ standings, currentUs
                 {/* Last Updated */}
                 <span className="col-span-1.5 font-mono text-xs text-text-muted">{formatDate(s.lastUpdated)}</span>
                 {/* Points & Movement */}
-                <div className="col-span-1 flex items-center justify-end gap-3.5">
-                  <span className="font-mono text-md font-bold text-text-primary">{s.points}</span>
-                  <div className="w-8 flex justify-center">
-                    <RankArrow rank={s.rank} prev={s.previousRank} />
+                <div className="col-span-1 flex flex-col items-end gap-0.5 justify-center">
+                  <div className="flex items-center gap-3.5">
+                    <span className="font-mono text-md font-bold text-text-primary">{s.points}</span>
+                    <div className="w-8 flex justify-center">
+                      <RankArrow rank={s.rank} prev={s.previousRank} />
+                    </div>
                   </div>
+                  <span className="text-[9px] text-text-muted font-mono leading-none">
+                    ⚽ {s.matchPoints ?? 0} | 🏆 {s.champPoints ?? 0}
+                  </span>
                 </div>
               </div>
             </div>

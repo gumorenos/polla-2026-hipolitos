@@ -15,6 +15,12 @@ interface UserFromDB {
   whatsapp: string | null;
   isSuperadmin: boolean;
   createdAt: Date;
+  memberships?: {
+    league: {
+      id: string;
+      name: string;
+    };
+  }[];
 }
 
 export default function UsersAdminClient({ users, currentUserId }: { users: UserFromDB[], currentUserId: string }) {
@@ -210,6 +216,8 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
               <th className="p-3">Nombre</th>
               <th className="p-3">Usuario</th>
               <th className="p-3">WhatsApp</th>
+              <th className="p-3">Competencias</th>
+              <th className="p-3 text-center">En Ranking?</th>
               <th className="p-3">Estado</th>
               <th className="p-3">Rol</th>
               <th className="p-3 text-right">Acciones</th>
@@ -218,7 +226,7 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
           <tbody className="divide-y divide-border">
             {filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-text-muted">
+                <td colSpan={8} className="p-8 text-center text-text-muted">
                   No se encontraron usuarios coincidentes.
                 </td>
               </tr>
@@ -241,15 +249,34 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                     <td className="p-3 font-mono text-[11px]">
                       {user.whatsapp || <span className="text-text-muted italic">-</span>}
                     </td>
+                    <td className="p-3 text-xs max-w-xs truncate">
+                      {user.memberships && user.memberships.length > 0 ? (
+                        user.memberships.map((m) => m.league.name).join(', ')
+                      ) : (
+                        <span className="text-text-muted italic">Ninguna</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-xs text-center font-bold">
+                      {user.status === 'approved' ? (
+                        <span className="text-green-400">Sí</span>
+                      ) : (
+                        <span className="text-text-muted">No</span>
+                      )}
+                    </td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[10px] ${
                         user.status === 'approved'
                           ? 'bg-green-500/10 text-green-400 border-green-500/30'
                           : user.status === 'pending'
                           ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                          : user.status === 'disabled'
+                          ? 'bg-gray-500/10 text-gray-400 border-gray-500/30'
                           : 'bg-red-500/10 text-red-400 border-red-500/30'
                       }`}>
-                        {user.status === 'approved' ? 'Aprobado' : user.status === 'pending' ? 'Pendiente' : user.status}
+                        {user.status === 'approved' ? 'Aprobado' :
+                         user.status === 'pending' ? 'Pendiente' :
+                         user.status === 'disabled' ? 'Desactivado' :
+                         user.status === 'rejected' ? 'Rechazado' : user.status}
                       </span>
                     </td>
                     <td className="p-3">

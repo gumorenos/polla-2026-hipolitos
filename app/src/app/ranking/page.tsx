@@ -14,6 +14,7 @@ export const metadata = {
 
 interface SearchParams {
   league?: string;
+  showDisabled?: string;
 }
 
 export default async function RankingPage({
@@ -61,11 +62,16 @@ export default async function RankingPage({
   const selectedLeagueId = sParams.league || defaultLeague.id;
   const selectedLeague = memberships.find(m => m.league.id === selectedLeagueId)?.league || defaultLeague;
 
+  const showDisabled = sParams.showDisabled === 'true' && session.user.isSuperadmin;
+
   // Fetch standings for selected league
   const standings = await prisma.standing.findMany({
     where: {
       leagueId: selectedLeague.id,
       block: 'global',
+      user: {
+        status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+      }
     },
     include: {
       user: {
@@ -82,15 +88,29 @@ export default async function RankingPage({
     }
   });
 
+  // Fetch winner predictions to calculate match vs champion points breakdown
+  const winnerPreds = await prisma.winnerPrediction.findMany({
+    where: { leagueId: selectedLeague.id },
+  });
+
+  const championPointsMap: Record<string, number> = {};
+  winnerPreds.forEach((wp) => {
+    championPointsMap[wp.userId] = wp.pointsEarned || 0;
+  });
+
   const serializedStandings = standings.map((s) => {
     const predictionsCount = s.user.predictions.length;
     const lastPrediction = s.user.predictions[0];
     const lastUpdated = lastPrediction ? lastPrediction.updatedAt.toISOString() : s.user.createdAt.toISOString();
+    const champPoints = championPointsMap[s.userId] || 0;
+    const matchPoints = s.points - champPoints;
 
     return {
       userId: s.userId,
       displayName: s.user.displayName || s.user.name,
       points: s.points,
+      champPoints,
+      matchPoints,
       exacts: s.exacts,
       tendencies: s.tendencies,
       consolations: s.consolations,
@@ -107,10 +127,13 @@ export default async function RankingPage({
     ? serializedStandings 
     : memberships
         .filter(m => m.leagueId === selectedLeague.id)
+        .filter(m => showDisabled ? (m.user.status === 'approved' || m.user.status === 'disabled') : m.user.status === 'approved')
         .map((m, index) => ({
           userId: m.userId,
           displayName: m.user.displayName || m.user.name || '',
           points: 0,
+          champPoints: 0,
+          matchPoints: 0,
           exacts: 0,
           tendencies: 0,
           consolations: 0,
@@ -139,7 +162,7 @@ export default async function RankingPage({
           {memberships.map((m) => (
             <Link
               key={m.league.id}
-              href={`/ranking?league=${m.league.id}`}
+              href={`/ranking?league=${m.league.id}${showDisabled ? '&showDisabled=true' : ''}`}
               className={`px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all border shrink-0 ${
                 selectedLeague.id === m.league.id
                   ? 'bg-gold-400/10 border-gold-400 text-gold-400'
@@ -150,6 +173,17 @@ export default async function RankingPage({
             </Link>
           ))}
         </div>
+
+        {session.user.isSuperadmin && (
+          <div className="flex justify-end pt-1">
+            <Link
+              href={`/ranking?league=${selectedLeague.id}&showDisabled=${!showDisabled}`}
+              className="text-[10px] font-mono border border-border-default bg-bg-secondary px-3 py-1.5 rounded-lg text-text-secondary hover:text-gold-400 transition-all uppercase"
+            >
+              {showDisabled ? 'Ocultar Desactivados' : 'Mostrar Desactivados'}
+            </Link>
+          </div>
+        )}
 
         {/* League Quick Stats Widget */}
         {finalStandings.length > 0 && (

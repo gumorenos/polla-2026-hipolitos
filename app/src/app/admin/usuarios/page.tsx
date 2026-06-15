@@ -21,6 +21,18 @@ export default async function AdminUsuariosPage() {
   }
 
   const users = await prisma.user.findMany({
+    include: {
+      memberships: {
+        include: {
+          league: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: { createdAt: 'desc' },
   });
 

@@ -67,6 +67,13 @@ export default async function AdminLigasPage() {
     createdAt: l.createdAt.toISOString(),
     owner: l.owner,
     _count: l._count,
+    championDeadline: l.championDeadline ? l.championDeadline.toISOString() : null,
+    championPoints: l.championPoints,
+    entryFee: l.entryFee,
+    currency: l.currency,
+    isDefault: l.isDefault,
+    isActive: l.isActive,
+    showOdds: l.showOdds,
     members: l.members.map((m) => ({
       userId: m.userId,
       role: m.role,

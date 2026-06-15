@@ -368,6 +368,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <span className="flex items-center gap-1.5 font-mono text-xs font-semibold text-rank-down">
               <span className="live-dot" /> LIVE
             </span>
+          ) : match.status !== 'result' && new Date(match.kickoffUtc) <= new Date() ? (
+            <span className="flex items-center gap-1.5 font-mono text-xs font-semibold text-yellow-400">
+              Resultado pendiente
+            </span>
           ) : match.status === 'soon' ? (
             <div className="flex items-center gap-1">
               <CountdownInline targetIso={match.kickoffUtc} />
@@ -375,7 +379,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           ) : (
             <span className="text-xs text-text-secondary font-mono flex items-center gap-1">
               <Calendar className="w-3 h-3" />
-              {fmtDate(match.kickoffUtc)} · {fmtTime(match.kickoffUtc)}
+              {fmtDate(match.kickoffUtc)} · {fmtTime(match.kickoffUtc)} (Hora Lima)
             </span>
           )}
         </div>

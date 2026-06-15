@@ -45,12 +45,16 @@ interface StandingData {
   userId: string;
   displayName: string;
   points: number;
+  champPoints?: number;
+  matchPoints?: number;
   exacts: number;
   tendencies: number;
   consolations: number;
   misses: number;
   rank: number;
   previousRank: number;
+  predictionsSubmitted: number;
+  lastUpdated: string;
 }
 
 interface LigaDetalleClientProps {

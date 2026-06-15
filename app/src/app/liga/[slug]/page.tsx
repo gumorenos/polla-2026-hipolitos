@@ -5,12 +5,19 @@ export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
 import { LigaDetalleClient } from '../../../components/league/LigaDetalleClient';
 
+interface SearchParams {
+  showDisabled?: string;
+}
+
 export default async function LigaDetallePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { slug } = await params;
+  const sParams = await searchParams;
 
   const session = await getCurrentSession();
   if (!session || !session.user) {
@@ -19,6 +26,7 @@ export default async function LigaDetallePage({
 
   const userId = session.user.id;
   const isSuperadmin = !!session.user.isSuperadmin;
+  const showDisabled = sParams.showDisabled === 'true' && isSuperadmin;
 
   // Query league detail
   const league = await prisma.league.findUnique({
@@ -48,7 +56,12 @@ export default async function LigaDetallePage({
 
   // Query all members
   const members = await prisma.leagueMember.findMany({
-    where: { leagueId: league.id },
+    where: {
+      leagueId: league.id,
+      user: {
+        status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+      }
+    },
     include: {
       user: true,
     },
@@ -62,13 +75,33 @@ export default async function LigaDetallePage({
     where: {
       leagueId: league.id,
       block: 'global',
+      user: {
+        status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+      }
     },
     include: {
-      user: true,
+      user: {
+        include: {
+          predictions: {
+            where: { leagueId: league.id },
+            orderBy: { updatedAt: 'desc' }
+          }
+        }
+      },
     },
     orderBy: {
       rank: 'asc',
     },
+  });
+
+  // Fetch winner predictions to calculate match vs champion points breakdown
+  const winnerPreds = await prisma.winnerPrediction.findMany({
+    where: { leagueId: league.id },
+  });
+
+  const championPointsMap: Record<string, number> = {};
+  winnerPreds.forEach((wp) => {
+    championPointsMap[wp.userId] = wp.pointsEarned || 0;
   });
 
   // Serialize records to plain JS structures for client boundary
@@ -95,17 +128,29 @@ export default async function LigaDetallePage({
     },
   }));
 
-  const serializedStandings = standings.map((s) => ({
-    userId: s.userId,
-    displayName: s.user.displayName || s.user.name,
-    points: s.points,
-    exacts: s.exacts,
-    tendencies: s.tendencies,
-    consolations: s.consolations,
-    misses: s.misses,
-    rank: s.rank,
-    previousRank: s.previousRank,
-  }));
+  const serializedStandings = standings.map((s) => {
+    const predictionsCount = s.user.predictions.length;
+    const lastPrediction = s.user.predictions[0];
+    const lastUpdated = lastPrediction ? lastPrediction.updatedAt.toISOString() : s.user.createdAt.toISOString();
+    const champPoints = championPointsMap[s.userId] || 0;
+    const matchPoints = s.points - champPoints;
+
+    return {
+      userId: s.userId,
+      displayName: s.user.displayName || s.user.name,
+      points: s.points,
+      champPoints,
+      matchPoints,
+      exacts: s.exacts,
+      tendencies: s.tendencies,
+      consolations: s.consolations,
+      misses: s.misses,
+      rank: s.rank,
+      previousRank: s.previousRank,
+      predictionsSubmitted: predictionsCount,
+      lastUpdated: lastUpdated,
+    };
+  });
 
   // If there are no standing rows computed yet, generate a fallback standing layout
   // from our members list showing 0 points.
@@ -116,12 +161,16 @@ export default async function LigaDetallePage({
           userId: m.userId,
           displayName: m.user.displayName || m.user.name,
           points: 0,
+          champPoints: 0,
+          matchPoints: 0,
           exacts: 0,
           tendencies: 0,
           consolations: 0,
           misses: 0,
           rank: index + 1,
           previousRank: index + 1,
+          predictionsSubmitted: 0,
+          lastUpdated: new Date().toISOString(),
         }));
 
   return (
@@ -135,4 +184,5 @@ export default async function LigaDetallePage({
     />
   );
 }
+
 

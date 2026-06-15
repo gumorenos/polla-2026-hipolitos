@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { Shield, Settings, Archive, Trash2, ArrowLeft, Users, X, ArrowUp, ArrowDown, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { archiveLeagueAction, deleteLeagueAction, addMemberAction, manageMemberAction } from '../../lib/actions/leagues';
+import { archiveLeagueAction, deleteLeagueAction, addMemberAction, manageMemberAction, updateLeagueSettingsAction } from '../../lib/actions/leagues';
+import { parseLimaDateTimeToUtc, getLimaDateTimeLocalString } from '../../lib/utils/dates';
 
 interface LeagueMemberData {
   userId: string;
@@ -33,6 +34,13 @@ interface LeagueAdminData {
     members: number;
   };
   members: LeagueMemberData[];
+  championDeadline: string | null;
+  championPoints: number;
+  entryFee: number;
+  currency: string;
+  isDefault: boolean;
+  isActive: boolean;
+  showOdds: boolean;
 }
 
 interface ApprovedUserData {
@@ -59,7 +67,55 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
   const [modalError, setModalError] = useState<string | null>(null);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
 
+  const [settingsLeagueId, setSettingsLeagueId] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
+
   const activeLeague = leagues.find((l) => l.id === activeLeagueId);
+  const settingsLeague = leagues.find((l) => l.id === settingsLeagueId);
+
+  const handleSaveSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!settingsLeagueId) return;
+
+    setIsSubmitting(true);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get('name') as string;
+    const isDefault = formData.get('isDefault') === 'true';
+    const isActive = formData.get('isActive') === 'true';
+    const entryFee = parseFloat(formData.get('entryFee') as string) || 0;
+    const currency = formData.get('currency') as string;
+    const showOdds = formData.get('showOdds') === 'true';
+    const championPoints = parseInt(formData.get('championPoints') as string) || 10;
+    const localDeadline = formData.get('championDeadline') as string;
+    const championDeadline = localDeadline ? parseLimaDateTimeToUtc(localDeadline) : null;
+
+    const res = await updateLeagueSettingsAction(settingsLeagueId, {
+      name,
+      isDefault,
+      isActive,
+      entryFee,
+      currency,
+      showOdds,
+      championPoints,
+      championDeadline,
+    });
+
+    setIsSubmitting(false);
+    if (res.error) {
+      setSettingsError(res.error);
+    } else {
+      setSettingsSuccess('Configuración guardada exitosamente.');
+      setTimeout(() => {
+        setSettingsLeagueId(null);
+        setSettingsSuccess(null);
+        router.refresh();
+      }, 1000);
+    }
+  };
 
   const handleArchive = async (leagueId: string, currentStatus: string) => {
     const isArchived = currentStatus === 'archived';
@@ -239,6 +295,14 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                         className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
                       >
                         <Users className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSettingsLeagueId(l.id)}
+                        title="Configurar Competencia"
+                        className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
+                      >
+                        <Settings className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
@@ -434,6 +498,191 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
           </div>
         </div>
       )}
+
+      {/* Settings Configuration Modal */}
+      {settingsLeague && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]">
+          <div className="card-base p-6 max-w-xl w-full border-border-active space-y-4 relative flex flex-col max-h-[90vh]">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsLeagueId(null);
+                setSettingsError(null);
+                setSettingsSuccess(null);
+              }}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h3 className="font-display text-2xl tracking-wide text-text-primary uppercase">
+                CONFIGURAR: {settingsLeague.name}
+              </h3>
+              <p className="text-xs text-text-secondary">
+                Modifica las reglas, deadlines y cuotas de la competencia.
+              </p>
+            </div>
+
+            {settingsError && (
+              <div className="text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2">
+                <Shield className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <span>{settingsError}</span>
+              </div>
+            )}
+            {settingsSuccess && (
+              <div className="text-xs text-green-400 bg-green-400/15 border border-green-500/30 p-3 rounded-lg flex items-start gap-2">
+                <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
+                <span>{settingsSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="space-y-4 overflow-y-auto pr-1">
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                  Nombre de la Competencia
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  defaultValue={settingsLeague.name}
+                  className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Competencia Principal (Predeterminada)
+                  </label>
+                  <select
+                    name="isDefault"
+                    defaultValue={String(settingsLeague.isDefault)}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  >
+                    <option value="true">Sí (Principal)</option>
+                    <option value="false">No (Secundaria)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Estado de Actividad
+                  </label>
+                  <select
+                    name="isActive"
+                    defaultValue={String(settingsLeague.isActive)}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  >
+                    <option value="true">Activa</option>
+                    <option value="false">Inactiva (Oculta)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Cuota de Inscripción (Fee)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="entryFee"
+                    required
+                    defaultValue={settingsLeague.entryFee}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Moneda
+                  </label>
+                  <input
+                    type="text"
+                    name="currency"
+                    required
+                    defaultValue={settingsLeague.currency}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Puntos por Acertar Campeón
+                  </label>
+                  <input
+                    type="number"
+                    name="championPoints"
+                    required
+                    defaultValue={settingsLeague.championPoints}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                    Mostrar Cuotas de Mercado
+                  </label>
+                  <select
+                    name="showOdds"
+                    defaultValue={String(settingsLeague.showOdds)}
+                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  >
+                    <option value="true">Mostrar</option>
+                    <option value="false">Ocultar</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                  Límite para elegir Campeón (Hora Lima)
+                </label>
+                <input
+                  type="datetime-local"
+                  name="championDeadline"
+                  defaultValue={settingsLeague.championDeadline ? getLimaDateTimeLocalString(settingsLeague.championDeadline) : ''}
+                  className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                />
+                <p className="text-[10px] text-text-muted">
+                  Si se deja vacío, vencerá automáticamente al inicio del primer partido de 16avos de final.
+                </p>
+                {settingsLeague.championDeadline && (
+                  <p className="text-[10px] text-text-muted">
+                    Valor almacenado actual (UTC): <code className="bg-bg-secondary px-1 py-0.5 rounded">{settingsLeague.championDeadline}</code>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsLeagueId(null);
+                    setSettingsError(null);
+                    setSettingsSuccess(null);
+                  }}
+                  className="btn-secondary px-4 py-2 text-xs font-mono uppercase tracking-wider"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-gold px-4 py-2 text-xs font-mono uppercase tracking-wider flex items-center gap-1.5"
+                >
+                  {isSubmitting ? 'Guardando...' : 'Guardar Configuración'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
-};;
+};

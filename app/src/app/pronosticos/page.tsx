@@ -230,12 +230,13 @@ export default async function PronosticosPage() {
     isDefault: m.league.isDefault,
     championDeadline: m.league.championDeadline ? m.league.championDeadline.toISOString() : null,
     championPoints: m.league.championPoints,
-    showOdds: m.league.showOdds,
+    showOdds: m.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true',
   }));
 
   const serializedWinnerPredictions = winnerPredictions.map(wp => ({
     leagueId: wp.leagueId,
     teamCode: wp.teamCode,
+    createdAt: wp.createdAt.toISOString(),
   }));
 
   return (

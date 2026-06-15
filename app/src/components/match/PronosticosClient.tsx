@@ -25,6 +25,7 @@ interface PronosticosClientProps {
   winnerPredictions: {
     leagueId: string;
     teamCode: string;
+    createdAt: string;
   }[];
   globalOdds: Record<string, {
     homeOdds: number;
@@ -119,10 +120,6 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     return leagues.find(l => l.id === activeLeagueId);
   }, [leagues, activeLeagueId]);
 
-  const isWinnerLocked = useMemo(() => {
-    if (!activeLeague?.championDeadline) return false;
-    return new Date(activeLeague.championDeadline) <= new Date();
-  }, [activeLeague]);
 
   const realTeams = useMemo(() => {
     return teams.filter(t => t.code.length === 3 && !/^\d/.test(t.code) && !/^[WR]/.test(t.code));
@@ -245,58 +242,109 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       )}
 
       {/* Tournament Winner Prediction Widget */}
-      {activeLeague && (
-        <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
-          <div className="flex justify-between items-center border-b border-border-subtle pb-2">
-            <h3 className="font-display text-lg tracking-wide uppercase text-gold-400 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-gold-400" /> Campeón de la Copa Mundial 2026
-            </h3>
-            {isWinnerLocked ? (
-              <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
-                Bloqueado
-              </span>
-            ) : (
-              <span className="text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" /> Abierto
-              </span>
-            )}
-          </div>
+      {activeLeague && (() => {
+        const hasSubmitted = !!localWinners[activeLeagueId];
+        const submission = winnerPredictions.find(wp => wp.leagueId === activeLeagueId);
+        const submittedAtRaw = submission?.createdAt || null;
+        const submittedAtStr = submittedAtRaw 
+          ? new Date(submittedAtRaw).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)'
+          : '';
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-xs text-text-secondary">
-                Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
-              </p>
-              {activeLeague.championDeadline && (
-                <p className="text-[10px] text-text-muted font-mono">
-                  Límite de envío: {new Date(activeLeague.championDeadline).toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Perú)
+        const code = localWinners[activeLeagueId];
+        const teamObj = teams.find(t => t.code === code);
+        const selectedTeamName = teamObj ? teamObj.name : (code || '');
+
+        let effectiveDeadline = activeLeague.championDeadline ? new Date(activeLeague.championDeadline) : null;
+        if (!effectiveDeadline) {
+          const r32Matches = matches.filter(m => m.phase === 'r32');
+          if (r32Matches.length > 0) {
+            const times = r32Matches.map(m => new Date(m.kickoffUtc).getTime());
+            effectiveDeadline = new Date(Math.min(...times));
+          }
+        }
+        const isDeadlinePassed = effectiveDeadline ? new Date() > effectiveDeadline : false;
+
+        return (
+          <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
+            <div className="flex justify-between items-center border-b border-border-subtle pb-2">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-text-muted">Predicción principal</span>
+                <h3 className="font-display text-lg tracking-wide uppercase text-gold-400 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-gold-400" /> Campeón del Mundial
+                </h3>
+              </div>
+              {hasSubmitted ? (
+                <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
+                  Predicción bloqueada
+                </span>
+              ) : isDeadlinePassed ? (
+                <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
+                  Plazo Cerrado
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full uppercase font-bold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" /> Abierto
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-text-secondary">
+                  Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
                 </p>
-              )}
+                {!hasSubmitted && !isDeadlinePassed && (
+                  <p className="text-xs text-yellow-400 font-semibold animate-pulse">
+                    Elige una vez. No podrás cambiar tu elección.
+                  </p>
+                )}
+                {effectiveDeadline && (
+                  <p className="text-[10px] text-text-muted font-mono">
+                    Límite de envío: {effectiveDeadline.toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Hora Lima)
+                  </p>
+                )}
+                {hasSubmitted && submittedAtStr && (
+                  <p className="text-[10px] text-text-muted font-mono">
+                    Enviado el: {submittedAtStr}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <select
+                  disabled={hasSubmitted || isDeadlinePassed || savingWinner}
+                  value={localWinners[activeLeagueId] || ''}
+                  onChange={(e) => handleSaveWinner(e.target.value)}
+                  className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75"
+                >
+                  <option value="">-- Elige Campeón --</option>
+                  {realTeams.map(t => (
+                    <option key={t.code} value={t.code}>{t.name} (@{t.code})</option>
+                  ))}
+                </select>
+
+                {savingWinner && (
+                  <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <select
-                disabled={isWinnerLocked || savingWinner}
-                value={localWinners[activeLeagueId] || ''}
-                onChange={(e) => handleSaveWinner(e.target.value)}
-                className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-50"
-              >
-                <option value="">-- Elige Campeón --</option>
-                {realTeams.map(t => (
-                  <option key={t.code} value={t.code}>{t.name} (@{t.code})</option>
-                ))}
-              </select>
+            {hasSubmitted && (
+              <p className="text-xs text-green-400 font-semibold mt-1">
+                Predicción registrada: <strong className="text-gold-400 uppercase">{selectedTeamName}</strong>.
+              </p>
+            )}
+            {!hasSubmitted && isDeadlinePassed && (
+              <p className="text-xs text-red-400 font-semibold mt-1">
+                El plazo para elegir campeón ya cerró.
+              </p>
+            )}
 
-              {savingWinner && (
-                <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              )}
-            </div>
+            {winnerError && <p className="text-xs text-red-400 font-semibold mt-1">{winnerError}</p>}
+            {winnerSuccess && <p className="text-xs text-green-400 font-semibold mt-1">{winnerSuccess}</p>}
           </div>
-
-          {winnerError && <p className="text-xs text-red-400 font-semibold mt-1">{winnerError}</p>}
-          {winnerSuccess && <p className="text-xs text-green-400 font-semibold mt-1">{winnerSuccess}</p>}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Filter Options */}
       <div className="space-y-4">

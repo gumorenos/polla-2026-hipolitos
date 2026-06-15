@@ -188,10 +188,10 @@ export default async function Home() {
   // Calculate prize pool (Pozo)
   const estimatedPrizePool = league.prizePoolOverride ?? (approvedMembersCount * league.entryFee);
 
-  // Next upcoming match
+  // Next upcoming match (chronologically after current time)
   const nextMatch = await prisma.match.findFirst({
     where: {
-      status: { in: ['open', 'soon'] },
+      kickoffUtc: { gt: new Date() },
     },
     orderBy: { kickoffUtc: 'asc' },
   });
@@ -256,14 +256,14 @@ export default async function Home() {
                       hour: '2-digit',
                       minute: '2-digit',
                       timeZone: 'America/Lima',
-                    })}
+                    })} (Hora Lima)
                   </span>
                 </div>
                 <p className="text-xs text-text-muted">{nextMatch.venue} · {nextMatch.city}</p>
               </div>
             ) : (
               <div className="card-base p-6 text-center text-text-muted text-sm">
-                No hay partidos programados próximamente.
+                No hay próximos partidos programados.
               </div>
             )}
 

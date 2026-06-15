@@ -204,7 +204,7 @@ const MATCHES: RawMatch[] = [
 
   // GROUP F
   { id: 'gF1', phase: 'groups', group: 'F', jornada: 'Fecha 1', home: 'NED', away: 'JPN', vk: 'DAL', kickoff: '2026-06-14T20:00:00Z' },
-  { id: 'gF2', phase: 'groups', group: 'F', jornada: 'Fecha 1', home: 'SWE', away: 'TUN', vk: 'MTY', kickoff: '2026-06-15T03:00:00Z' },
+  { id: 'gF2', phase: 'groups', group: 'F', jornada: 'Fecha 1', home: 'SWE', away: 'TUN', vk: 'MTY', kickoff: '2026-06-15T02:00:00Z' },
   { id: 'gF3', phase: 'groups', group: 'F', jornada: 'Fecha 2', home: 'NED', away: 'SWE', vk: 'HOU', kickoff: '2026-06-20T17:00:00Z' },
   { id: 'gF4', phase: 'groups', group: 'F', jornada: 'Fecha 2', home: 'TUN', away: 'JPN', vk: 'MTY', kickoff: '2026-06-21T05:00:00Z' },
   { id: 'gF5', phase: 'groups', group: 'F', jornada: 'Fecha 3', home: 'JPN', away: 'SWE', vk: 'DAL', kickoff: '2026-06-25T23:00:00Z' },

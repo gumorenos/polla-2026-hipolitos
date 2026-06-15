@@ -3,15 +3,7 @@
 import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { revalidatePath } from 'next/cache';
-
-/**
- * Checks if a match is locked for predictions (i.e. kickoff has passed or match is live/finished).
- */
-function isMatchLocked(kickoffUtc: Date | string, status: string): boolean {
-  const kickoffDate = new Date(kickoffUtc);
-  const now = new Date();
-  return kickoffDate <= now || status === 'live' || status === 'result';
-}
+import { isMatchLocked } from '../utils/dates';
 
 /**
  * Saves or updates a prediction for a match.
@@ -181,8 +173,30 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
       return { error: 'La polla no existe.' };
     }
 
-    if (league.championDeadline && new Date() > new Date(league.championDeadline)) {
-      return { error: 'El tiempo límite para predecir al campeón de la polla ha expirado.' };
+    // Check if user already submitted a champion prediction (locked after first submission)
+    const existing = await prisma.winnerPrediction.findUnique({
+      where: {
+        userId_leagueId: { userId, leagueId }
+      }
+    });
+    if (existing) {
+      return { error: 'Ya has registrado tu predicción de campeón y no puedes cambiarla.' };
+    }
+
+    // Determine deadline
+    let deadline = league.championDeadline;
+    if (!deadline) {
+      const firstR32 = await prisma.match.findFirst({
+        where: { phase: 'r32' },
+        orderBy: { kickoffUtc: 'asc' },
+      });
+      if (firstR32) {
+        deadline = firstR32.kickoffUtc;
+      }
+    }
+
+    if (deadline && new Date() > deadline) {
+      return { error: 'El plazo para elegir campeón ya cerró.' };
     }
 
     const membership = await prisma.leagueMember.findUnique({
@@ -192,15 +206,8 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
       return { error: 'No eres miembro de esta polla.' };
     }
 
-    const winnerPrediction = await prisma.winnerPrediction.upsert({
-      where: {
-        userId_leagueId: { userId, leagueId }
-      },
-      update: {
-        teamCode,
-        updatedAt: new Date(),
-      },
-      create: {
+    const winnerPrediction = await prisma.winnerPrediction.create({
+      data: {
         userId,
         leagueId,
         teamCode,

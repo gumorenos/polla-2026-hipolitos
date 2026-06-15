@@ -69,3 +69,15 @@ To protect third-party API keys from depletion while giving users a way to query
 Two scripts are mapped in `package.json` to be triggered on Raspberry Pi 5:
 - **`npm run odds:refresh-upcoming`**: Scans matches kicking off in the next hour and fetches global snapshots.
 - **`npm run h2h:fetch-missing`**: Populates historical H2H caches for matches missing H2H entries.
+
+### Crontab Examples (Raspberry Pi 5)
+
+We recommend setting up `cron` on the Raspberry Pi 5 to automate these refreshes:
+
+```bash
+# Refresh global odds for upcoming matches every 15 minutes
+*/15 * * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && npm run odds:refresh-upcoming >> /home/gumorenos/logs/odds-refresh.log 2>&1
+
+# Fetch missing H2H data daily at 4:00 AM
+0 4 * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && npm run h2h:fetch-missing >> /home/gumorenos/logs/h2h-refresh.log 2>&1
+```

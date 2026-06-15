@@ -158,7 +158,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   // Visual Probability & Odds module
   const renderOddsModule = () => {
     if (!showOdds) return null;
-    if (!globalOdds && !userOdds) return null;
+    if (!globalOdds && !userOdds) {
+      return (
+        <div className="mt-4 pt-3.5 border-t border-border-subtle/50 text-[10px] text-text-muted italic">
+          Probabilidades no disponibles
+        </div>
+      );
+    }
 
     return (
       <div className="mt-4 pt-3.5 border-t border-border-subtle/50 space-y-3">
@@ -287,7 +293,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   // Collapsible Head-to-Head history module
   const renderH2HModule = () => {
-    if (!h2h) return null;
+    if (!h2h) {
+      return (
+        <div className="mt-3 pt-2.5 border-t border-border-subtle/50 text-[10px] text-text-muted italic">
+          Historial no disponible
+        </div>
+      );
+    }
 
     const homePct = h2h.totalMatches > 0 ? (h2h.homeWins / h2h.totalMatches) * 100 : 0;
     const drawPct = h2h.totalMatches > 0 ? (h2h.draws / h2h.totalMatches) * 100 : 0;

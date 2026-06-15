@@ -515,7 +515,7 @@ async function main() {
       currency: 'PEN',
       autoJoin: true,
       inviteEnabled: true,
-      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championDeadline: new Date('2026-06-28T18:59:00.000Z'),
       championPoints: 10,
     },
     create: {
@@ -531,7 +531,7 @@ async function main() {
       currency: 'PEN',
       autoJoin: true,
       inviteEnabled: true,
-      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championDeadline: new Date('2026-06-28T18:59:00.000Z'),
       championPoints: 10,
       createdAt: new Date(),
     },

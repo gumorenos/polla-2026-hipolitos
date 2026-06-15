@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation';
 import { OddsAdminClient } from './OddsAdminClient';
 import { ArrowLeft, BarChart2 } from 'lucide-react';
 import Link from 'next/link';
+import { lastOddsError } from '../../../lib/odds/providers';
+import { lastH2hError } from '../../../lib/odds/h2h';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -101,10 +103,33 @@ export default async function AdminOddsPage() {
       : null,
   }));
 
+  // Fetch latest global odds snapshot (that is not simulated, so provider !== 'simulator')
+  const latestOddsSnapshot = await prisma.oddsSnapshot.findFirst({
+    where: {
+      visibility: 'global',
+      provider: { not: 'simulator' },
+    },
+    orderBy: { capturedAt: 'desc' },
+    select: { capturedAt: true },
+  });
+
+  // Fetch latest H2H snapshot (that is not simulated)
+  const latestH2hSnapshot = await prisma.headToHeadSnapshot.findFirst({
+    where: {
+      provider: { not: 'simulator' },
+    },
+    orderBy: { capturedAt: 'desc' },
+    select: { capturedAt: true },
+  });
+
+  const lastSuccessfulOdds = latestOddsSnapshot?.capturedAt ? latestOddsSnapshot.capturedAt.toISOString() : null;
+  const lastSuccessfulH2h = latestH2hSnapshot?.capturedAt ? latestH2hSnapshot.capturedAt.toISOString() : null;
+
   const apiStatus = {
     oddsApiIo: process.env.ODDS_API_IO_ENABLED === 'true' && !!process.env.ODDS_API_IO_KEY,
     theOddsApi: process.env.THE_ODDS_API_ENABLED === 'true' && !!process.env.THE_ODDS_API_KEY,
     apiFootball: process.env.API_FOOTBALL_ENABLED === 'true' && !!process.env.API_FOOTBALL_KEY,
+    simulatedAllowed: process.env.ODDS_ALLOW_SIMULATED_DATA === 'true',
   };
 
   return (
@@ -130,7 +155,14 @@ export default async function AdminOddsPage() {
         </div>
 
         {/* Client UI Panel */}
-        <OddsAdminClient matches={serializedMatches} apiStatus={apiStatus} />
+        <OddsAdminClient
+          matches={serializedMatches}
+          apiStatus={apiStatus}
+          lastSuccessfulOdds={lastSuccessfulOdds}
+          lastSuccessfulH2h={lastSuccessfulH2h}
+          lastOddsError={lastOddsError}
+          lastH2hError={lastH2hError}
+        />
       </div>
     </>
   );

@@ -387,6 +387,21 @@ async function main() {
 
   // 4. Seed Default/Main Pool
   console.log('Sembrando competencia por defecto...');
+  const existingLeague = await prisma.league.findUnique({
+    where: { slug: 'hipolitos-2026' },
+  });
+
+  const defaultDeadline = new Date('2026-06-28T18:59:00.000Z');
+  let deadlineToUse = defaultDeadline;
+
+  if (existingLeague && existingLeague.championDeadline) {
+    const existingTime = existingLeague.championDeadline.getTime();
+    const oldPlaceholderTime = new Date('2026-06-11T20:00:00Z').getTime();
+    if (existingTime !== oldPlaceholderTime) {
+      deadlineToUse = existingLeague.championDeadline;
+    }
+  }
+
   const league = await prisma.league.upsert({
     where: { slug: 'hipolitos-2026' },
     update: {
@@ -397,7 +412,7 @@ async function main() {
       currency: 'PEN',
       autoJoin: true,
       inviteEnabled: true,
-      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championDeadline: deadlineToUse,
       championPoints: 10,
     },
     create: {
@@ -413,7 +428,7 @@ async function main() {
       currency: 'PEN',
       autoJoin: true,
       inviteEnabled: true,
-      championDeadline: new Date('2026-06-11T20:00:00Z'),
+      championDeadline: defaultDeadline,
       championPoints: 10,
       createdAt: new Date(),
     },

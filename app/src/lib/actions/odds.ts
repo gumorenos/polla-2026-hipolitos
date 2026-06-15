@@ -82,6 +82,10 @@ export async function canUserRefreshOddsTodayAction() {
 
 // Refresh odds requested by user (private snapshot, limit 1 per day)
 export async function refreshUserOddsAction(matchId: string) {
+  if (process.env.ODDS_MANUAL_USER_REFRESH_ENABLED !== 'true') {
+    return { error: 'La actualización manual de probabilidades está desactivada.' };
+  }
+
   const session = await getCurrentSession();
   if (!session || !session.user) {
     return { error: 'No autorizado. Por favor inicia sesión.' };
@@ -118,6 +122,9 @@ export async function refreshUserOddsAction(matchId: string) {
   try {
     // Fetch odds from API or simulator
     const odds = await getMatchWinnerOdds(matchId);
+    if (!odds) {
+      return { error: 'No se pudieron obtener probabilidades del mercado reales en este momento.' };
+    }
 
     // Save snapshot and log usage in an atomic transaction to avoid race conditions
     await prisma.$transaction(async (tx) => {
@@ -214,6 +221,9 @@ export async function refreshGlobalOddsAction(matchId?: string) {
     if (matchId) {
       // Refresh single match
       const odds = await getMatchWinnerOdds(matchId);
+      if (!odds) {
+        return { error: 'No se pudieron obtener probabilidades del mercado reales para este partido.' };
+      }
       await saveOddsSnapshot(matchId, odds, { visibility: 'global' });
     } else {
       // Scan all open / soon matches
@@ -226,7 +236,9 @@ export async function refreshGlobalOddsAction(matchId?: string) {
       for (const m of matches) {
         try {
           const odds = await getMatchWinnerOdds(m.id);
-          await saveOddsSnapshot(m.id, odds, { visibility: 'global' });
+          if (odds) {
+            await saveOddsSnapshot(m.id, odds, { visibility: 'global' });
+          }
           // Sleep slightly if real APIs are enabled
           if (process.env.ODDS_API_IO_ENABLED === 'true' || process.env.THE_ODDS_API_ENABLED === 'true') {
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -267,6 +279,9 @@ export async function refreshH2HAction(matchId: string) {
 
   try {
     const stats = await getHeadToHeadStats(matchId);
+    if (!stats) {
+      return { error: 'No se pudieron obtener estadísticas H2H reales para este partido.' };
+    }
     const snapshot = await saveHeadToHeadSnapshot(matchId, stats);
     revalidatePath('/pronosticos');
     revalidatePath('/');
@@ -305,8 +320,10 @@ export async function fetchMissingH2HAction() {
     for (const m of matches) {
       try {
         const stats = await getHeadToHeadStats(m.id);
-        await saveHeadToHeadSnapshot(m.id, stats);
-        count++;
+        if (stats) {
+          await saveHeadToHeadSnapshot(m.id, stats);
+          count++;
+        }
 
         if (process.env.API_FOOTBALL_ENABLED === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));

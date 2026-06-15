@@ -84,6 +84,7 @@ export default async function PronosticosPage() {
   // Fetch all odds snapshots for this user or global
   const oddsSnapshots = await prisma.oddsSnapshot.findMany({
     where: {
+      provider: { not: 'simulator' },
       OR: [
         { visibility: 'global' },
         { visibility: 'user_private', userId },
@@ -150,7 +151,11 @@ export default async function PronosticosPage() {
   }
 
   // Fetch H2H snapshots
-  const h2hSnapshots = await prisma.headToHeadSnapshot.findMany({});
+  const h2hSnapshots = await prisma.headToHeadSnapshot.findMany({
+    where: {
+      provider: { not: 'simulator' },
+    },
+  });
   interface FormattedH2H {
     totalMatches: number;
     homeWins: number;

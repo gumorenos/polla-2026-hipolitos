@@ -14,7 +14,10 @@
     "prisma:seed": "prisma db seed",
     "prisma:seed-demo": "tsx prisma/seed-demo.ts",
     "odds:refresh-upcoming": "tsx scripts/refresh-odds.ts",
-    "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts"
+    "odds:refresh-match": "tsx scripts/refresh-odds.ts",
+    "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts",
+    "h2h:fetch-match": "tsx scripts/fetch-h2h.ts",
+    "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

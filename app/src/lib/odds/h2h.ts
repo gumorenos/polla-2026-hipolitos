@@ -149,8 +149,19 @@ async function lookupTeamId(code: string, apiKey: string): Promise<number | null
   return null;
 }
 
+// Track provider status/errors in-memory on the server
+export let lastH2hError: string | null = null;
+export function setLastH2hError(err: string | null) {
+  lastH2hError = err;
+}
+
+function redactApiKey(msg: string, key?: string): string {
+  if (!key) return msg;
+  return msg.split(key).join('REDACTED');
+}
+
 // Get Head to Head stats for a match
-export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadStats> {
+export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadStats | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
   });
@@ -163,8 +174,11 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
   const apiKey = process.env.API_FOOTBALL_KEY;
 
   if (!isEnabled || !apiKey) {
-    // Return simulated stats if not enabled
-    return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+    }
+    setLastH2hError('API-Football H2H no está habilitado o no está configurado.');
+    return null;
   }
 
   try {
@@ -183,8 +197,13 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     }
 
     if (!homeId || !awayId) {
-      console.warn(`Could not resolve API-Football IDs for ${match.homeTeamCode} or ${match.awayTeamCode}. Using simulation.`);
-      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      const msg = `Could not resolve API-Football IDs for ${match.homeTeamCode} or ${match.awayTeamCode}`;
+      console.warn(msg);
+      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+        return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      }
+      setLastH2hError(msg);
+      return null;
     }
 
     // 3. Query H2H endpoint
@@ -197,14 +216,24 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     });
 
     if (!res.ok) {
-      console.warn(`API-Football H2H request failed with status ${res.status}. Using simulation.`);
-      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      const msg = `API-Football H2H request failed with status ${res.status}`;
+      console.warn(msg);
+      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+        return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      }
+      setLastH2hError(msg);
+      return null;
     }
 
     const data = await res.json();
     if (!data || !data.response || !Array.isArray(data.response)) {
-      console.warn('API-Football H2H response format invalid. Using simulation.');
-      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      const msg = 'API-Football H2H response format invalid';
+      console.warn(msg);
+      if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+        return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+      }
+      setLastH2hError(msg);
+      return null;
     }
 
     const fixtures = data.response as ApiFootballFixture[];
@@ -256,6 +285,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
       }
     });
 
+    setLastH2hError(null);
     return {
       totalMatches,
       homeWins,
@@ -267,8 +297,14 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
       provider: 'api-football',
     };
   } catch (error) {
-    console.error('Error fetching Head-to-Head from API-Football:', error);
-    return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+    const rawMsg = `Error fetching Head-to-Head from API-Football: ${error instanceof Error ? error.message : String(error)}`;
+    const msg = redactApiKey(rawMsg, apiKey);
+    console.error(msg);
+    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+    }
+    setLastH2hError(msg);
+    return null;
   }
 }
 

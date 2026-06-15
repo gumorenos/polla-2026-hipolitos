@@ -135,9 +135,20 @@ export function generateSimulatedOdds(homeCode: string, awayCode: string): Match
     awayOdds: Math.round(awayOdds * 100) / 100,
     bookmaker: 'LaPolla 2026 Simulator',
     provider: 'simulator',
-    sourceType: 'api',
+    sourceType: 'manual',
     rawPayload: JSON.stringify({ simulated: true, generatedAt: new Date() }),
   };
+}
+
+// Track provider status/errors in-memory on the server
+export let lastOddsError: string | null = null;
+export function setLastOddsError(err: string | null) {
+  lastOddsError = err;
+}
+
+function redactApiKey(msg: string, key?: string): string {
+  if (!key) return msg;
+  return msg.split(key).join('REDACTED');
 }
 
 // Fetch odds from Odds-API.io (Primary)
@@ -146,11 +157,14 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=football`;
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) {
-      console.warn(`Odds-API.io responded with status ${res.status}`);
+      const msg = `Odds-API.io responded with status ${res.status}`;
+      console.warn(msg);
+      setLastOddsError(msg);
       return null;
     }
     const data = await res.json();
     if (!data || !Array.isArray(data.data)) {
+      setLastOddsError('Odds-API.io response does not contain data array');
       return null;
     }
 
@@ -163,6 +177,7 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     });
 
     if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+      setLastOddsError(`Odds-API.io event not found for ${homeCode} vs ${awayCode}`);
       return null;
     }
 
@@ -170,6 +185,7 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     const bookmaker = event.bookmakers[0];
     const market = bookmaker.markets?.find((m) => m.key === 'h2h' || m.key === '1x2');
     if (!market || !market.outcomes || market.outcomes.length < 3) {
+      setLastOddsError(`Odds-API.io outcomes not found for ${homeCode} vs ${awayCode}`);
       return null;
     }
 
@@ -188,6 +204,7 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     }
 
     if (homeOdds && drawOdds && awayOdds) {
+      setLastOddsError(null);
       return {
         homeOdds,
         drawOdds,
@@ -197,9 +214,14 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
         sourceType: 'api',
         rawPayload: JSON.stringify(event),
       };
+    } else {
+      setLastOddsError(`Odds-API.io could not extract home, draw or away odds for ${homeCode} vs ${awayCode}`);
     }
   } catch (error) {
-    console.error('Error in fetchOddsApiIo:', error);
+    const rawMsg = `Error in fetchOddsApiIo: ${error instanceof Error ? error.message : String(error)}`;
+    const msg = redactApiKey(rawMsg, apiKey);
+    console.error(msg);
+    setLastOddsError(msg);
   }
   return null;
 }
@@ -211,11 +233,14 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=eu&markets=h2h`;
     const res = await fetch(url);
     if (!res.ok) {
-      console.warn(`The Odds API responded with status ${res.status}`);
+      const msg = `The Odds API responded with status ${res.status}`;
+      console.warn(msg);
+      setLastOddsError(msg);
       return null;
     }
     const data = await res.json();
     if (!Array.isArray(data)) {
+      setLastOddsError('The Odds API response is not an array');
       return null;
     }
 
@@ -227,12 +252,14 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     });
 
     if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+      setLastOddsError(`The Odds API event not found for ${homeCode} vs ${awayCode}`);
       return null;
     }
 
     const bookmaker = event.bookmakers[0];
     const market = bookmaker.markets?.find((m) => m.key === 'h2h');
     if (!market || !market.outcomes || market.outcomes.length < 3) {
+      setLastOddsError(`The Odds API outcomes not found for ${homeCode} vs ${awayCode}`);
       return null;
     }
 
@@ -251,6 +278,7 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     }
 
     if (homeOdds && drawOdds && awayOdds) {
+      setLastOddsError(null);
       return {
         homeOdds,
         drawOdds,
@@ -260,15 +288,20 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
         sourceType: 'api',
         rawPayload: JSON.stringify(event),
       };
+    } else {
+      setLastOddsError(`The Odds API could not extract home, draw or away odds for ${homeCode} vs ${awayCode}`);
     }
   } catch (error) {
-    console.error('Error in fetchTheOddsApi:', error);
+    const rawMsg = `Error in fetchTheOddsApi: ${error instanceof Error ? error.message : String(error)}`;
+    const msg = redactApiKey(rawMsg, apiKey);
+    console.error(msg);
+    setLastOddsError(msg);
   }
   return null;
 }
 
 // Fetch odds using the configured settings and providers
-export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds> {
+export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
   });
@@ -305,7 +338,13 @@ export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds> {
 
   // 3. Fallback to Simulation if both failed or if keys/enabled checks failed
   if (!result) {
-    result = generateSimulatedOdds(match.homeTeamCode, match.awayTeamCode);
+    if (process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      result = generateSimulatedOdds(match.homeTeamCode, match.awayTeamCode);
+    } else {
+      if (!lastOddsError) {
+        setLastOddsError('No hay proveedores reales configurados o todos fallaron. Datos simulados desactivados.');
+      }
+    }
   }
 
   return result;

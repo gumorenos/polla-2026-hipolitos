@@ -39,10 +39,22 @@ interface OddsAdminClientProps {
     oddsApiIo: boolean;
     theOddsApi: boolean;
     apiFootball: boolean;
+    simulatedAllowed: boolean;
   };
+  lastSuccessfulOdds: string | null;
+  lastSuccessfulH2h: string | null;
+  lastOddsError: string | null;
+  lastH2hError: string | null;
 }
 
-export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({ matches, apiStatus }) => {
+export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
+  matches,
+  apiStatus,
+  lastSuccessfulOdds,
+  lastSuccessfulH2h,
+  lastOddsError,
+  lastH2hError,
+}) => {
   const [now] = useState(() => Date.now());
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
   const [globalLoading, setGlobalLoading] = useState<'odds' | 'h2h' | null>(null);
@@ -96,52 +108,101 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({ matches, apiSt
     setGlobalLoading(null);
   };
 
+  const hasRealOdds = matches.some(m => m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator');
+  const hasRealH2h = matches.some(m => m.h2h !== null);
+  const hasNoRealData = !hasRealOdds && !hasRealH2h;
+
   return (
     <div className="space-y-6">
       {/* API Providers Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">Odds-API.io (Primary)</span>
-            <p className="text-sm font-semibold text-text-primary">Proveedor Primario Cuotas</p>
+            <p className="text-xs font-semibold text-text-primary">Proveedor Primario Cuotas</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.oddsApiIo 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
           }`}>
-            {apiStatus.oddsApiIo ? 'ACTIVO (REAL)' : 'SIMULADO'}
+            {apiStatus.oddsApiIo ? 'ACTIVO' : 'INACTIVO'}
           </span>
         </div>
 
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">The Odds API (Fallback)</span>
-            <p className="text-sm font-semibold text-text-primary">Proveedor Secundario Cuotas</p>
+            <p className="text-xs font-semibold text-text-primary">Proveedor Secundario Cuotas</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.theOddsApi 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
           }`}>
-            {apiStatus.theOddsApi ? 'ACTIVO (REAL)' : 'SIMULADO'}
+            {apiStatus.theOddsApi ? 'ACTIVO' : 'INACTIVO'}
           </span>
         </div>
 
         <div className="card-base p-4 flex items-center justify-between border-border-default/60">
           <div className="space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-mono">API-Football (H2H)</span>
-            <p className="text-sm font-semibold text-text-primary">Enfrentamientos Históricos</p>
+            <p className="text-xs font-semibold text-text-primary">Historial H2H</p>
           </div>
-          <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
             apiStatus.apiFootball 
+              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}>
+            {apiStatus.apiFootball ? 'ACTIVO' : 'INACTIVO'}
+          </span>
+        </div>
+
+        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
+          <div className="space-y-1">
+            <span className="text-[10px] text-text-secondary uppercase font-mono">Datos Simulados</span>
+            <p className="text-xs font-semibold text-text-primary">Fallback Local</p>
+          </div>
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+            apiStatus.simulatedAllowed 
               ? 'bg-green-500/10 text-green-400 border-green-500/30' 
               : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
           }`}>
-            {apiStatus.apiFootball ? 'ACTIVO (REAL)' : 'SIMULADO'}
+            {apiStatus.simulatedAllowed ? 'PERMITIDO' : 'BLOQUEADO'}
           </span>
         </div>
       </div>
+
+      {/* Sync Status & Error Logs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
+          <h4 className="font-semibold text-text-primary">Últimas Sincronizaciones Exitosas (Reales)</h4>
+          <div className="space-y-1 text-xs text-text-secondary font-mono">
+            <p>Cuotas del Mercado: {lastSuccessfulOdds ? new Date(lastSuccessfulOdds).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)' : 'Ninguna'}</p>
+            <p>Historial H2H: {lastSuccessfulH2h ? new Date(lastSuccessfulH2h).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)' : 'Ninguno'}</p>
+          </div>
+        </div>
+
+        {(lastOddsError || lastH2hError) && (
+          <div className="card-base p-4 border-red-500/20 bg-red-500/5 space-y-2 text-sm">
+            <h4 className="font-semibold text-red-400">Últimos Errores de Proveedores</h4>
+            <div className="space-y-1 text-xs text-red-400/90 font-mono">
+              {lastOddsError && <p className="truncate">Cuotas: {lastOddsError}</p>}
+              {lastH2hError && <p className="truncate">H2H: {lastH2hError}</p>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {hasNoRealData && (
+        <div className="card-base p-6 border-yellow-500/20 bg-yellow-500/5 text-center space-y-2">
+          <Database className="w-10 h-10 text-yellow-500/80 mx-auto" />
+          <h3 className="font-semibold text-text-primary text-base">Sin datos reales guardados todavía</h3>
+          <p className="text-xs text-text-secondary max-w-md mx-auto">
+            Aún no se han descargado datos reales de cuotas o H2H desde los proveedores externos. Puedes hacer una consulta global usando los botones de arriba.
+          </p>
+        </div>
+      )}
 
       {/* Admin Action Buttons */}
       <div className="flex flex-wrap gap-3">
@@ -209,30 +270,35 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({ matches, apiSt
                 </div>
 
                 {/* Odds Status Area */}
-                <div className="mt-3 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-text-secondary flex items-center gap-1">
-                      <BarChart2 className="w-3.5 h-3.5 text-gold-400" />
-                      Cuotas Globales:
-                    </span>
-                    {m.globalOdds ? (
-                      <span className="text-[9px] text-text-muted font-mono">
-                        Hace {Math.max(1, Math.round((now - new Date(m.globalOdds.capturedAt).getTime()) / 60000))}m ({m.globalOdds.bookmaker})
-                      </span>
-                    ) : (
-                      <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
-                    )}
-                  </div>
-                  {m.globalOdds ? (
-                    <div className="font-mono flex gap-4 text-text-primary">
-                      <span>L: <strong className="text-gold-400">{m.globalOdds.homeOdds.toFixed(2)}</strong></span>
-                      <span>E: <strong className="text-gold-400">{m.globalOdds.drawOdds.toFixed(2)}</strong></span>
-                      <span>V: <strong className="text-gold-400">{m.globalOdds.awayOdds.toFixed(2)}</strong></span>
+                {(() => {
+                  const hasOdds = m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator';
+                  return (
+                    <div className="mt-3 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-text-secondary flex items-center gap-1">
+                          <BarChart2 className="w-3.5 h-3.5 text-gold-400" />
+                          Cuotas Globales:
+                        </span>
+                        {hasOdds ? (
+                          <span className="text-[9px] text-text-muted font-mono">
+                            Hace {Math.max(1, Math.round((now - new Date(m.globalOdds!.capturedAt).getTime()) / 60000))}m ({m.globalOdds!.bookmaker})
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
+                        )}
+                      </div>
+                      {hasOdds ? (
+                        <div className="font-mono flex gap-4 text-text-primary">
+                          <span>L: <strong className="text-gold-400">{m.globalOdds!.homeOdds.toFixed(2)}</strong></span>
+                          <span>E: <strong className="text-gold-400">{m.globalOdds!.drawOdds.toFixed(2)}</strong></span>
+                          <span>V: <strong className="text-gold-400">{m.globalOdds!.awayOdds.toFixed(2)}</strong></span>
+                        </div>
+                      ) : (
+                        <p className="text-text-muted text-[10px] italic">No hay registros globales para este partido.</p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-text-muted text-[10px] italic">No hay registros globales para este partido.</p>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* H2H Status Area */}
                 <div className="mt-2 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">

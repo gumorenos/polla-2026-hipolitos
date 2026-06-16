@@ -1,6 +1,6 @@
 # Implementation Roadmap — La Polla 2026
 
-> Last updated: 2026-06-12
+> Last updated: 2026-06-16
 
 ---
 
@@ -154,6 +154,15 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 **Validation:** Superadmin can enter results. Predictions are scored. Standings update.
 
+### Champion Survivor backend checkpoint
+
+- [x] Added reusable Champion Survivor business logic for competition type resolution, deadline checks, dynamic pick status, prize pool calculation, champion odds expected value, pick distribution, survival summary, ranking order, and CSV export.
+- [x] Added Server Actions for user state, explicit champion pick save, admin pick management, team tournament status management, manual champion odds snapshots, latest odds listing, and CSV export.
+- [x] Kept full prediction mode on `WinnerPrediction`; Champion Survivor uses `ChampionPick`.
+- [ ] Full Champion Survivor admin UI pages.
+- [ ] Full Champion Survivor user UI pages.
+- [ ] Champion Survivor visual dashboard.
+
 ---
 
 ## Phase 7 — PWA and Mobile Polish
@@ -194,7 +203,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [ ] Run seed script on RPi5 (`npx prisma db seed`) to initialize teams and matches.
 - [ ] Run production build `npm run build` directly on RPi5.
 - [ ] Start the application via PM2: `pm2 start ecosystem.config.js`.
-- [ ] Configure cloudflared tunnel to proxy lapolla.example.com → localhost:3000.
+- [ ] Configure cloudflared tunnel to proxy pollahipolitos.todoestaaca.com to the app on port 3030.
 - [ ] Set up the daily cron job backup for `/var/lib/la-polla-2026/prod.db`.
 - [ ] Enable PM2 startup: `pm2 startup` and `pm2 save`.
 - [ ] Commit: "chore: RPi5 deployment configuration"

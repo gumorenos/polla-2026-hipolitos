@@ -338,12 +338,7 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
   };
 
   // CSV template download (Excel deshabilitado por seguridad)
-  const handleDownloadTemplate = (format: 'csv' | 'xlsx') => {
-    if (format === 'xlsx') {
-      alert("Excel deshabilitado temporalmente por seguridad. Por favor, usa la plantilla CSV.");
-      return;
-    }
-
+  const handleDownloadTemplate = () => {
     const rows = [
       CSV_COLUMNS,
       ...matches.slice(0, 3).map(m => [
@@ -544,7 +539,7 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
             <span className="w-2 h-2 rounded-full bg-red-500"></span> Excel deshabilitado; usa CSV
           </button>
           <button
-            onClick={() => handleDownloadTemplate('csv')}
+            onClick={() => handleDownloadTemplate()}
             className="flex items-center gap-2 px-4 py-2 border border-border text-text-secondary hover:text-text-primary hover:border-border-hover text-xs rounded transition-colors"
           >
             <Download className="w-4 h-4 text-gold" /> Plantilla CSV

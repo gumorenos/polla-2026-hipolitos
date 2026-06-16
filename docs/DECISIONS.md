@@ -270,7 +270,31 @@ We implement the following 6 tie-breakers sequentially:
 - Idempotency guard on `[userId, matchId, reminderType, channel]` protects users from receiving duplicate emails.
 - Masking emails (`g***@domain.com`) in the admin dashboard complies with strict privacy rules preventing exposure of participant addresses.
 
+---
 
+## ADR-016 — Champion Survivor as Separate Backend Mode
+
+**Date:** 2026-06-16
+**Status:** Accepted
+
+**Decision:** Implement Champion Survivor as a backend-only competition mode using `ChampionPick`, `TeamTournamentStatus`, and `ChampionOddsSnapshot`, separate from the existing full prediction `WinnerPrediction` flow.
+
+**Rationale:**
+- `full_prediction` keeps match predictions and tournament winner bonus scoring unchanged.
+- `champion_survivor` ranking must not use match prediction points, so it needs separate ordering logic.
+- User pick status is computed dynamically from the current pick plus team tournament status, avoiding stale participant status fields.
+- Champion market probability uses only manual or imported `ChampionOddsSnapshot` rows for `sourceMarket = "outright_winner"`; match odds are not a valid substitute.
+- Prize pool calculations must respect the league currency and count approved active members, including users whose picks are already eliminated.
+
+**Reset Design:**
+- `ChampionPick.teamCode` is required, so resetting a user pick deletes the active `ChampionPick` row.
+- Auditability is preserved through `AdminActionLog` with the previous team code, admin user, timestamp, and required reason.
+
+**Not Included In This Phase:**
+- Full Champion Survivor admin pages.
+- Full Champion Survivor user pages.
+- Visual dashboard or navigation changes.
+- Raspberry Pi deployment execution.
 
 
 

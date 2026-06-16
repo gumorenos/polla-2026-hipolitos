@@ -1,6 +1,6 @@
 # Architecture — La Polla 2026
 
-> Last updated: 2026-06-12
+> Last updated: 2026-06-16
 
 ---
 
@@ -156,7 +156,7 @@ export const auth = betterAuth({
   plugins: [username()],
   session: { cookieCache: { enabled: true, maxAge: 60 * 60 * 24 * 30 } },
   trustedOrigins: [
-    process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? 'http://localhost:3000',
+    process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? 'http://localhost:3030',
   ],
 });
 ```
@@ -213,6 +213,40 @@ User selects Champion Team Code in /pronosticos Champion Widget
     → Upsert WinnerPrediction row mapping (userId, leagueId)
 ```
 
+### Champion Survivor Backend Flow
+
+Champion Survivor is a separate competition type from full prediction mode. It uses `ChampionPick`, `TeamTournamentStatus`, and `ChampionOddsSnapshot`; it does not replace `WinnerPrediction` or use match prediction points.
+
+```
+User requests Champion Survivor state
+  → Server Action validates approved session and league membership
+  → League.competitionType must be champion_survivor
+  → Current ChampionPick is joined with TeamTournamentStatus
+  → Status is computed dynamically:
+    pending if no pick
+    alive if active/unknown/no status row
+    eliminated if team status is eliminated
+    winner if team status is champion
+  → Latest ChampionOddsSnapshot per picked team provides market probability and expected value
+```
+
+```
+User explicitly saves one champion pick
+  → Server Action validates approved session, membership, valid team, and deadline
+  → league.championDeadline is the hard cutoff
+  → Pick is created or updated only if not already locked
+  → lockedAt is set on save
+```
+
+```
+Admin or superadmin manages Champion Survivor
+  → Server Action validates superadmin or league owner/admin role
+  → Admin pick changes and resets require a non-empty reason
+  → Team tournament statuses are updated separately from user records
+  → Champion odds are manual outright_winner snapshots only
+  → CSV export is generated as text/csv, not spreadsheet files
+```
+
 ### Scoring and Recalculation Flow
 
 ```
@@ -249,7 +283,7 @@ User visits /join/[code] (or inputs inviteCode in the UI)
 │  ┌──────────────┐   ┌────────────────┐  │
 │  │  Next.js app │   │  SQLite DB     │  │
 │  │  (PM2)       │──▶│  /var/lib/     │  │
-│  │  port 3000   │   │  la-polla-2026/│  │
+│  │  port 3030   │   │  la-polla-2026/│  │
 │  └──────┬───────┘   │  prod.db       │  │
 │         │           └────────────────┘  │
 │  ┌──────▼───────┐                       │
@@ -277,7 +311,7 @@ module.exports = {
     cwd: '/home/pi/lapolla2026/app',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000,
+      PORT: 3030,
     },
     max_restarts: 10,
     min_uptime: '10s',
@@ -324,7 +358,7 @@ module.exports = {
 ```env
 DATABASE_URL="file:./prisma/dev.db?connection_limit=1&socket_timeout=20"
 BETTER_AUTH_SECRET="<random-32-byte-hex-secret>"
-APP_URL="http://localhost:3000"
+APP_URL="http://localhost:3030"
 ```
 
 ### Raspberry Pi 5 Production (`.env` or `.env.local` - NOT committed)
@@ -333,5 +367,5 @@ DATABASE_URL="file:/var/lib/la-polla-2026/prod.db?connection_limit=1&socket_time
 BETTER_AUTH_SECRET="<production-random-32-byte-hex-secret>"
 APP_URL="https://lapolla.example.com"
 NODE_ENV=production
-PORT=3000
+PORT=3030
 ```

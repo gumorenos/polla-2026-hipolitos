@@ -104,12 +104,11 @@ If a user registers or is created programmatically, they can be elevated to Supe
 To prevent "Invalid origin" errors during registration or login (especially when deploying behind a reverse proxy or Cloudflare Tunnel), the server configuration validates requests against allowed hosts and origins.
 
 ### Environment Variables:
-- **`BETTER_AUTH_URL`** (or fallback **`APP_URL`**): Specifies the base URL for Better Auth. Defaults to `http://localhost:3000` in development.
+- **`BETTER_AUTH_URL`** (or fallback **`APP_URL`**): Specifies the base URL for Better Auth. Defaults to `http://localhost:3030` in development.
 - **`TRUSTED_ORIGINS`**: A comma-separated list of additional trusted origins (e.g. `https://pollahipolitos.todoestaaca.com,http://localhost:3030`).
 
 ### Built-in Fallback Trusted Origins:
 Better Auth is pre-configured with the following fallback origins:
 - `https://pollahipolitos.todoestaaca.com`
-- `http://localhost:3000`
 - `http://localhost:3030`
 - `http://192.168.100.53:3030`

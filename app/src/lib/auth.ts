@@ -9,7 +9,6 @@ const envTrustedOrigins = process.env.TRUSTED_ORIGINS
 
 const fallbackOrigins = [
   'https://pollahipolitos.todoestaaca.com',
-  'http://localhost:3000',
   'http://localhost:3030',
   'http://192.168.100.53:3030',
 ];

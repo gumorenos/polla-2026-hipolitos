@@ -114,7 +114,7 @@ The reference contains:
 
 | Risk | Detail | Mitigation |
 |------|--------|------------|
-| Cloudflare Tunnel | Requires cloudflared daemon on RPi5. | No Next.js changes needed. App listens on 0.0.0.0:3000. |
+| Cloudflare Tunnel | Requires cloudflared daemon on RPi5. | No Next.js changes needed. App listens on port 3030. |
 | PM2 stability | Next.js in start mode is stable. | Use ecosystem.config.js with max_restarts and min_uptime. |
 | SQLite backup | Daily backup needed. | Cron: sqlite3 db.sqlite ".backup 'db-YYYYMMDD.sqlite'". |
 

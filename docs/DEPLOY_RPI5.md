@@ -65,7 +65,7 @@ NEXT_PUBLIC_APP_URL="https://pollahipolitos.todoestaaca.com"
 
 # Trusted Origins (Comma-separated list of additional URLs allowed to interact with auth)
 # For reverse proxies, Cloudflare tunnels, or alternate domains:
-TRUSTED_ORIGINS="https://pollahipolitos.todoestaaca.com,http://localhost:3030,http://localhost:3000,http://192.168.100.53:3030"
+TRUSTED_ORIGINS="https://pollahipolitos.todoestaaca.com,http://localhost:3030,http://192.168.100.53:3030"
 
 # Server configuration
 NODE_ENV=production
@@ -108,7 +108,7 @@ Follow these steps on the Raspberry Pi 5 to perform a clean deployment:
 6. **Install dependencies**:
    ```bash
    cd /home/gumorenos/apps/polla-2026-hipolitos/app
-   npm ci
+   npm install --no-audit --no-fund
    ```
 
 7. **Generate Prisma Client**:
@@ -169,7 +169,7 @@ When pulling updates or new commits from the repository, execute the following c
 2. **Install updated dependencies**:
    ```bash
    cd app
-   npm ci
+   npm install --no-audit --no-fund
    ```
 
 3. **Re-generate Prisma Client**:
@@ -240,7 +240,7 @@ Check the git log to locate a stable commit hash (e.g., `abc1234`) and checkout 
 cd /home/gumorenos/apps/polla-2026-hipolitos
 git checkout <stable-commit-hash>
 cd app
-npm ci
+npm install --no-audit --no-fund
 npx prisma generate
 npm run build
 ```

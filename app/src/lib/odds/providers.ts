@@ -87,7 +87,7 @@ interface ProviderEvent {
 }
 
 // Map of team codes to common English/Spanish names for matching API data
-const TEAM_NAMES_MAP: Record<string, string[]> = {
+export const TEAM_NAMES_MAP: Record<string, string[]> = {
   ARG: ['Argentina'],
   BRA: ['Brazil', 'Brasil'],
   FRA: ['France', 'Francia'],
@@ -112,6 +112,7 @@ const TEAM_NAMES_MAP: Record<string, string[]> = {
   PAN: ['Panama', 'Panamá'],
   CPV: ['Cape Verde', 'Cabo Verde'],
   CUR: ['Curacao', 'Curazao', 'Curaçao'],
+  CUW: ['Curacao', 'Curazao', 'Curaçao'],
   JOR: ['Jordan', 'Jordania'],
   NZL: ['New Zealand', 'Nueva Zelanda'],
   HAI: ['Haiti', 'Haití'],
@@ -121,33 +122,48 @@ const TEAM_NAMES_MAP: Record<string, string[]> = {
   KSA: ['Saudi Arabia', 'Arabia Saudita'],
   AUS: ['Australia'],
   EGY: ['Egypt', 'Egipto'],
-  CIV: ['Ivory Coast', 'Costa de Marfil', "Côte d'Ivoire", "Cote d'Ivoire"],
+  CIV: ['Ivory Coast', 'Costa de Marfil', "Côte d'Ivoire", "Cote d'Ivoire", 'Cote dIvoire'],
   GHA: ['Ghana'],
   TUN: ['Tunisia', 'Túnez'],
   ALG: ['Algeria', 'Argelia'],
+  DZA: ['Algeria', 'Argelia'],
   SUI: ['Switzerland', 'Suiza'],
   AUT: ['Austria'],
   TUR: ['Turkey', 'Türkiye'],
   SWE: ['Sweden', 'Suecia'],
   NOR: ['Norway', 'Noruega'],
-  CZE: ['Czech Republic', 'Chequia'],
+  CZE: ['Czech Republic', 'Chequia', 'Czechia'],
   SCO: ['Scotland', 'Escocia'],
   IRI: ['Iran', 'Irán'],
   IRN: ['Iran', 'Irán'],
   IRQ: ['Iraq', 'Irak'],
-  COD: ['DR Congo', 'Congo DR', 'Congo Democrático', 'Congo, Democratic Republic of the'],
-  BIH: ['Bosnia', 'Bosnia and Herzegovina', 'Bosnia y Herzegovina'],
+  COD: ['DR Congo', 'Congo DR', 'Congo Democrático', 'Congo, Democratic Republic of the', 'Democratic Republic of the Congo'],
+  BIH: ['Bosnia', 'Bosnia and Herzegovina', 'Bosnia-Herzegovina', 'Bosnia & Herzegovina', 'Bosnia Herzegovina', 'Bosnia y Herzegovina'],
   RSA: ['South Africa', 'Sudáfrica']
 };
 
+// Normalize team name according to rules
+export function normalizeTeamName(name: string): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents/diacritics
+    .replace(/&/g, 'and')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Check if a team name matches a team code
-function matchTeamName(teamName: string, code: string): boolean {
-  const normalized = teamName.toLowerCase().trim();
+export function matchTeamName(teamName: string, code: string): boolean {
+  if (!teamName || !code) return false;
+  const normInput = normalizeTeamName(teamName);
+  const normCode = normalizeTeamName(code);
+  if (normInput === normCode) return true;
+
   const allowedNames = TEAM_NAMES_MAP[code] || [];
-  return (
-    code.toLowerCase() === normalized ||
-    allowedNames.some(name => name.toLowerCase() === normalized)
-  );
+  return allowedNames.some(name => normalizeTeamName(name) === normInput);
 }
 
 // Generate mock odds for simulation fallback
@@ -255,7 +271,7 @@ async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<
 }
 
 // Fetch odds from Odds-API.io (Primary)
-async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string): Promise<MatchOdds | null> {
+async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string, matchId: string): Promise<MatchOdds | null> {
   const sport = process.env.ODDS_API_IO_SPORT || 'football';
   const leagueConf = process.env.ODDS_API_IO_LEAGUE || '';
 
@@ -279,6 +295,8 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     return null;
   }
 
+  const allProviderEventsChecked: string[] = [];
+
   for (const leagueSlug of leaguesToQuery) {
     try {
       const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=${sport}&league=${leagueSlug}`;
@@ -301,6 +319,8 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
       }
 
       const events = data.data as ProviderEvent[];
+      allProviderEventsChecked.push(...events.map(e => `${e.home_team} vs ${e.away_team}`));
+
       const event = events.find((e) => {
         const homeMatch = matchTeamName(e.home_team, homeCode) || matchTeamName(e.home_team, awayCode);
         const awayMatch = matchTeamName(e.away_team, homeCode) || matchTeamName(e.away_team, awayCode);
@@ -352,6 +372,13 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     }
   }
 
+  // Diagnostic logging when matching fails across all checked leagues
+  console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchId} (${homeCode} vs ${awayCode}).
+    Provider: odds-api-io
+    Local aliases for ${homeCode}: [${(TEAM_NAMES_MAP[homeCode] || []).join(', ')}]
+    Local aliases for ${awayCode}: [${(TEAM_NAMES_MAP[awayCode] || []).join(', ')}]
+    Provider events checked: [${allProviderEventsChecked.join(' | ')}]`);
+
   setLastOddsError(`Odds-API.io could not find matching event for ${homeCode} vs ${awayCode} in checked leagues.`);
   return null;
 }
@@ -389,7 +416,7 @@ async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promi
 }
 
 // Fetch odds from The Odds API (Fallback)
-async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: string): Promise<MatchOdds | null> {
+async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: string, matchId: string): Promise<MatchOdds | null> {
   const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
   const regions = process.env.THE_ODDS_API_REGIONS || 'eu,uk,us';
   const markets = process.env.THE_ODDS_API_MARKETS || 'h2h';
@@ -430,6 +457,14 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     });
 
     if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+      // Diagnostic logging when event matching fails
+      const providerTeams = events.map(e => `${e.home_team} vs ${e.away_team}`);
+      console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchId} (${homeCode} vs ${awayCode}).
+        Provider: the-odds-api
+        Local aliases for ${homeCode}: [${(TEAM_NAMES_MAP[homeCode] || []).join(', ')}]
+        Local aliases for ${awayCode}: [${(TEAM_NAMES_MAP[awayCode] || []).join(', ')}]
+        Provider events checked: [${providerTeams.join(' | ')}]`);
+
       setLastOddsError(`The Odds API event not found for ${homeCode} vs ${awayCode}`);
       return null;
     }
@@ -510,7 +545,7 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       console.log(`Bypassing Odds-API.io (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+      result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey, matchId);
       if (!result) primaryFailed = true;
     }
   } else if (primaryProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
@@ -518,7 +553,7 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       console.log(`Bypassing The Odds API (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+      result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey, matchId);
       if (!result) primaryFailed = true;
     }
   }
@@ -529,13 +564,13 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       if (fallbackCooldown) {
         console.log(`Bypassing The Odds API (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+        result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey, matchId);
       }
     } else if (fallbackProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
       if (fallbackCooldown) {
         console.log(`Bypassing Odds-API.io (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+        result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey, matchId);
       }
     }
   }

@@ -49,6 +49,8 @@ export async function updateProfileSettingsAction(data: {
       return { error: 'El correo electrónico ya está en uso.' };
     }
 
+    const isPlaceholderEmail = email.endsWith('@polla.local');
+
     await prisma.$transaction(async (tx) => {
       // 1. Update User
       await tx.user.update({
@@ -60,6 +62,7 @@ export async function updateProfileSettingsAction(data: {
           displayName: data.name.trim(),
           email,
           whatsapp: data.whatsapp?.trim() || null,
+          ...(isPlaceholderEmail ? { remindersEnabled: false, emailRemindersEnabled: false } : {}),
         }
       });
 
@@ -118,5 +121,50 @@ export async function updateThemeAction(themeMode: 'black' | 'dark' | 'light') {
   } catch (error) {
     console.error('Error in updateThemeAction:', error);
     return { error: 'Ocurrió un error al actualizar el tema visual.' };
+  }
+}
+
+export async function updateReminderPreferencesAction(
+  remindersEnabled: boolean,
+  emailRemindersEnabled: boolean
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const userId = session.user.id;
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!dbUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
+    const email = dbUser.email;
+    const isPlaceholderEmail = !email || email.endsWith('@polla.local') || !email.includes('@');
+
+    if ((remindersEnabled || emailRemindersEnabled) && isPlaceholderEmail) {
+      return { error: 'Agrega tu correo para activar recordatorios.' };
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        remindersEnabled,
+        emailRemindersEnabled,
+      },
+    });
+
+    revalidatePath('/perfil');
+    revalidatePath('/cuenta');
+    revalidatePath('/');
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error in updateReminderPreferencesAction:', error);
+    return { error: 'Ocurrió un error al actualizar tus preferencias de recordatorios.' };
   }
 }

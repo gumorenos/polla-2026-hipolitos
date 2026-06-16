@@ -18,7 +18,8 @@
     "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts",
     "h2h:fetch-match": "tsx scripts/fetch-h2h.ts",
     "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts",
-    "odds:diagnose": "tsx scripts/diagnose-odds.ts"
+    "odds:diagnose": "tsx scripts/diagnose-odds.ts",
+    "reminders:send-due": "tsx scripts/send-reminders.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -32,6 +33,7 @@
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "resend": "^6.12.4",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

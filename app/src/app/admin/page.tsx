@@ -235,6 +235,10 @@ export default async function AdminDashboardPage() {
                 <span>Gestionar Cuotas de Mercado e H2H</span>
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>
+              <Link href="/admin/recordatorios" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
+                <span>Auditar y Configurar Recordatorios</span>
+                <span className="text-xs text-text-muted">&rarr;</span>
+              </Link>
             </div>
           </div>
 

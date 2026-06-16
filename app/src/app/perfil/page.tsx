@@ -44,6 +44,9 @@ export default async function PerfilPage() {
       username: true,
       status: true,
       themeMode: true,
+      remindersEnabled: true,
+      emailRemindersEnabled: true,
+      reminderMinutesBeforeDeadline: true,
     }
   });
 
@@ -58,6 +61,9 @@ export default async function PerfilPage() {
     isSuperadmin: user.isSuperadmin ?? false,
     status: dbUser?.status ?? 'pending',
     themeMode: dbUser?.themeMode ?? 'black',
+    remindersEnabled: dbUser?.remindersEnabled ?? false,
+    emailRemindersEnabled: dbUser?.emailRemindersEnabled ?? false,
+    reminderMinutesBeforeDeadline: dbUser?.reminderMinutesBeforeDeadline ?? 30,
   };
 
   return (

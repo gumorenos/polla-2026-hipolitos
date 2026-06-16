@@ -27,6 +27,9 @@ model User {
   whatsapp         String?
   isSuperadmin     Boolean   @default(false)
   themeMode        String    @default("black")
+  remindersEnabled      Boolean   @default(false)
+  emailRemindersEnabled Boolean   @default(false)
+  reminderMinutesBeforeDeadline Int @default(30)
 
   // Auth Relations
   sessions      Session[]
@@ -42,6 +45,7 @@ model User {
   adminActionLogs   AdminActionLog[]
   oddsSnapshots     OddsSnapshot[]
   oddsRefreshUsages UserOddsRefreshUsage[]
+  reminderLogs      ReminderLog[]
 
   @@map("user")
 }
@@ -128,6 +132,7 @@ model Match {
   oddsSnapshots     OddsSnapshot[]
   oddsRefreshUsages UserOddsRefreshUsage[]
   h2hSnapshot       HeadToHeadSnapshot?
+  reminderLogs      ReminderLog[]
 
   @@index([phase, status])
   @@index([kickoffUtc])
@@ -165,6 +170,7 @@ model League {
   winnerPredictions WinnerPrediction[]
   winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
+  reminderLogs      ReminderLog[]
 
   @@map("league")
 }
@@ -345,5 +351,32 @@ model HeadToHeadSnapshot {
   awayTeam Team  @relation("H2HAwayTeam", fields: [awayTeamCode], references: [code], onDelete: Cascade)
 
   @@map("head_to_head_snapshot")
+}
+
+model ReminderLog {
+  id                         String   @id @default(cuid())
+  userId                     String
+  leagueId                   String
+  matchId                    String
+  reminderType               String   @default("match_prediction_deadline")
+  channel                    String   @default("email")
+  scheduledFor               DateTime
+  sentAt                     DateTime?
+  status                     String
+  provider                   String   @default("resend")
+  providerMessageId          String?
+  errorMessage               String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId, reminderType, channel])
+  @@index([userId])
+  @@index([matchId])
+  @@index([leagueId])
+  @@map("reminder_log")
 }
 

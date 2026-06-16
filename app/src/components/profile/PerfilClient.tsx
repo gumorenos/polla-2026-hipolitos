@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { User, Mail, Phone, Calendar, Save, CheckCircle, LogOut, Key, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '../../lib/auth-client';
-import { updateProfileSettingsAction, updateThemeAction } from '../../lib/actions/users';
+import { updateProfileSettingsAction, updateThemeAction, updateReminderPreferencesAction } from '../../lib/actions/users';
 
 interface UserData {
   id: string;
@@ -17,6 +17,9 @@ interface UserData {
   isSuperadmin: boolean;
   status: string;
   themeMode: string;
+  remindersEnabled: boolean;
+  emailRemindersEnabled: boolean;
+  reminderMinutesBeforeDeadline: number;
 }
 
 interface UserStats {
@@ -52,6 +55,34 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
     (user.themeMode as 'black' | 'dark' | 'light') || 'black'
   );
   const [themeSaving, setThemeSaving] = useState(false);
+
+  // Reminders preferences state
+  const [emailReminders, setEmailReminders] = useState<boolean>(user.emailRemindersEnabled);
+  const [remindersSaving, setRemindersSaving] = useState<boolean>(false);
+  const [remindersError, setRemindersError] = useState<string | null>(null);
+  const [remindersSuccess, setRemindersSuccess] = useState<string | null>(null);
+
+  const handleSaveReminders = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRemindersSaving(true);
+    setRemindersError(null);
+    setRemindersSuccess(null);
+
+    try {
+      const res = await updateReminderPreferencesAction(emailReminders, emailReminders);
+      if (res.error) {
+        setRemindersError(res.error);
+      } else {
+        setRemindersSuccess('Preferencias de recordatorios guardadas.');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+      setRemindersError('Error al guardar preferencias de recordatorios.');
+    } finally {
+      setRemindersSaving(false);
+    }
+  };
 
   const handleThemeChange = async (newTheme: 'black' | 'dark' | 'light') => {
     const oldTheme = themeMode;
@@ -387,6 +418,72 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                 );
               })}
             </div>
+          </div>
+
+          {/* Email Reminders Opt-in Preferences */}
+          <div className="card-base p-5 space-y-4">
+            <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">
+              Recordatorios por email
+            </h3>
+            <p className="text-xs text-text-secondary">
+              Te enviaremos un recordatorio 30 minutos antes del cierre solo si aún no enviaste tu predicción para un partido de hoy.
+            </p>
+
+            {isPlaceholderEmail && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-yellow-500 font-mono">
+                  Agrega tu correo en la sección de información personal arriba para activar recordatorios.
+                </span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveReminders} className="space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  id="emailRemindersEnabled"
+                  type="checkbox"
+                  checked={emailReminders}
+                  disabled={isPlaceholderEmail || remindersSaving}
+                  onChange={(e) => {
+                    setEmailReminders(e.target.checked);
+                    setRemindersSuccess(null);
+                    setRemindersError(null);
+                  }}
+                  className="w-4 h-4 rounded border-border-default bg-bg-secondary text-gold-500 focus:ring-gold-500 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <label
+                  htmlFor="emailRemindersEnabled"
+                  className={`text-xs font-semibold uppercase tracking-wider cursor-pointer ${
+                    isPlaceholderEmail ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  Recibir recordatorios por email
+                </label>
+              </div>
+
+              {remindersError && (
+                <p className="text-xs text-red-400 font-mono flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> {remindersError}
+                </p>
+              )}
+
+              {remindersSuccess && (
+                <p className="text-xs text-green-400 font-mono flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" /> {remindersSuccess}
+                </p>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={isPlaceholderEmail || remindersSaving}
+                  className="btn-gold py-2 px-6 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4" /> {remindersSaving ? 'Guardando...' : 'Guardar preferencias'}
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Change Password Form */}

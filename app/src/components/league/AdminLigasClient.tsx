@@ -392,7 +392,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
                   disabled={isSubmitting}
-                  className="flex-1 input-base text-xs py-1.5 bg-[#0a0a0c]"
+                  className="flex-1 field text-xs py-1.5"
                 >
                   <option value="">-- Selecciona un usuario aprobado --</option>
                   {eligibleUsers.map((u) => (
@@ -559,7 +559,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   name="name"
                   required
                   defaultValue={settingsLeague.name}
-                  className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  className="field text-xs py-1.5 w-full"
                 />
               </div>
 
@@ -571,7 +571,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   <select
                     name="isDefault"
                     defaultValue={String(settingsLeague.isDefault)}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   >
                     <option value="true">Sí (Principal)</option>
                     <option value="false">No (Secundaria)</option>
@@ -585,7 +585,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   <select
                     name="isActive"
                     defaultValue={String(settingsLeague.isActive)}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   >
                     <option value="true">Activa</option>
                     <option value="false">Inactiva (Oculta)</option>
@@ -604,7 +604,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     name="entryFee"
                     required
                     defaultValue={settingsLeague.entryFee}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   />
                 </div>
 
@@ -617,7 +617,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     name="currency"
                     required
                     defaultValue={settingsLeague.currency}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   />
                 </div>
               </div>
@@ -632,7 +632,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     name="championPoints"
                     required
                     defaultValue={settingsLeague.championPoints}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   />
                 </div>
 
@@ -643,7 +643,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   <select
                     name="showOdds"
                     defaultValue={String(settingsLeague.showOdds)}
-                    className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    className="field text-xs py-1.5 w-full"
                   >
                     <option value="true">Mostrar</option>
                     <option value="false">Ocultar</option>
@@ -659,7 +659,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   type="datetime-local"
                   name="championDeadline"
                   defaultValue={settingsLeague.championDeadline ? getLimaDateTimeLocalString(settingsLeague.championDeadline) : ''}
-                  className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                  className="field text-xs py-1.5 w-full"
                 />
                 <p className="text-[10px] text-text-muted">
                   Si se deja vacío, vencerá automáticamente al inicio del primer partido de 16avos de final.
@@ -722,7 +722,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       name="pointsExactScore"
                       required
                       defaultValue={settingsLeague.pointsExactScore}
-                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                      className="field text-xs py-1.5 w-full"
                     />
                   </div>
 
@@ -735,7 +735,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       name="pointsWinner"
                       required
                       defaultValue={settingsLeague.pointsWinner}
-                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                      className="field text-xs py-1.5 w-full"
                     />
                   </div>
                 </div>
@@ -750,7 +750,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       name="pointsDraw"
                       required
                       defaultValue={settingsLeague.pointsDraw}
-                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                      className="field text-xs py-1.5 w-full"
                     />
                   </div>
 
@@ -763,7 +763,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       name="pointsConsolation"
                       required
                       defaultValue={settingsLeague.pointsConsolation}
-                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                      className="field text-xs py-1.5 w-full"
                     />
                   </div>
                 </div>

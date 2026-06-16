@@ -1,8 +1,9 @@
 'use server';
 
 import { prisma } from '../db';
+import { Prisma } from '@prisma/client';
 import { getCurrentSession } from '../auth-helpers';
-import { getMatchWinnerOdds, saveOddsSnapshot } from '../odds/providers';
+import { getMatchWinnerOdds, saveOddsSnapshot, getProviderCooldown } from '../odds/providers';
 import { getHeadToHeadStats, saveHeadToHeadSnapshot } from '../odds/h2h';
 import { revalidatePath } from 'next/cache';
 
@@ -203,7 +204,11 @@ export async function refreshUserOddsAction(matchId: string) {
 }
 
 // Refresh global odds (Superadmin only)
-export async function refreshGlobalOddsAction(matchId?: string) {
+export async function refreshGlobalOddsAction(options?: {
+  matchId?: string;
+  limit?: number;
+  lookaheadHours?: number;
+}) {
   const session = await getCurrentSession();
   if (!session || !session.user) {
     return { error: 'No autorizado.' };
@@ -218,33 +223,82 @@ export async function refreshGlobalOddsAction(matchId?: string) {
   }
 
   try {
+    const primaryProvider = process.env.ODDS_PRIMARY_PROVIDER || 'odds-api-io';
+    const fallbackProvider = process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api';
+
+    let matchesProcessed = 0;
+    let snapshotsCreated = 0;
+    let skipped = 0;
+    let primaryProviderErrors = 0;
+    let fallbackSuccesses = 0;
+
+    const matchId = options?.matchId;
+
     if (matchId) {
       // Refresh single match
       const odds = await getMatchWinnerOdds(matchId);
       if (!odds) {
         return { error: 'No se pudieron obtener probabilidades del mercado reales para este partido.' };
       }
+      const isFallbackUsed = odds.provider === fallbackProvider;
+      if (isFallbackUsed) {
+        fallbackSuccesses++;
+        primaryProviderErrors++;
+      }
       await saveOddsSnapshot(matchId, odds, { visibility: 'global' });
+      snapshotsCreated++;
+      matchesProcessed = 1;
     } else {
-      // Scan all open / soon matches
+      // Scan matches
+      const limit = options?.limit ?? 5;
+      const lookaheadHours = options?.lookaheadHours;
+      const now = new Date();
+
+      const whereClause: Prisma.MatchWhereInput = {
+        status: { in: ['open', 'soon'] },
+        kickoffUtc: { gt: now }
+      };
+
+      if (lookaheadHours) {
+        const maxKickoff = new Date(now.getTime() + lookaheadHours * 60 * 60 * 1000);
+        whereClause.kickoffUtc = {
+          gt: now,
+          lt: maxKickoff
+        };
+      }
+
       const matches = await prisma.match.findMany({
-        where: {
-          status: { in: ['open', 'soon'] },
-        },
+        where: whereClause,
+        orderBy: { kickoffUtc: 'asc' },
+        take: limit
       });
 
       for (const m of matches) {
         try {
           const odds = await getMatchWinnerOdds(m.id);
           if (odds) {
+            const isFallbackUsed = odds.provider === fallbackProvider;
+            if (isFallbackUsed) {
+              fallbackSuccesses++;
+              primaryProviderErrors++;
+            }
             await saveOddsSnapshot(m.id, odds, { visibility: 'global' });
+            snapshotsCreated++;
+          } else {
+            primaryProviderErrors++;
+            skipped++;
           }
+          matchesProcessed++;
+
           // Sleep slightly if real APIs are enabled
           if (process.env.ODDS_API_IO_ENABLED === 'true' || process.env.THE_ODDS_API_ENABLED === 'true') {
             await new Promise((resolve) => setTimeout(resolve, 500));
           }
         } catch (e) {
           console.error(`Failed to refresh global odds for match ${m.id}:`, e);
+          primaryProviderErrors++;
+          skipped++;
+          matchesProcessed++;
         }
       }
     }
@@ -252,13 +306,25 @@ export async function refreshGlobalOddsAction(matchId?: string) {
     revalidatePath('/pronosticos');
     revalidatePath('/admin/odds');
     revalidatePath('/');
-    return { success: true };
+
+    return {
+      success: true,
+      summary: {
+        matchesConsidered: matchesProcessed,
+        matchesProcessed,
+        snapshotsCreated,
+        skipped,
+        primaryProviderErrors,
+        fallbackSuccesses,
+      }
+    };
   } catch (error: unknown) {
     console.error('Error in refreshGlobalOddsAction:', error);
     const message = error instanceof Error ? error.message : 'Ocurrió un error al actualizar las cuotas globales.';
     return { error: message };
   }
 }
+
 
 // Refresh H2H for a match (Approved users or Admin)
 export async function refreshH2HAction(matchId: string) {
@@ -294,7 +360,10 @@ export async function refreshH2HAction(matchId: string) {
 }
 
 // Fetch all missing H2H for matches (Superadmin only)
-export async function fetchMissingH2HAction() {
+export async function fetchMissingH2HAction(options?: {
+  limit?: number;
+  futureOnly?: boolean;
+}) {
   const session = await getCurrentSession();
   if (!session || !session.user) {
     return { error: 'No autorizado.' };
@@ -309,20 +378,66 @@ export async function fetchMissingH2HAction() {
   }
 
   try {
-    // Find matches that do not have a HeadToHeadSnapshot in the database
-    const matches = await prisma.match.findMany({
+    const now = new Date();
+    const limit = options?.limit ?? 5;
+    
+    // Prioritize future matches missing H2H
+    const futureMatches = await prisma.match.findMany({
       where: {
         h2hSnapshot: null,
+        kickoffUtc: { gt: now }
       },
+      orderBy: { kickoffUtc: 'asc' }
     });
 
-    let count = 0;
+    let matchesToProcess = [...futureMatches];
+
+    if (!options?.futureOnly || matchesToProcess.length < limit) {
+      const pastMatches = await prisma.match.findMany({
+        where: {
+          h2hSnapshot: null,
+          kickoffUtc: { lte: now }
+        },
+        orderBy: { kickoffUtc: 'desc' }
+      });
+      matchesToProcess = [...matchesToProcess, ...pastMatches];
+    }
+
+    const matches = matchesToProcess.slice(0, limit);
+
+    const isConcreteTeamCode = (code: string): boolean => {
+      if (!code) return false;
+      const trimmed = code.trim();
+      return trimmed.length === 3 && /^[A-Z]{3}$/.test(trimmed);
+    };
+
+    let processed = 0;
+    let created = 0;
+    let skipped = 0;
+    let rateLimited = false;
+
     for (const m of matches) {
+      if (!isConcreteTeamCode(m.homeTeamCode) || !isConcreteTeamCode(m.awayTeamCode)) {
+        skipped++;
+        continue;
+      }
+
+      // Check cooldown before calling API
+      const cooldown = await getProviderCooldown('api-football');
+      if (cooldown) {
+        console.warn('API-Football is cooling down. Halting missing H2H fetch.');
+        rateLimited = true;
+        break;
+      }
+
       try {
+        processed++;
         const stats = await getHeadToHeadStats(m.id);
         if (stats) {
           await saveHeadToHeadSnapshot(m.id, stats);
-          count++;
+          created++;
+        } else {
+          skipped++;
         }
 
         if (process.env.API_FOOTBALL_ENABLED === 'true') {
@@ -330,13 +445,29 @@ export async function fetchMissingH2HAction() {
         }
       } catch (err) {
         console.error(`Failed to refresh H2H for match ${m.id}:`, err);
+        if (err instanceof Error && err.message.includes('429')) {
+          rateLimited = true;
+          break;
+        }
+        skipped++;
       }
     }
 
     revalidatePath('/pronosticos');
     revalidatePath('/admin/odds');
     revalidatePath('/');
-    return { success: true, count };
+
+    return {
+      success: true,
+      count: created,
+      summary: {
+        matchesConsidered: matches.length,
+        processed,
+        created,
+        skipped,
+        rateLimited,
+      }
+    };
   } catch (error: unknown) {
     console.error('Error fetching missing H2H:', error);
     const message = error instanceof Error ? error.message : 'Ocurrió un error al buscar H2H faltantes.';

@@ -1,5 +1,65 @@
 import { prisma } from '../db';
 
+export async function getProviderCooldown(provider: string): Promise<Date | null> {
+  try {
+    const status = await prisma.providerStatus.findUnique({
+      where: { provider },
+    });
+    if (status && status.cooldownUntil > new Date()) {
+      return status.cooldownUntil;
+    }
+  } catch (error) {
+    console.error(`Error checking cooldown for ${provider}:`, error);
+  }
+  return null;
+}
+
+export async function setProviderCooldown(
+  provider: string,
+  cooldownSeconds: number,
+  status: number,
+  errorMessage: string | null
+) {
+  const cooldownUntil = new Date(Date.now() + cooldownSeconds * 1000);
+  try {
+    await prisma.providerStatus.upsert({
+      where: { provider },
+      update: {
+        cooldownUntil,
+        lastStatus: status,
+        lastErrorMessage: errorMessage,
+        updatedAt: new Date(),
+      },
+      create: {
+        provider,
+        cooldownUntil,
+        lastStatus: status,
+        lastErrorMessage: errorMessage,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error(`Error setting cooldown for ${provider}:`, error);
+  }
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
+
 export interface MatchOdds {
   homeOdds: number;
   drawOdds: number;
@@ -169,11 +229,16 @@ async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<
   if (discoveredOddsApiIoLeaguesCache) return discoveredOddsApiIoLeaguesCache;
   try {
     const url = `https://api.odds-api.io/v3/leagues?apiKey=${apiKey}&sport=${sport}`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `Odds-API.io leagues discovery failed with status ${res.status}: ${errorText}`;
       console.warn(redactApiKey(msg, [apiKey]));
+      if (res.status === 429) {
+        const match = errorText.match(/resets in (\d+) minutes/i);
+        const minutes = match ? parseInt(match[1], 10) : 60;
+        await setProviderCooldown('odds-api-io', minutes * 60, 429, redactApiKey(errorText || 'Rate limit exceeded', [apiKey]));
+      }
       return [];
     }
     const data = await res.json();
@@ -217,16 +282,21 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
   for (const leagueSlug of leaguesToQuery) {
     try {
       const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=${sport}&league=${leagueSlug}`;
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
       if (!res.ok) {
         const errorText = await res.text().catch(() => '');
         const msg = `Odds-API.io responded with status ${res.status} for league ${leagueSlug}: ${errorText}`;
         console.warn(redactApiKey(msg, [apiKey]));
         setLastOddsError(redactApiKey(msg, [apiKey]));
+        if (res.status === 429) {
+          const match = errorText.match(/resets in (\d+) minutes/i);
+          const minutes = match ? parseInt(match[1], 10) : 60;
+          await setProviderCooldown('odds-api-io', minutes * 60, 429, redactApiKey(errorText || 'Rate limit exceeded', [apiKey]));
+        }
         continue;
       }
       const data = await res.json();
-      if (!data || !Array.isArray(data.data)) {
+      if (!data || !data.data || !Array.isArray(data.data)) {
         continue;
       }
 
@@ -263,6 +333,7 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
 
       if (homeOdds && drawOdds && awayOdds) {
         setLastOddsError(null);
+        await setProviderCooldown('odds-api-io', 0, 200, null); // Clear cooldown
         return {
           homeOdds,
           drawOdds,
@@ -294,11 +365,14 @@ async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promi
   }
   try {
     const url = `https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 8000);
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `The Odds API sports list request failed with status ${res.status}: ${errorText}`;
       console.warn(redactApiKey(msg, [apiKey]));
+      if (res.status === 429) {
+        await setProviderCooldown('the-odds-api', 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [apiKey]));
+      }
       return false;
     }
     const data = await res.json();
@@ -331,12 +405,15 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     }
 
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=${regions}&markets=${markets}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 8000);
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `The Odds API responded with status ${res.status}: ${errorText}`;
       console.warn(redactApiKey(msg, [apiKey]));
       setLastOddsError(redactApiKey(msg, [apiKey]));
+      if (res.status === 429) {
+        await setProviderCooldown('the-odds-api', 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [apiKey]));
+      }
       return null;
     }
     const data = await res.json();
@@ -380,6 +457,7 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
 
     if (homeOdds && drawOdds && awayOdds) {
       setLastOddsError(null);
+      await setProviderCooldown('the-odds-api', 0, 200, null); // Clear cooldown
       return {
         homeOdds,
         drawOdds,
@@ -401,8 +479,9 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
   return null;
 }
 
+
 // Fetch odds using the configured settings and providers
-export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds | null> {
+export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false): Promise<MatchOdds | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
   });
@@ -420,20 +499,44 @@ export async function getMatchWinnerOdds(matchId: string): Promise<MatchOdds | n
   const fallbackKey = process.env.THE_ODDS_API_KEY;
 
   let result: MatchOdds | null = null;
+  let primaryFailed = false;
 
-  // 1. Try Primary Provider
+  const primaryCooldown = bypassCooldown ? null : await getProviderCooldown(primaryProvider);
+  const fallbackCooldown = bypassCooldown ? null : await getProviderCooldown(fallbackProvider);
+
+  // 1. Try Primary Provider if not cooling down
   if (primaryProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
-    result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+    if (primaryCooldown) {
+      console.log(`Bypassing Odds-API.io (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
+      primaryFailed = true;
+    } else {
+      result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+      if (!result) primaryFailed = true;
+    }
   } else if (primaryProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
-    result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+    if (primaryCooldown) {
+      console.log(`Bypassing The Odds API (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
+      primaryFailed = true;
+    } else {
+      result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+      if (!result) primaryFailed = true;
+    }
   }
 
   // 2. Try Fallback Provider if primary failed
-  if (!result) {
+  if (!result && primaryFailed) {
     if (fallbackProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
-      result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+      if (fallbackCooldown) {
+        console.log(`Bypassing The Odds API (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
+      } else {
+        result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey);
+      }
     } else if (fallbackProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
-      result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+      if (fallbackCooldown) {
+        console.log(`Bypassing Odds-API.io (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
+      } else {
+        result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey);
+      }
     }
   }
 

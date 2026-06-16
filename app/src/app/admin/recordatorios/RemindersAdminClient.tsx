@@ -217,7 +217,7 @@ export const RemindersAdminClient: React.FC<RemindersAdminClientProps> = ({ conf
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-border-default bg-[#0a0a0c] text-text-secondary font-mono text-[10px] uppercase tracking-wider">
+                <tr className="border-b border-border-default bg-bg-secondary text-text-secondary font-mono text-[10px] uppercase tracking-wider">
                   <th className="py-3 px-4">Fecha/Hora</th>
                   <th className="py-3 px-4">Usuario</th>
                   <th className="py-3 px-4">Polla</th>

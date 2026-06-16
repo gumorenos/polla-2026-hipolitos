@@ -155,6 +155,14 @@ export default async function AdminOddsPage() {
     },
   });
 
+  // Global & Private count
+  const globalOddsCount = await prisma.oddsSnapshot.count({
+    where: { visibility: 'global' }
+  });
+  const privateOddsCount = await prisma.oddsSnapshot.count({
+    where: { visibility: 'user_private' }
+  });
+
   const realSnapshotsCount = { odds: realOddsCount, h2h: realH2hCount };
   const simulatedSnapshotsCount = { odds: simulatedOddsCount, h2h: simulatedH2hCount };
 
@@ -182,6 +190,45 @@ export default async function AdminOddsPage() {
         kickoffUtc: futureMatchesList[0].kickoffUtc.toISOString(),
       }
     : null;
+
+  // Future matches without global odds
+  const matchesWithGlobalOdds = await prisma.match.findMany({
+    where: {
+      kickoffUtc: { gt: now },
+      oddsSnapshots: {
+        some: { visibility: 'global' }
+      }
+    },
+    select: { id: true }
+  });
+  const matchesWithGlobalOddsIds = new Set(matchesWithGlobalOdds.map(m => m.id));
+  const futureMatchesWithoutGlobalOddsCount = futureMatchesList.filter(m => !matchesWithGlobalOddsIds.has(m.id)).length;
+
+  // Future matches without H2H
+  const futureMatchesWithoutH2HCount = futureMatchesList.filter(m => !m.h2hSnapshot).length;
+
+  // Fetch provider cooldowns/statuses
+  const providerStatuses = await prisma.providerStatus.findMany();
+  const cooldownMap = providerStatuses.reduce((acc, status) => {
+    acc[status.provider] = {
+      cooldownUntil: status.cooldownUntil.toISOString(),
+      lastStatus: status.lastStatus,
+      lastErrorMessage: status.lastErrorMessage,
+      updatedAt: status.updatedAt.toISOString(),
+    };
+    return acc;
+  }, {} as Record<string, { cooldownUntil: string; lastStatus: number | null; lastErrorMessage: string | null; updatedAt: string }>);
+
+  // Last fallback success
+  const latestFallbackSuccess = await prisma.oddsSnapshot.findFirst({
+    where: {
+      provider: 'the-odds-api',
+      sourceType: 'api',
+    },
+    orderBy: { capturedAt: 'desc' },
+    select: { capturedAt: true }
+  });
+  const lastFallbackSuccessTime = latestFallbackSuccess?.capturedAt ? latestFallbackSuccess.capturedAt.toISOString() : null;
 
   return (
     <>
@@ -219,6 +266,12 @@ export default async function AdminOddsPage() {
           oddsManualUserRefreshEnabled={oddsManualUserRefreshEnabled}
           futureMatchesCount={futureMatchesCount}
           nextFutureMatch={nextFutureMatch}
+          globalOddsCount={globalOddsCount}
+          privateOddsCount={privateOddsCount}
+          futureMatchesWithoutGlobalOddsCount={futureMatchesWithoutGlobalOddsCount}
+          futureMatchesWithoutH2HCount={futureMatchesWithoutH2HCount}
+          cooldownMap={cooldownMap}
+          lastFallbackSuccessTime={lastFallbackSuccessTime}
         />
       </div>
     </>

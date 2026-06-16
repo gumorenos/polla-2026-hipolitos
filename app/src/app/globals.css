@@ -98,6 +98,13 @@ html.theme-light, .theme-light {
 }
 
 @theme {
+  --color-background: var(--bg-primary);
+  --color-surface: var(--bg-tertiary);
+  --color-border: var(--border-default);
+
+  --color-gold: var(--gold-400);
+  --color-gold-light: #e6b94e;
+
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-tertiary: var(--bg-tertiary);

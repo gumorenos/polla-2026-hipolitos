@@ -184,6 +184,27 @@ async function main() {
     console.error(`Error querying matches: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 4. Provider Cooldowns & Statuses
+  console.log('--- 4. Provider Cooldowns & Statuses ---');
+  try {
+    const statuses = await prisma.providerStatus.findMany();
+    if (statuses.length === 0) {
+      console.log('No provider status entries found in the database.\n');
+    } else {
+      for (const s of statuses) {
+        console.log(`Provider: ${s.provider}`);
+        console.log(`  Last Status:        ${s.lastStatus}`);
+        console.log(`  Cooldown Until:     ${s.cooldownUntil.toISOString()}`);
+        console.log(`  Is Cooling Down:    ${s.cooldownUntil > new Date() ? 'YES' : 'NO'}`);
+        console.log(`  Last Error Message: ${s.lastErrorMessage || 'None'}`);
+        console.log(`  Updated At:         ${s.updatedAt.toISOString()}`);
+        console.log('');
+      }
+    }
+  } catch (err) {
+    console.error(`Error querying provider statuses: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+
   console.log('==================================================');
   console.log('            DIAGNOSTICS COMPLETE                  ');
   console.log('==================================================');

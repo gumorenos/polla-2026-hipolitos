@@ -142,7 +142,7 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                               className="w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-text-primary"
                             />
                             <span className="text-[10px] text-text-muted mt-1 block">
-                              Almacenado UTC: <code className="bg-[#0f0f13] px-1 rounded">{new Date(match.kickoffUtc).toISOString()}</code>
+                              Almacenado UTC: <code className="bg-bg-primary border border-border-subtle px-1.5 py-0.5 rounded">{new Date(match.kickoffUtc).toISOString()}</code>
                             </span>
                           </div>
 

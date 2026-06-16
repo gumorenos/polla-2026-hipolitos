@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2 } from 'lucide-react';
+import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
 import {
@@ -59,6 +59,17 @@ interface OddsAdminClientProps {
     awayTeamName: string;
     kickoffUtc: string;
   } | null;
+  globalOddsCount: number;
+  privateOddsCount: number;
+  futureMatchesWithoutGlobalOddsCount: number;
+  futureMatchesWithoutH2HCount: number;
+  cooldownMap: Record<string, {
+    cooldownUntil: string;
+    lastStatus: number | null;
+    lastErrorMessage: string | null;
+    updatedAt: string;
+  }>;
+  lastFallbackSuccessTime: string | null;
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -74,6 +85,12 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   oddsManualUserRefreshEnabled,
   futureMatchesCount,
   nextFutureMatch,
+  globalOddsCount,
+  privateOddsCount,
+  futureMatchesWithoutGlobalOddsCount,
+  futureMatchesWithoutH2HCount,
+  cooldownMap,
+  lastFallbackSuccessTime,
 }) => {
   const [now] = useState(() => Date.now());
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
@@ -83,9 +100,14 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const handleRefreshSingleOdds = async (matchId: string) => {
     setLoadingMap(prev => ({ ...prev, [matchId]: 'odds' }));
     setStatusMsg(null);
-    const res = await refreshGlobalOddsAction(matchId);
+    const res = await refreshGlobalOddsAction({ matchId });
     if (res.error) {
       setStatusMsg({ type: 'error', text: res.error });
+    } else if (res.summary) {
+      setStatusMsg({
+        type: 'success',
+        text: `Cuotas actualizadas para este partido usando: ${res.summary.primaryProviderErrors > 0 ? 'fallback (the-odds-api)' : 'proveedor principal'}.`
+      });
     } else {
       setStatusMsg({ type: 'success', text: 'Cuotas globales actualizadas correctamente.' });
     }
@@ -104,26 +126,38 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setLoadingMap(prev => ({ ...prev, [matchId]: null }));
   };
 
-  const handleRefreshAllOdds = async () => {
+  const handleRefreshGlobalOdds = async (limit?: number, lookaheadHours?: number) => {
     setGlobalLoading('odds');
     setStatusMsg(null);
-    const res = await refreshGlobalOddsAction();
+    const res = await refreshGlobalOddsAction({ limit, lookaheadHours });
     if (res.error) {
       setStatusMsg({ type: 'error', text: res.error });
+    } else if (res.summary) {
+      const s = res.summary;
+      setStatusMsg({
+        type: 'success',
+        text: `Procesados: ${s.matchesProcessed}. Snapshots creados: ${s.snapshotsCreated}. Errores proveedor principal: ${s.primaryProviderErrors}. Éxitos fallback: ${s.fallbackSuccesses}. Omitidos: ${s.skipped}.`
+      });
     } else {
-      setStatusMsg({ type: 'success', text: 'Cuotas de todos los partidos activos actualizadas.' });
+      setStatusMsg({ type: 'success', text: 'Cuotas globales actualizadas.' });
     }
     setGlobalLoading(null);
   };
 
-  const handleFetchAllMissingH2H = async () => {
+  const handleFetchMissingH2H = async (limit?: number, futureOnly?: boolean) => {
     setGlobalLoading('h2h');
     setStatusMsg(null);
-    const res = await fetchMissingH2HAction();
+    const res = await fetchMissingH2HAction({ limit, futureOnly });
     if (res.error) {
       setStatusMsg({ type: 'error', text: res.error });
+    } else if (res.summary) {
+      const s = res.summary;
+      setStatusMsg({
+        type: 'success',
+        text: `Buscar H2H finalizado. Creados: ${s.created}. Omitidos: ${s.skipped}. Procesados: ${s.processed}.${s.rateLimited ? ' [ALERTA: Proveedor en Cooldown/Rate-limited]' : ''}`
+      });
     } else {
-      setStatusMsg({ type: 'success', text: `Se poblaron ${res.count} enfrentamientos directos faltantes.` });
+      setStatusMsg({ type: 'success', text: `Se poblaron estadísticas H2H.` });
     }
     setGlobalLoading(null);
   };
@@ -150,139 +184,114 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const hasRealH2h = matches.some(m => m.h2h !== null);
   const hasNoRealData = !hasRealOdds && !hasRealH2h;
 
+  const renderProviderStatus = (name: string, isConfigured: boolean, key: string) => {
+    const cooldownInfo = cooldownMap[key];
+    const isCoolingDown = cooldownInfo && new Date(cooldownInfo.cooldownUntil) > new Date();
+    
+    let badgeText = 'INACTIVO';
+    let badgeColor = 'bg-red-500/10 text-red-400 border-red-500/30';
+    
+    if (isConfigured) {
+      if (isCoolingDown) {
+        badgeText = 'COOLDOWN';
+        badgeColor = 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30';
+      } else {
+        badgeText = 'ACTIVO';
+        badgeColor = 'bg-green-500/10 text-green-400 border-green-500/30';
+      }
+    }
+
+    return (
+      <div className="card-base p-4 flex flex-col justify-between border-border-default/60 space-y-2">
+        <div className="flex justify-between items-start">
+          <span className="text-[10px] text-text-secondary uppercase font-mono">{name}</span>
+          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
+            {badgeText}
+          </span>
+        </div>
+        <div className="text-[10px] text-text-secondary font-mono space-y-0.5">
+          {isCoolingDown && cooldownInfo && (
+            <p className="text-yellow-400/90 font-semibold truncate">
+              Cooldown hasta: {new Date(cooldownInfo.cooldownUntil).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
+          {cooldownInfo && cooldownInfo.lastStatus && (
+            <p>Status: {cooldownInfo.lastStatus}</p>
+          )}
+          {cooldownInfo && cooldownInfo.lastErrorMessage && (
+            <p className="truncate text-red-400/80 text-[9px] font-sans" title={cooldownInfo.lastErrorMessage}>
+              Err: {cooldownInfo.lastErrorMessage}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* API Providers Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">Odds-API.io (Primary)</span>
-            <p className="text-[11px] font-semibold text-text-primary">Proveedor Primario</p>
-          </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            apiStatus.oddsApiIo 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-red-500/10 text-red-400 border-red-500/30'
-          }`}>
-            {apiStatus.oddsApiIo ? 'ACTIVO' : 'INACTIVO'}
-          </span>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {renderProviderStatus('Odds-API.io (Primary)', apiStatus.oddsApiIo, 'odds-api-io')}
+        {renderProviderStatus('The Odds API (Fallback)', apiStatus.theOddsApi, 'the-odds-api')}
+        {renderProviderStatus('API-Football (H2H)', apiStatus.apiFootball, 'api-football')}
 
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">The Odds API (Fallback)</span>
-            <p className="text-[11px] font-semibold text-text-primary">Proveedor Secundario</p>
+        <div className="card-base p-4 flex flex-col justify-between border-border-default/60 space-y-2">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] text-text-secondary uppercase font-mono">Simulaciones / Visualización</span>
+            <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+              oddsDisplayEnabled 
+                ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+                : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+            }`}>
+              {oddsDisplayEnabled ? 'VISUALIZANDO' : 'OCULTAS'}
+            </span>
           </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            apiStatus.theOddsApi 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-red-500/10 text-red-400 border-red-500/30'
-          }`}>
-            {apiStatus.theOddsApi ? 'ACTIVO' : 'INACTIVO'}
-          </span>
-        </div>
-
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">API-Football (H2H)</span>
-            <p className="text-[11px] font-semibold text-text-primary">Proveedor H2H</p>
+          <div className="text-[10px] text-text-secondary font-mono space-y-0.5">
+            <p>Fallback local: {apiStatus.simulatedAllowed ? 'PERMITIDO' : 'BLOQUEADO'}</p>
+            <p>Ref. manual: {oddsManualUserRefreshEnabled ? 'SI' : 'NO'}</p>
           </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            apiStatus.apiFootball 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-red-500/10 text-red-400 border-red-500/30'
-          }`}>
-            {apiStatus.apiFootball ? 'ACTIVO' : 'INACTIVO'}
-          </span>
-        </div>
-
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">Datos Simulados</span>
-            <p className="text-[11px] font-semibold text-text-primary">Fallback Local</p>
-          </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            apiStatus.simulatedAllowed 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-          }`}>
-            {apiStatus.simulatedAllowed ? 'PERMITIDO' : 'BLOQUEADO'}
-          </span>
-        </div>
-
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">Visualización</span>
-            <p className="text-[11px] font-semibold text-text-primary">ODDS_DISPLAY</p>
-          </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            oddsDisplayEnabled 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-red-500/10 text-red-400 border-red-500/30'
-          }`}>
-            {oddsDisplayEnabled ? 'HABILITADO' : 'DESHABILITADO'}
-          </span>
-        </div>
-
-        <div className="card-base p-4 flex items-center justify-between border-border-default/60">
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">Act. Manual</span>
-            <p className="text-[11px] font-semibold text-text-primary">MANUAL_REFRESH</p>
-          </div>
-          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-            oddsManualUserRefreshEnabled 
-              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-              : 'bg-red-500/10 text-red-400 border-red-500/30'
-          }`}>
-            {oddsManualUserRefreshEnabled ? 'HABILITADO' : 'DESHABILITADO'}
-          </span>
         </div>
       </div>
 
       {/* Sync Status & Error Logs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
-          <h4 className="font-semibold text-text-primary">Últimas Sincronizaciones Exitosas (Reales)</h4>
+          <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Sincronización (Reales)</h4>
           <div className="space-y-1 text-xs text-text-secondary font-mono">
-            <p>Cuotas del Mercado: {lastSuccessfulOdds ? new Date(lastSuccessfulOdds).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)' : 'Ninguna'}</p>
-            <p>Historial H2H: {lastSuccessfulH2h ? new Date(lastSuccessfulH2h).toLocaleString('es-PE', { timeZone: 'America/Lima' }) + ' (Hora Lima)' : 'Ninguno'}</p>
+            <p>Cuotas: {lastSuccessfulOdds ? new Date(lastSuccessfulOdds).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Ninguna'}</p>
+            <p>H2H: {lastSuccessfulH2h ? new Date(lastSuccessfulH2h).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Ninguno'}</p>
+            <p>Fallback OK: {lastFallbackSuccessTime ? new Date(lastFallbackSuccessTime).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : 'Nunca'}</p>
           </div>
         </div>
 
         <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
-          <h4 className="font-semibold text-text-primary">Conteo de Snapshots en BD</h4>
+          <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">BD Snapshot Counts</h4>
           <div className="space-y-1 text-xs text-text-secondary font-mono">
-            <p>Cuotas Reales: <strong className="text-text-primary">{realSnapshotsCount.odds}</strong></p>
-            <p>H2H Reales: <strong className="text-text-primary">{realSnapshotsCount.h2h}</strong></p>
-            <p>Cuotas Simuladas: <strong className={simulatedSnapshotsCount.odds > 0 ? 'text-yellow-400 font-bold' : 'text-text-muted'}>{simulatedSnapshotsCount.odds}</strong></p>
-            <p>H2H Simulados: <strong className={simulatedSnapshotsCount.h2h > 0 ? 'text-yellow-400 font-bold' : 'text-text-muted'}>{simulatedSnapshotsCount.h2h}</strong></p>
+            <p>Globales: <strong className="text-text-primary">{globalOddsCount}</strong> · Privadas: <strong className="text-text-primary">{privateOddsCount}</strong></p>
+            <p>Total Cuotas Reales: <strong className="text-text-primary">{realSnapshotsCount.odds}</strong></p>
+            <p>H2H snapshots: <strong className="text-text-primary">{realSnapshotsCount.h2h}</strong></p>
+            <p>Simuladas (cuotas/H2H): <strong className="text-text-primary">{simulatedSnapshotsCount.odds} / {simulatedSnapshotsCount.h2h}</strong></p>
           </div>
         </div>
 
-        {(lastOddsError || lastH2hError) ? (
-          <div className="card-base p-4 border-red-500/20 bg-red-500/5 space-y-2 text-sm">
-            <h4 className="font-semibold text-red-400">Últimos Errores de Proveedores</h4>
-            <div className="space-y-1 text-xs text-red-400/90 font-mono">
-              {lastOddsError && <p className="truncate">Cuotas: {lastOddsError}</p>}
-              {lastH2hError && <p className="truncate">H2H: {lastH2hError}</p>}
-            </div>
-          </div>
-        ) : (
-          <div className="card-base p-4 border-border-default/60 flex items-center justify-center text-xs text-text-muted">
-            Sin errores registrados recientemente.
-          </div>
-        )}
-
         <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
-          <h4 className="font-semibold text-text-primary">Diagnóstico de Fechas (Epoch)</h4>
+          <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Partidos Restantes</h4>
           <div className="space-y-1 text-xs text-text-secondary font-mono">
             <p>Partidos Futuros: <strong className="text-text-primary">{futureMatchesCount}</strong></p>
+            <p>Futuros sin Cuota Global: <strong className={futureMatchesWithoutGlobalOddsCount > 0 ? "text-yellow-400 font-bold" : "text-text-muted"}>{futureMatchesWithoutGlobalOddsCount}</strong></p>
+            <p>Futuros sin H2H: <strong className={futureMatchesWithoutH2HCount > 0 ? "text-yellow-400 font-bold" : "text-text-muted"}>{futureMatchesWithoutH2HCount}</strong></p>
+          </div>
+        </div>
+
+        <div className="card-base p-4 border-border-default/60 space-y-2 text-sm">
+          <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Diagnóstico de Tiempos</h4>
+          <div className="space-y-1 text-xs text-text-secondary font-mono">
             {nextFutureMatch ? (
-              <div className="mt-1 border-t border-border-subtle/40 pt-1 space-y-0.5 text-[10px]">
-                <p className="font-bold text-gold-400">Próximo Partido:</p>
-                <p>ID: {nextFutureMatch.id.substring(0, 8)} ({nextFutureMatch.homeTeamCode} vs {nextFutureMatch.awayTeamCode})</p>
-                <p>Raw: {new Date(nextFutureMatch.kickoffUtc).getTime()}</p>
-                <p>UTC: {new Date(nextFutureMatch.kickoffUtc).toUTCString()}</p>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="font-bold text-gold-400">Próximo partido:</p>
+                <p className="truncate">{nextFutureMatch.homeTeamCode} vs {nextFutureMatch.awayTeamCode} ({nextFutureMatch.id.substring(0, 8)})</p>
+                <p>UTC: {new Date(nextFutureMatch.kickoffUtc).toISOString()}</p>
                 <p>Lima: {new Date(nextFutureMatch.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</p>
               </div>
             ) : (
@@ -292,47 +301,119 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         </div>
       </div>
 
+      {(lastOddsError || lastH2hError) && (
+        <div className="card-base p-4 border-red-500/20 bg-red-500/5 space-y-2 text-sm">
+          <h4 className="font-semibold text-red-400 text-xs uppercase tracking-wider font-mono">Últimos Errores de Proveedores</h4>
+          <div className="space-y-1 text-xs text-red-400/90 font-mono">
+            {lastOddsError && <p>Cuotas: {lastOddsError}</p>}
+            {lastH2hError && <p>H2H: {lastH2hError}</p>}
+          </div>
+        </div>
+      )}
+
       {hasNoRealData && (
         <div className="card-base p-6 border-yellow-500/20 bg-yellow-500/5 text-center space-y-2">
           <Database className="w-10 h-10 text-yellow-500/80 mx-auto" />
           <h3 className="font-semibold text-text-primary text-base">Sin datos reales guardados todavía</h3>
           <p className="text-xs text-text-secondary max-w-md mx-auto">
-            Aún no se han descargado datos reales de cuotas o H2H desde los proveedores externos. Puedes hacer una consulta global usando los botones de arriba.
+            Aún no se han descargado datos reales de cuotas o H2H desde los proveedores externos. Puedes hacer una consulta global usando los botones de abajo.
           </p>
         </div>
       )}
 
       {/* Admin Action Buttons */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleRefreshAllOdds}
-          disabled={globalLoading !== null}
-          className="btn-gold py-2 px-4 text-xs font-mono uppercase tracking-wider flex items-center gap-1.5"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${globalLoading === 'odds' ? 'animate-spin' : ''}`} />
-          Actualizar cuotas globales próximas
-        </button>
+      <div className="card-base p-5 border-border-default/60 space-y-4">
+        <h4 className="font-semibold text-sm text-gold-400 uppercase tracking-wider font-mono">Controles de Actualización Global</h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <span className="text-xs text-text-secondary font-semibold uppercase tracking-wider block">Probabilidades (Odds)</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleRefreshGlobalOdds(1, undefined)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" /> Próximo Partido
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRefreshGlobalOdds(5, undefined)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" /> Próximos 5
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRefreshGlobalOdds(10, undefined)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" /> Próximos 10
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRefreshGlobalOdds(20, 24)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" /> Próximas 24 Horas
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRefreshGlobalOdds(30, 48)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" /> Próximas 48 Horas
+              </button>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleFetchAllMissingH2H}
-          disabled={globalLoading !== null}
-          className="px-4 py-2 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-xl text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all"
-        >
-          <Database className={`w-3.5 h-3.5 ${globalLoading === 'h2h' ? 'animate-spin' : ''}`} />
-          Buscar H2H faltantes
-        </button>
+          <div className="space-y-2">
+            <span className="text-xs text-text-secondary font-semibold uppercase tracking-wider block">Historial Enfrentamientos (H2H)</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleFetchMissingH2H(5, true)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Database className="w-3 h-3" /> H2H Próximos 5 Faltantes
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFetchMissingH2H(10, true)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Database className="w-3 h-3" /> H2H Próximos 10 Faltantes
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFetchMissingH2H(99, false)}
+                disabled={globalLoading !== null}
+                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+              >
+                <Database className="w-3 h-3 text-red-400" /> Buscar Todos los Faltantes (Lento)
+              </button>
+            </div>
+          </div>
+        </div>
 
-        <button
-          type="button"
-          onClick={handleCleanupSimulatedData}
-          disabled={globalLoading !== null}
-          className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-xl text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          Limpiar datos simulados
-        </button>
+        <div className="pt-2 border-t border-border-subtle flex justify-end">
+          <button
+            type="button"
+            onClick={handleCleanupSimulatedData}
+            disabled={globalLoading !== null}
+            className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-xl text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Limpiar todos los datos simulados
+          </button>
+        </div>
       </div>
 
       {/* Status Messages */}
@@ -446,7 +527,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                     className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3 h-3 ${isLoadingOdds ? 'animate-spin' : ''}`} />
-                    Actualizar cuotas de este partido
+                    {m.globalOdds ? 'Refrescar cuotas' : 'Buscar cuotas'}
                   </button>
 
                   <button
@@ -456,7 +537,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                     className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
                   >
                     <History className={`w-3 h-3 ${isLoadingH2H ? 'animate-spin' : ''}`} />
-                    Buscar H2H de este partido
+                    {m.h2h ? 'Refrescar H2H' : 'Buscar H2H'}
                   </button>
                 </div>
               </div>

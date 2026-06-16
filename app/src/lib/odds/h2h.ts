@@ -1,4 +1,22 @@
 import { prisma } from '../db';
+import { getProviderCooldown, setProviderCooldown } from './providers';
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
 
 export interface HeadToHeadStats {
   totalMatches: number;
@@ -132,13 +150,14 @@ export function generateSimulatedH2H(homeCode: string, awayCode: string): HeadTo
 async function lookupTeamId(code: string, apiKey: string): Promise<number | null> {
   try {
     const url = `https://v3.football.api-sports.io/teams?code=${code}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         'x-apisports-key': apiKey,
         'Accept': 'application/json',
       },
-    });
+    }, 8000);
     if (res.status === 429) {
+      await setProviderCooldown('api-football', 3600, 429, 'Rate limit exceeded');
       throw new Error('HTTP 429');
     }
     if (!res.ok) return null;
@@ -146,10 +165,12 @@ async function lookupTeamId(code: string, apiKey: string): Promise<number | null
     if (data && data.errors) {
       const errStr = JSON.stringify(data.errors);
       if (errStr.toLowerCase().includes('rate limit') || errStr.toLowerCase().includes('429') || errStr.toLowerCase().includes('requests')) {
+        await setProviderCooldown('api-football', 3600, 429, `Rate limit exceeded: ${errStr}`);
         throw new Error(`HTTP 429: ${errStr}`);
       }
     }
     if (data && data.response && data.response.length > 0) {
+      await setProviderCooldown('api-football', 0, 200, null); // Clear cooldown
       return data.response[0].team.id;
     }
   } catch (error) {
@@ -173,7 +194,7 @@ function redactApiKey(msg: string, key?: string): string {
 }
 
 // Get Head to Head stats for a match
-export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadStats | null> {
+export async function getHeadToHeadStats(matchId: string, bypassCooldown = false): Promise<HeadToHeadStats | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
   });
@@ -191,6 +212,18 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
       return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
     }
     setLastH2hError('API-Football H2H no está habilitado o no está configurado.');
+    return null;
+  }
+
+  // Cooldown check
+  const cooldown = bypassCooldown ? null : await getProviderCooldown('api-football');
+  if (cooldown) {
+    const msg = `API-Football está en cooldown hasta ${cooldown.toLocaleString('es-PE', { timeZone: 'America/Lima' })}`;
+    console.warn(msg);
+    setLastH2hError(msg);
+    if (allowSimulation) {
+      return generateSimulatedH2H(match.homeTeamCode, match.awayTeamCode);
+    }
     return null;
   }
 
@@ -221,14 +254,15 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
 
     // 3. Query H2H endpoint
     const url = `https://v3.football.api-sports.io/fixtures/headtohead?h2h=${homeId}-${awayId}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         'x-apisports-key': apiKey,
         'Accept': 'application/json',
       },
-    });
+    }, 8000);
 
     if (res.status === 429) {
+      await setProviderCooldown('api-football', 3600, 429, 'Rate limit exceeded');
       throw new Error('HTTP 429');
     }
 
@@ -246,6 +280,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     if (data && data.errors) {
       const errStr = JSON.stringify(data.errors);
       if (errStr.toLowerCase().includes('rate limit') || errStr.toLowerCase().includes('429') || errStr.toLowerCase().includes('requests')) {
+        await setProviderCooldown('api-football', 3600, 429, `Rate limit exceeded: ${errStr}`);
         throw new Error(`HTTP 429: ${errStr}`);
       }
     }
@@ -310,6 +345,7 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     });
 
     setLastH2hError(null);
+    await setProviderCooldown('api-football', 0, 200, null); // Clear cooldown
     return {
       totalMatches,
       homeWins,

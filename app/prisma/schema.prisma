@@ -382,3 +382,14 @@ model ReminderLog {
   @@map("reminder_log")
 }
 
+model ProviderStatus {
+  provider         String   @id // "odds-api-io", "the-odds-api", "api-football"
+  cooldownUntil    DateTime
+  lastStatus       Int?
+  lastErrorMessage String?
+  updatedAt        DateTime @updatedAt
+
+  @@map("provider_status")
+}
+
+

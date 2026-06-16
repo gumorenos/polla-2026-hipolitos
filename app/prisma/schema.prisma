@@ -2,6 +2,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
+enum CompetitionType {
+  full_prediction
+  champion_survivor
+}
+
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
@@ -10,6 +16,10 @@ datasource db {
 // ─── AUTHENTICATION (Better Auth Models) ──────────────────────────────────────
 
 model User {
+  // Existing fields above
+  championPicks        ChampionPick[]        @relation("UserChampionPicks")
+  teamTournamentStatuses TeamTournamentStatus[] @relation("UserTeamStatuses")
+  championOddsSnapshots ChampionOddsSnapshot[] @relation("UserOddsSnapshots")
   id            String    @id @default(cuid())
   name          String
   email         String    @unique
@@ -41,7 +51,7 @@ model User {
   leaguesOwned      League[]           @relation("OwnedLeagues")
   memberships       LeagueMember[]
   predictions       Prediction[]
-  winnerPredictions WinnerPrediction[]
+  winnerPredictions WinnerPrediction[] @relation("UserWinnerPredictions")
   winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
   adminActionLogs   AdminActionLog[]
@@ -99,13 +109,17 @@ model Verification {
 // ─── DOMAIN MODELS (La Polla 2026 Models) ─────────────────────────────────────
 
 model Team {
+  // Existing fields above
+  championPicks        ChampionPick[]        @relation("TeamChampionPicks")
+  teamTournamentStatuses TeamTournamentStatus[] @relation("TeamStatuses")
+  championOddsSnapshots ChampionOddsSnapshot[] @relation("TeamOddsSnapshots")
   code String @id // e.g. "ARG", "BRA", "MEX"
   name String
   hue  Int    // For circular gradients
 
   homeMatches       Match[]            @relation("HomeTeamMatches")
   awayMatches       Match[]            @relation("AwayTeamMatches")
-  winnerPredictions WinnerPrediction[]
+  winnerPredictions WinnerPrediction[] @relation("TeamWinnerPredictions")
   oddsSnapshots     OddsSnapshot[]
   h2hHomeSnapshots  HeadToHeadSnapshot[] @relation("H2HHomeTeam")
   h2hAwaySnapshots  HeadToHeadSnapshot[] @relation("H2HAwayTeam")
@@ -155,6 +169,10 @@ model Match {
 }
 
 model League {
+  // Existing fields above
+  championPicks        ChampionPick[]        @relation("LeagueChampionPicks")
+  teamTournamentStatuses TeamTournamentStatus[] @relation("LeagueTeamStatuses")
+  championOddsSnapshots ChampionOddsSnapshot[] @relation("LeagueOddsSnapshots")
   id                String             @id @default(cuid())
   name              String
   slug              String             @unique
@@ -166,8 +184,8 @@ model League {
   isActive          Boolean            @default(true)
   entryFee          Float              @default(0.0) // Cuota por usuario
   currency          String             @default("PEN") // Moneda, e.g. "PEN"
-  prizePoolOverride Float?             // Pozo override
-  payoutRules       String?            // Reglas de pago
+  prizePoolOverride Float?
+  payoutRules       String?
   autoJoin          Boolean            @default(false) // Whether approved users auto-join this pool
   inviteEnabled     Boolean            @default(true)  // Whether joining by invite code is enabled
   championDeadline  DateTime?
@@ -179,11 +197,14 @@ model League {
   showOdds          Boolean            @default(true)
   championTeamCode  String?
   knockoutOutcomeBasis String            @default("qualified_team") // "qualified_team" | "score_result"
+  competitionType   CompetitionType    @default(full_prediction)
+
+
 
   owner             User               @relation("OwnedLeagues", fields: [createdBy], references: [id])
   members           LeagueMember[]
   predictions       Prediction[]
-  winnerPredictions WinnerPrediction[]
+  winnerPredictions WinnerPrediction[] @relation("LeagueWinnerPredictions")
   winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
   reminderLogs      ReminderLog[]
@@ -267,20 +288,80 @@ model WinnerPrediction {
   teamCode                 String
   pointsEarned             Int?
   createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  
+  updatedAt                DateTime @updatedAt
   // Correction System Fields
   correctionAllowed        Boolean   @default(false)
   correctionAllowedUntil   DateTime?
   correctionReason         String?
   correctionAuthorizedById String?
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  team   Team   @relation(fields: [teamCode], references: [code], onDelete: Cascade)
+  // Competition Type awareness (optional, no column needed now)
+  // competitionType          CompetitionType? // can be derived via league.competitionType
+
+  user   User   @relation("UserWinnerPredictions", fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation("LeagueWinnerPredictions", fields: [leagueId], references: [id], onDelete: Cascade)
+  team   Team   @relation("TeamWinnerPredictions", fields: [teamCode], references: [code], onDelete: Cascade)
 
   @@unique([userId, leagueId])
   @@map("winner_prediction")
+}
+
+model ChampionPick {
+  id                String   @id @default(cuid())
+  leagueId          String
+  userId            String
+  teamCode          String
+  submittedAt       DateTime @default(now())
+  lockedAt          DateTime?
+  correctionAllowed Boolean   @default(false)
+  correctedByAdminId String?
+  correctedAt       DateTime?
+  lastCorrectionReason String?
+  previousTeamCode  String?
+  newTeamCode       String?
+
+  user   User   @relation("UserChampionPicks", fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation("LeagueChampionPicks", fields: [leagueId], references: [id], onDelete: Cascade)
+  team   Team   @relation("TeamChampionPicks", fields: [teamCode], references: [code], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+}
+
+model TeamTournamentStatus {
+  id               String   @id @default(cuid())
+  userId   String?  // optional reference to User
+  user   User?   @relation("UserTeamStatuses", fields: [userId], references: [id], onDelete: Cascade)
+  teamCode String
+  team   Team   @relation("TeamStatuses", fields: [teamCode], references: [code], onDelete: Cascade)
+  leagueId String
+  status String @default("unknown") // unknown/active/eliminated/runner_up/champion
+  eliminatedAt DateTime?
+  eliminatedInMatchId String?
+  finalRank Int?
+  notes String?
+  updatedAt DateTime @updatedAt
+  updatedById String?
+  league League @relation("LeagueTeamStatuses", fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@unique([teamCode, leagueId])
+}
+
+model ChampionOddsSnapshot {
+  id                String   @id @default(cuid())
+  leagueId          String
+  teamCode          String
+  provider          String
+  bookmaker         String
+  decimalOdds       Float
+  impliedProbability Float   @default(0)
+  capturedAt        DateTime @default(now())
+  sourceMarket      String   // e.g. "outright_winner"
+  rawSourceRef      String?
+  userId   String?  // optional reference to User
+  user     User?   @relation("UserOddsSnapshots", fields: [userId], references: [id], onDelete: Cascade)
+
+  league League @relation("LeagueOddsSnapshots", fields: [leagueId], references: [id], onDelete: Cascade)
+  team   Team   @relation("TeamOddsSnapshots", fields: [teamCode], references: [code], onDelete: Cascade)
 }
 
 model WinnerPredictionHistory {

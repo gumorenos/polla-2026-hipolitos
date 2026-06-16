@@ -19,6 +19,7 @@ async function main() {
   const hours = hoursArg ? parseInt(hoursArg.split('=')[1], 10) : null;
 
   const bypassCooldown = process.argv.includes('--bypassCooldown') || process.argv.includes('--force');
+  const debugMatch = process.argv.includes('--debugMatch');
 
   let matches = [];
 
@@ -83,7 +84,7 @@ async function main() {
       }
 
       console.log(`Refreshing odds for match ${match.id}: ${match.homeTeamCode} vs ${match.awayTeamCode}`);
-      const odds = await getMatchWinnerOdds(match.id, bypassCooldown);
+      const odds = await getMatchWinnerOdds(match.id, bypassCooldown, debugMatch);
       if (!odds) {
         console.log(`No real odds returned by provider for match ${match.id}. Skipping.`);
         matchesSkipped++;

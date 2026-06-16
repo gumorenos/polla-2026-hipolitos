@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchTeamName, normalizeTeamName } from './providers';
+import { matchTeamName, normalizeTeamName, matchEventToFixture } from './providers';
 
 describe('Team Name Normalization', () => {
   it('should convert to lowercase', () => {
@@ -12,7 +12,7 @@ describe('Team Name Normalization', () => {
 
   it('should remove accents and diacritics', () => {
     expect(normalizeTeamName('Curaçao')).toBe('curacao');
-    expect(normalizeTeamName('Côte d\'Ivoire')).toBe('cote d\'ivoire');
+    expect(normalizeTeamName('Côte d\'Ivoire')).toBe('cote divoire');
     expect(normalizeTeamName('Sudáfrica')).toBe('sudafrica');
   });
 
@@ -105,5 +105,61 @@ describe('Odds Team Matcher - BIH and Problematic Countries', () => {
   it('should match ENG (England) correctly', () => {
     expect(matchTeamName('England', 'ENG')).toBe(true);
     expect(matchTeamName('Inglaterra', 'ENG')).toBe(true);
+  });
+});
+
+describe('matchEventToFixture smoke test', () => {
+  const kickoff = new Date('2026-06-15T18:00:00Z');
+
+  it('should match BIH vs SUI / SUI vs BIH with various formats and time windows', () => {
+    // Exact matching direct
+    const res1 = matchEventToFixture(
+      { home_team: 'Bosnia and Herzegovina', away_team: 'Switzerland', bookmakers: [] },
+      'BIH', 'SUI', kickoff
+    );
+    expect(res1.matches).toBe(true);
+    expect(res1.isReverse).toBe(false);
+
+    // Exact matching reverse
+    const res2 = matchEventToFixture(
+      { home_team: 'Suiza', away_team: 'Bosnia-Herzegovina', bookmakers: [] },
+      'BIH', 'SUI', kickoff
+    );
+    expect(res2.matches).toBe(true);
+    expect(res2.isReverse).toBe(true);
+
+    // Fuzzy matching within 12 hours (direct)
+    const res3 = matchEventToFixture(
+      { home_team: 'Bosnia Herzegovina Football', away_team: 'Switzerland FC', commence_time: '2026-06-15T22:00:00Z', bookmakers: [] },
+      'BIH', 'SUI', kickoff
+    );
+    expect(res3.matches).toBe(true);
+    expect(res3.isFuzzy).toBe(true);
+    expect(res3.isReverse).toBe(false);
+
+    // Fuzzy matching outside 12 hours (should fail)
+    const res4 = matchEventToFixture(
+      { home_team: 'Bosnia Herzegovina Football', away_team: 'Switzerland FC', commence_time: '2026-06-16T08:00:00Z', bookmakers: [] },
+      'BIH', 'SUI', kickoff
+    );
+    expect(res4.matches).toBe(false);
+  });
+
+  it('should match CAN vs BIH', () => {
+    const res = matchEventToFixture(
+      { home_team: 'Canada', away_team: 'Bosnia Herzegovina', bookmakers: [] },
+      'CAN', 'BIH', kickoff
+    );
+    expect(res.matches).toBe(true);
+    expect(res.isReverse).toBe(false);
+  });
+
+  it('should match BIH vs QAT', () => {
+    const res = matchEventToFixture(
+      { home_team: 'Bosnia y Herzeg.', away_team: 'Qatar', bookmakers: [] },
+      'BIH', 'QAT', kickoff
+    );
+    expect(res.matches).toBe(true);
+    expect(res.isReverse).toBe(false);
   });
 });

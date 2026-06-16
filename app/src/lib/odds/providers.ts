@@ -73,6 +73,8 @@ export interface MatchOdds {
 interface ProviderEvent {
   home_team: string;
   away_team: string;
+  starts_at?: string | number;
+  commence_time?: string | number;
   bookmakers: {
     key: string;
     title: string;
@@ -84,6 +86,16 @@ interface ProviderEvent {
       }[];
     }[];
   }[];
+}
+
+export interface OddsMatchInfo {
+  id: string;
+  kickoffUtc: Date | number;
+  homeTeamCode: string;
+  awayTeamCode: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  debugMatch?: boolean;
 }
 
 // Map of team codes to common English/Spanish names for matching API data
@@ -138,24 +150,60 @@ export const TEAM_NAMES_MAP: Record<string, string[]> = {
   IRN: ['Iran', 'Irán'],
   IRQ: ['Iraq', 'Irak'],
   COD: ['DR Congo', 'Congo DR', 'Congo Democrático', 'Congo, Democratic Republic of the', 'Democratic Republic of the Congo'],
-  BIH: ['Bosnia', 'Bosnia and Herzegovina', 'Bosnia-Herzegovina', 'Bosnia & Herzegovina', 'Bosnia Herzegovina', 'Bosnia y Herzegovina'],
+  BIH: [
+    'Bosnia and Herzegovina',
+    'Bosnia & Herzegovina',
+    'Bosnia-Herzegovina',
+    'Bosnia Herzegovina',
+    'Bosnia',
+    'Bosnia and Herz.',
+    'Bosnia Herz.',
+    'Bosna i Hercegovina',
+    'Bosnie-Herzégovine',
+    'Bosnia y Herzegovina',
+    'Bosnia y Herzeg.',
+    'Bosnia-Herz.'
+  ],
   RSA: ['South Africa', 'Sudáfrica']
 };
 
 // Normalize team name according to rules
 export function normalizeTeamName(name: string): string {
   if (!name) return '';
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove accents/diacritics
-    .replace(/&/g, 'and')
-    .replace(/-/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let normalized = name.toLowerCase().trim();
+  
+  // Remove accents/diacritics
+  normalized = normalized.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  
+  // Replace & with and
+  normalized = normalized.replace(/&/g, 'and');
+  
+  // Replace hyphens with spaces
+  normalized = normalized.replace(/-/g, ' ');
+  
+  // Remove periods
+  normalized = normalized.replace(/\./g, '');
+
+  // Strip single quotes and apostrophes
+  normalized = normalized.replace(/['`’]/g, '');
+
+  // Normalize herzeg / herzeg. / herz to herzegovina
+  normalized = normalized.replace(/\bherz\w*\b/g, 'herzegovina');
+
+  // Normalize country articles/punctuation/common prefixes if present
+  normalized = normalized.replace(/\b(democratic\s+)?republic\s+of\b/gi, '');
+  normalized = normalized.replace(/\bde\s+la\b/gi, '');
+  normalized = normalized.replace(/\bde\b/gi, '');
+  normalized = normalized.replace(/\bthe\b/gi, '');
+  normalized = normalized.replace(/\brep\b/gi, '');
+  
+  // Collapse multiple spaces
+  normalized = normalized.replace(/\s+/g, ' ');
+  
+  return normalized.trim();
 }
 
-// Check if a team name matches a team code
+// Check if a team name matches a team code using exact alias matching
 export function matchTeamName(teamName: string, code: string): boolean {
   if (!teamName || !code) return false;
   const normInput = normalizeTeamName(teamName);
@@ -164,6 +212,147 @@ export function matchTeamName(teamName: string, code: string): boolean {
 
   const allowedNames = TEAM_NAMES_MAP[code] || [];
   return allowedNames.some(name => normalizeTeamName(name) === normInput);
+}
+
+// Sørensen-Dice similarity score helper
+export function getSimilarityScore(str1: string, str2: string): number {
+  const s1 = normalizeTeamName(str1);
+  const s2 = normalizeTeamName(str2);
+  if (s1 === s2) return 1.0;
+  if (s1.length < 2 || s2.length < 2) return 0.0;
+
+  const getBigrams = (str: string) => {
+    const bigrams = new Set<string>();
+    for (let i = 0; i < str.length - 1; i++) {
+      bigrams.add(str.substring(i, i + 2));
+    }
+    return bigrams;
+  };
+
+  const bigrams1 = getBigrams(s1);
+  const bigrams2 = getBigrams(s2);
+
+  let intersection = 0;
+  for (const bigram of bigrams1) {
+    if (bigrams2.has(bigram)) {
+      intersection++;
+    }
+  }
+
+  return (2.0 * intersection) / (bigrams1.size + bigrams2.size);
+}
+
+// Parse event start time in ms
+export function getEventTimeMs(e: ProviderEvent): number | null {
+  const timeVal = e.starts_at ?? e.commence_time;
+  if (!timeVal) return null;
+  if (typeof timeVal === 'number') {
+    return timeVal < 9999999999 ? timeVal * 1000 : timeVal;
+  }
+  if (typeof timeVal === 'string') {
+    const parsed = Date.parse(timeVal);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return null;
+}
+
+// Matches a provider event to our local match fixture
+export function matchEventToFixture(
+  event: ProviderEvent,
+  homeCode: string,
+  awayCode: string,
+  matchKickoffUtc: Date | number,
+  debugMatch = false
+): { 
+  matches: boolean; 
+  reason?: string; 
+  isFuzzy?: boolean; 
+  isReverse?: boolean;
+  scoreHome?: number; 
+  scoreAway?: number; 
+} {
+  const eventHome = event.home_team;
+  const eventAway = event.away_team;
+
+  // 1. Try Exact Alias Matching first
+  const homeMatchesExactDirect = matchTeamName(eventHome, homeCode);
+  const awayMatchesExactDirect = matchTeamName(eventAway, awayCode);
+
+  const homeMatchesExactReverse = matchTeamName(eventHome, awayCode);
+  const awayMatchesExactReverse = matchTeamName(eventAway, homeCode);
+
+  if (homeMatchesExactDirect && awayMatchesExactDirect) {
+    return { matches: true, isFuzzy: false, isReverse: false };
+  }
+  if (homeMatchesExactReverse && awayMatchesExactReverse) {
+    return { matches: true, isFuzzy: false, isReverse: true };
+  }
+
+  // 2. Fuzzy Matching Fallback (only within same match window +/- 12 hours)
+  const eventTimeMs = getEventTimeMs(event);
+  const matchTimeMs = typeof matchKickoffUtc === 'number' ? matchKickoffUtc : matchKickoffUtc.getTime();
+
+  if (!eventTimeMs) {
+    return { matches: false, reason: "Event has no kickoff time/date for fallback validation" };
+  }
+
+  const timeDiffHours = Math.abs(eventTimeMs - matchTimeMs) / (1000 * 60 * 60);
+  if (timeDiffHours > 12) {
+    return { matches: false, reason: `Kickoff time difference is too large (${timeDiffHours.toFixed(1)} hours, max 12 hours)` };
+  }
+
+  const threshold = 0.65;
+
+  const getMaxSimilarity = (name: string, code: string): number => {
+    const normName = normalizeTeamName(name);
+    const normCode = normalizeTeamName(code);
+    let maxScore = getSimilarityScore(normName, normCode);
+
+    const aliases = TEAM_NAMES_MAP[code] || [];
+    for (const alias of aliases) {
+      const score = getSimilarityScore(normName, normalizeTeamName(alias));
+      if (score > maxScore) {
+        maxScore = score;
+      }
+    }
+    return maxScore;
+  };
+
+  const simHomeDirect = getMaxSimilarity(eventHome, homeCode);
+  const simAwayDirect = getMaxSimilarity(eventAway, awayCode);
+
+  const simHomeReverse = getMaxSimilarity(eventHome, awayCode);
+  const simAwayReverse = getMaxSimilarity(eventAway, homeCode);
+
+  const isDirectMatch = simHomeDirect >= threshold && simAwayDirect >= threshold;
+  const isReverseMatch = simHomeReverse >= threshold && simAwayReverse >= threshold;
+
+  if (isDirectMatch) {
+    return {
+      matches: true,
+      isFuzzy: true,
+      isReverse: false,
+      scoreHome: simHomeDirect,
+      scoreAway: simAwayDirect
+    };
+  }
+  if (isReverseMatch) {
+    return {
+      matches: true,
+      isFuzzy: true,
+      isReverse: true,
+      scoreHome: simHomeReverse,
+      scoreAway: simAwayReverse
+    };
+  }
+
+  const reason = `Fuzzy matching failed (threshold ${threshold}). Direct scores: Home=${simHomeDirect.toFixed(2)}, Away=${simAwayDirect.toFixed(2)}. Reverse scores: Home=${simHomeReverse.toFixed(2)}, Away=${simAwayReverse.toFixed(2)}`;
+  return {
+    matches: false,
+    reason,
+    scoreHome: Math.max(simHomeDirect, simHomeReverse),
+    scoreAway: Math.max(simAwayDirect, simAwayReverse)
+  };
 }
 
 // Generate mock odds for simulation fallback
@@ -271,7 +460,7 @@ async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<
 }
 
 // Fetch odds from Odds-API.io (Primary)
-async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string, matchId: string): Promise<MatchOdds | null> {
+async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise<MatchOdds | null> {
   const sport = process.env.ODDS_API_IO_SPORT || 'football';
   const leagueConf = process.env.ODDS_API_IO_LEAGUE || '';
 
@@ -295,9 +484,14 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     return null;
   }
 
+  // Accumulate diagnostics across all queried leagues
   const allProviderEventsChecked: string[] = [];
+  const diagnostics: any[] = [];
+  let foundMatchOdds: MatchOdds | null = null;
 
   for (const leagueSlug of leaguesToQuery) {
+    if (foundMatchOdds) break;
+
     try {
       const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=${sport}&league=${leagueSlug}`;
       const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
@@ -321,17 +515,47 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
       const events = data.data as ProviderEvent[];
       allProviderEventsChecked.push(...events.map(e => `${e.home_team} vs ${e.away_team}`));
 
-      const event = events.find((e) => {
-        const homeMatch = matchTeamName(e.home_team, homeCode) || matchTeamName(e.home_team, awayCode);
-        const awayMatch = matchTeamName(e.away_team, homeCode) || matchTeamName(e.away_team, awayCode);
-        return homeMatch && awayMatch;
-      });
+      let matchedEvent: ProviderEvent | null = null;
+      let matchedIsReverse = false;
 
-      if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+      for (const e of events) {
+        const matchResult = matchEventToFixture(
+          e,
+          matchInfo.homeTeamCode,
+          matchInfo.awayTeamCode,
+          matchInfo.kickoffUtc,
+          matchInfo.debugMatch
+        );
+
+        if (matchInfo.debugMatch) {
+          diagnostics.push({
+            league: leagueSlug,
+            eventHome: e.home_team,
+            eventAway: e.away_team,
+            eventHomeNorm: normalizeTeamName(e.home_team),
+            eventAwayNorm: normalizeTeamName(e.away_team),
+            eventTime: getEventTimeMs(e) ? new Date(getEventTimeMs(e)!).toISOString() : 'N/A',
+            matches: matchResult.matches,
+            isFuzzy: matchResult.isFuzzy,
+            isReverse: matchResult.isReverse,
+            scoreHome: matchResult.scoreHome,
+            scoreAway: matchResult.scoreAway,
+            reason: matchResult.reason || 'Matched!'
+          });
+        }
+
+        if (matchResult.matches) {
+          matchedEvent = e;
+          matchedIsReverse = !!matchResult.isReverse;
+          break;
+        }
+      }
+
+      if (!matchedEvent || !matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
         continue;
       }
 
-      const bookmaker = event.bookmakers[0];
+      const bookmaker = matchedEvent.bookmakers[0];
       const market = bookmaker.markets?.find((m) => m.key === 'h2h' || m.key === '1x2');
       if (!market || !market.outcomes || market.outcomes.length < 3) {
         continue;
@@ -342,9 +566,16 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
       let awayOdds = 0;
 
       for (const outcome of market.outcomes) {
-        if (matchTeamName(outcome.name, homeCode)) {
+        const isHome = matchedIsReverse
+          ? (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.away_team)
+          : (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.home_team);
+        const isAway = matchedIsReverse
+          ? (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.home_team)
+          : (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.away_team);
+
+        if (isHome) {
           homeOdds = outcome.price;
-        } else if (matchTeamName(outcome.name, awayCode)) {
+        } else if (isAway) {
           awayOdds = outcome.price;
         } else if (outcome.name.toLowerCase() === 'draw' || outcome.name.toLowerCase() === 'empate') {
           drawOdds = outcome.price;
@@ -354,14 +585,14 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
       if (homeOdds && drawOdds && awayOdds) {
         setLastOddsError(null);
         await setProviderCooldown('odds-api-io', 0, 200, null); // Clear cooldown
-        return {
+        foundMatchOdds = {
           homeOdds,
           drawOdds,
           awayOdds,
           bookmaker: bookmaker.title || bookmaker.key || 'Unknown Bookmaker',
           provider: 'odds-api-io',
           sourceType: 'api',
-          rawPayload: JSON.stringify(event),
+          rawPayload: JSON.stringify(matchedEvent),
         };
       }
     } catch (error) {
@@ -372,14 +603,44 @@ async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string
     }
   }
 
+  // Print diagnostic logging if debugMatch is active
+  if (matchInfo.debugMatch) {
+    console.log(`\n=== DEBUG MATCH DIAGNOSTICS (Match ID: ${matchInfo.id}) ===`);
+    console.log(`Canonical Teams:   ${matchInfo.homeTeamName} (${matchInfo.homeTeamCode}) vs ${matchInfo.awayTeamName} (${matchInfo.awayTeamCode})`);
+    console.log(`Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]`);
+    console.log(`Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]`);
+    console.log(`Provider:          odds-api-io`);
+    console.log(`Leagues queried:   [${leaguesToQuery.join(', ')}]`);
+    console.log(`Events Considered:`);
+    if (diagnostics.length === 0) {
+      console.log(`  (No events found in response)`);
+    } else {
+      diagnostics.forEach((d, idx) => {
+        console.log(`  [${idx + 1}] League: "${d.league}" | Event: "${d.eventHome}" vs "${d.eventAway}"`);
+        console.log(`      Normalized: "${d.eventHomeNorm}" vs "${d.eventAwayNorm}"`);
+        console.log(`      Event Time: ${d.eventTime}`);
+        console.log(`      Match?      ${d.matches} (Fuzzy? ${d.isFuzzy}, Reverse? ${d.isReverse})`);
+        if (d.scoreHome !== undefined || d.scoreAway !== undefined) {
+          console.log(`      Similarity: Home=${d.scoreHome?.toFixed(2) ?? 'N/A'}, Away=${d.scoreAway?.toFixed(2) ?? 'N/A'}`);
+        }
+        console.log(`      Result/Reason: ${d.reason}`);
+      });
+    }
+    console.log(`====================================================\n`);
+  }
+
+  if (foundMatchOdds) {
+    return foundMatchOdds;
+  }
+
   // Diagnostic logging when matching fails across all checked leagues
-  console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchId} (${homeCode} vs ${awayCode}).
+  console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchInfo.id} (${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}).
     Provider: odds-api-io
-    Local aliases for ${homeCode}: [${(TEAM_NAMES_MAP[homeCode] || []).join(', ')}]
-    Local aliases for ${awayCode}: [${(TEAM_NAMES_MAP[awayCode] || []).join(', ')}]
+    Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]
+    Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]
     Provider events checked: [${allProviderEventsChecked.join(' | ')}]`);
 
-  setLastOddsError(`Odds-API.io could not find matching event for ${homeCode} vs ${awayCode} in checked leagues.`);
+  setLastOddsError(`Odds-API.io could not find matching event for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode} in checked leagues.`);
   return null;
 }
 
@@ -416,7 +677,7 @@ async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promi
 }
 
 // Fetch odds from The Odds API (Fallback)
-async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: string, matchId: string): Promise<MatchOdds | null> {
+async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promise<MatchOdds | null> {
   const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
   const regions = process.env.THE_ODDS_API_REGIONS || 'eu,uk,us';
   const markets = process.env.THE_ODDS_API_MARKETS || 'h2h';
@@ -450,29 +711,84 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     }
 
     const events = data as ProviderEvent[];
-    const event = events.find((e) => {
-      const homeMatch = matchTeamName(e.home_team, homeCode) || matchTeamName(e.home_team, awayCode);
-      const awayMatch = matchTeamName(e.away_team, homeCode) || matchTeamName(e.away_team, awayCode);
-      return homeMatch && awayMatch;
-    });
+    let matchedEvent: ProviderEvent | null = null;
+    let matchedIsReverse = false;
+    const diagnostics: any[] = [];
 
-    if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+    for (const e of events) {
+      const matchResult = matchEventToFixture(
+        e,
+        matchInfo.homeTeamCode,
+        matchInfo.awayTeamCode,
+        matchInfo.kickoffUtc,
+        matchInfo.debugMatch
+      );
+
+      if (matchInfo.debugMatch) {
+        diagnostics.push({
+          eventHome: e.home_team,
+          eventAway: e.away_team,
+          eventHomeNorm: normalizeTeamName(e.home_team),
+          eventAwayNorm: normalizeTeamName(e.away_team),
+          eventTime: getEventTimeMs(e) ? new Date(getEventTimeMs(e)!).toISOString() : 'N/A',
+          matches: matchResult.matches,
+          isFuzzy: matchResult.isFuzzy,
+          isReverse: matchResult.isReverse,
+          scoreHome: matchResult.scoreHome,
+          scoreAway: matchResult.scoreAway,
+          reason: matchResult.reason || 'Matched!'
+        });
+      }
+
+      if (matchResult.matches) {
+        matchedEvent = e;
+        matchedIsReverse = !!matchResult.isReverse;
+        break;
+      }
+    }
+
+    if (matchInfo.debugMatch) {
+      console.log(`\n=== DEBUG MATCH DIAGNOSTICS (Match ID: ${matchInfo.id}) ===`);
+      console.log(`Canonical Teams:   ${matchInfo.homeTeamName} (${matchInfo.homeTeamCode}) vs ${matchInfo.awayTeamName} (${matchInfo.awayTeamCode})`);
+      console.log(`Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]`);
+      console.log(`Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]`);
+      console.log(`Provider:          the-odds-api`);
+      console.log(`Sport Key:         ${sportKey}`);
+      console.log(`Events Considered:`);
+      if (diagnostics.length === 0) {
+        console.log(`  (No events found in response)`);
+      } else {
+        diagnostics.forEach((d, idx) => {
+          console.log(`  [${idx + 1}] Event: "${d.eventHome}" vs "${d.eventAway}"`);
+          console.log(`      Normalized: "${d.eventHomeNorm}" vs "${d.eventAwayNorm}"`);
+          console.log(`      Event Time: ${d.eventTime}`);
+          console.log(`      Match?      ${d.matches} (Fuzzy? ${d.isFuzzy}, Reverse? ${d.isReverse})`);
+          if (d.scoreHome !== undefined || d.scoreAway !== undefined) {
+            console.log(`      Similarity: Home=${d.scoreHome?.toFixed(2) ?? 'N/A'}, Away=${d.scoreAway?.toFixed(2) ?? 'N/A'}`);
+          }
+          console.log(`      Result/Reason: ${d.reason}`);
+        });
+      }
+      console.log(`====================================================\n`);
+    }
+
+    if (!matchedEvent || !matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
       // Diagnostic logging when event matching fails
       const providerTeams = events.map(e => `${e.home_team} vs ${e.away_team}`);
-      console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchId} (${homeCode} vs ${awayCode}).
+      console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchInfo.id} (${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}).
         Provider: the-odds-api
-        Local aliases for ${homeCode}: [${(TEAM_NAMES_MAP[homeCode] || []).join(', ')}]
-        Local aliases for ${awayCode}: [${(TEAM_NAMES_MAP[awayCode] || []).join(', ')}]
+        Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]
+        Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]
         Provider events checked: [${providerTeams.join(' | ')}]`);
 
-      setLastOddsError(`The Odds API event not found for ${homeCode} vs ${awayCode}`);
+      setLastOddsError(`The Odds API event not found for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}`);
       return null;
     }
 
-    const bookmaker = event.bookmakers[0];
+    const bookmaker = matchedEvent.bookmakers[0];
     const market = bookmaker.markets?.find((m) => m.key === 'h2h');
     if (!market || !market.outcomes || market.outcomes.length < 3) {
-      setLastOddsError(`The Odds API outcomes not found for ${homeCode} vs ${awayCode}`);
+      setLastOddsError(`The Odds API outcomes not found for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}`);
       return null;
     }
 
@@ -481,9 +797,16 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     let awayOdds = 0;
 
     for (const outcome of market.outcomes) {
-      if (matchTeamName(outcome.name, homeCode)) {
+      const isHome = matchedIsReverse
+        ? (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.away_team)
+        : (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.home_team);
+      const isAway = matchedIsReverse
+        ? (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.home_team)
+        : (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.away_team);
+
+      if (isHome) {
         homeOdds = outcome.price;
-      } else if (matchTeamName(outcome.name, awayCode)) {
+      } else if (isAway) {
         awayOdds = outcome.price;
       } else if (outcome.name.toLowerCase() === 'draw' || outcome.name.toLowerCase() === 'empate') {
         drawOdds = outcome.price;
@@ -500,10 +823,10 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
         bookmaker: bookmaker.title || bookmaker.key || 'Unknown Bookmaker',
         provider: 'the-odds-api',
         sourceType: 'api',
-        rawPayload: JSON.stringify(event),
+        rawPayload: JSON.stringify(matchedEvent),
       };
     } else {
-      setLastOddsError(`The Odds API could not extract home, draw or away odds for ${homeCode} vs ${awayCode}`);
+      setLastOddsError(`The Odds API could not extract home, draw or away odds for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}`);
     }
   } catch (error) {
     const rawMsg = `Error in fetchTheOddsApi: ${error instanceof Error ? error.message : String(error)}`;
@@ -516,9 +839,17 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
 
 
 // Fetch odds using the configured settings and providers
-export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false): Promise<MatchOdds | null> {
+export async function getMatchWinnerOdds(
+  matchId: string,
+  bypassCooldown = false,
+  debugMatch = false
+): Promise<MatchOdds | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
+    include: {
+      homeTeam: true,
+      awayTeam: true,
+    }
   });
 
   if (!match) {
@@ -533,6 +864,16 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
   const isFallbackEnabled = process.env.THE_ODDS_API_ENABLED === 'true';
   const fallbackKey = process.env.THE_ODDS_API_KEY;
 
+  const matchInfo: OddsMatchInfo = {
+    id: match.id,
+    kickoffUtc: match.kickoffUtc,
+    homeTeamCode: match.homeTeamCode,
+    awayTeamCode: match.awayTeamCode,
+    homeTeamName: match.homeTeam.name,
+    awayTeamName: match.awayTeam.name,
+    debugMatch,
+  };
+
   let result: MatchOdds | null = null;
   let primaryFailed = false;
 
@@ -545,7 +886,7 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       console.log(`Bypassing Odds-API.io (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey, matchId);
+      result = await fetchOddsApiIo(matchInfo, primaryKey);
       if (!result) primaryFailed = true;
     }
   } else if (primaryProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
@@ -553,7 +894,7 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       console.log(`Bypassing The Odds API (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey, matchId);
+      result = await fetchTheOddsApi(matchInfo, fallbackKey);
       if (!result) primaryFailed = true;
     }
   }
@@ -564,13 +905,13 @@ export async function getMatchWinnerOdds(matchId: string, bypassCooldown = false
       if (fallbackCooldown) {
         console.log(`Bypassing The Odds API (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchTheOddsApi(match.homeTeamCode, match.awayTeamCode, fallbackKey, matchId);
+        result = await fetchTheOddsApi(matchInfo, fallbackKey);
       }
     } else if (fallbackProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
       if (fallbackCooldown) {
         console.log(`Bypassing Odds-API.io (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchOddsApiIo(match.homeTeamCode, match.awayTeamCode, primaryKey, matchId);
+        result = await fetchOddsApiIo(matchInfo, primaryKey);
       }
     }
   }

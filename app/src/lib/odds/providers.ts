@@ -276,8 +276,7 @@ export function matchEventToFixture(
   event: ProviderEvent,
   homeCode: string,
   awayCode: string,
-  matchKickoffUtc: Date | number,
-  _debugMatch = false
+  matchKickoffUtc: Date | number
 ): { 
   matches: boolean; 
   reason?: string; 
@@ -442,18 +441,40 @@ function redactApiKey(msg: string, keys: string[]): string {
   return output;
 }
 
+export interface OddsTracker {
+  attempted: Set<string>;
+  succeeded: Set<string>;
+  empty: Map<string, number>;
+  errors: Map<string, number>;
+}
+
 // Caching active football leagues for Odds-API.io
 let discoveredOddsApiIoLeaguesCache: string[] | null = null;
 
-async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<string[]> {
+async function discoverOddsApiIoLeagues(
+  apiKey: string,
+  sport: string,
+  debugMatch = false,
+  tracker?: OddsTracker
+): Promise<string[]> {
   if (discoveredOddsApiIoLeaguesCache) return discoveredOddsApiIoLeaguesCache;
   try {
     const url = `https://api.odds-api.io/v3/leagues?apiKey=${apiKey}&sport=${sport}`;
+    if (debugMatch) {
+      console.log(`[Odds-API.io] Attempting leagues discovery...`);
+      console.log(`[Odds-API.io] URL: https://api.odds-api.io/v3/leagues?apiKey=REDACTED&sport=${sport}`);
+    }
     const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
+    if (debugMatch) {
+      console.log(`[Odds-API.io] Leagues discovery HTTP Status: ${res.status} ${res.statusText}`);
+    }
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `Odds-API.io leagues discovery failed with status ${res.status}: ${errorText}`;
       console.warn(redactApiKey(msg, [apiKey]));
+      if (tracker) {
+        tracker.errors.set('odds-api-io', (tracker.errors.get('odds-api-io') || 0) + 1);
+      }
       if (res.status === 429) {
         const match = errorText.match(/resets in (\d+) minutes/i);
         const minutes = match ? parseInt(match[1], 10) : 60;
@@ -470,20 +491,31 @@ async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<
   } catch (error) {
     const rawMsg = `Error in discoverOddsApiIoLeagues: ${error instanceof Error ? error.message : String(error)}`;
     console.error(redactApiKey(rawMsg, [apiKey]));
+    if (tracker) {
+      tracker.errors.set('odds-api-io', (tracker.errors.get('odds-api-io') || 0) + 1);
+    }
   }
   return [];
 }
 
 // Fetch odds from Odds-API.io (Primary)
-async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise<MatchOdds | null> {
+async function fetchOddsApiIo(
+  matchInfo: OddsMatchInfo,
+  apiKey: string,
+  tracker?: OddsTracker
+): Promise<MatchOdds | null> {
   const sport = process.env.ODDS_API_IO_SPORT || 'football';
   const leagueConf = process.env.ODDS_API_IO_LEAGUE || '';
+
+  if (tracker) {
+    tracker.attempted.add('odds-api-io');
+  }
 
   const leaguesToQuery: string[] = [];
   if (leagueConf) {
     leaguesToQuery.push(leagueConf);
   } else {
-    const discovered = await discoverOddsApiIoLeagues(apiKey, sport);
+    const discovered = await discoverOddsApiIoLeagues(apiKey, sport, !!matchInfo.debugMatch, tracker);
     // Sort so cup, world cup, and international slugs are queried first
     const keywords = ['world-cup', 'worldcup', 'fifa', 'international', 'friendly', 'friendlies', 'cup', 'soccer'];
     const sorted = [...discovered].sort((a, b) => {
@@ -495,7 +527,14 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
   }
 
   if (leaguesToQuery.length === 0) {
-    setLastOddsError('No leagues found/configured for Odds-API.io.');
+    const skipMsg = 'No leagues found/configured for Odds-API.io.';
+    setLastOddsError(skipMsg);
+    if (matchInfo.debugMatch) {
+      console.log(`[Odds-API.io] Skipped: ${skipMsg}`);
+    }
+    if (tracker) {
+      tracker.empty.set('odds-api-io', (tracker.empty.get('odds-api-io') || 0) + 1);
+    }
     return null;
   }
 
@@ -503,18 +542,30 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
   const allProviderEventsChecked: string[] = [];
   const diagnostics: DiagnosticRecord[] = [];
   let foundMatchOdds: MatchOdds | null = null;
+  let requestAttempted = false;
 
   for (const leagueSlug of leaguesToQuery) {
     if (foundMatchOdds) break;
 
     try {
+      requestAttempted = true;
       const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=${sport}&league=${leagueSlug}`;
+      if (matchInfo.debugMatch) {
+        console.log(`[Odds-API.io] Fetching odds for league "${leagueSlug}"...`);
+        console.log(`[Odds-API.io] URL: https://api.odds-api.io/v3/odds?apiKey=REDACTED&sport=${sport}&league=${leagueSlug}`);
+      }
       const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
+      if (matchInfo.debugMatch) {
+        console.log(`[Odds-API.io] HTTP Status: ${res.status} ${res.statusText}`);
+      }
       if (!res.ok) {
         const errorText = await res.text().catch(() => '');
         const msg = `Odds-API.io responded with status ${res.status} for league ${leagueSlug}: ${errorText}`;
         console.warn(redactApiKey(msg, [apiKey]));
         setLastOddsError(redactApiKey(msg, [apiKey]));
+        if (tracker) {
+          tracker.errors.set('odds-api-io', (tracker.errors.get('odds-api-io') || 0) + 1);
+        }
         if (res.status === 429) {
           const match = errorText.match(/resets in (\d+) minutes/i);
           const minutes = match ? parseInt(match[1], 10) : 60;
@@ -524,10 +575,16 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
       }
       const data = await res.json();
       if (!data || !data.data || !Array.isArray(data.data)) {
+        if (tracker) {
+          tracker.empty.set('odds-api-io', (tracker.empty.get('odds-api-io') || 0) + 1);
+        }
         continue;
       }
 
       const events = data.data as ProviderEvent[];
+      if (matchInfo.debugMatch) {
+        console.log(`[Odds-API.io] Event count returned for league "${leagueSlug}": ${events.length}`);
+      }
       allProviderEventsChecked.push(...events.map(e => `${e.home_team} vs ${e.away_team}`));
 
       let matchedEvent: ProviderEvent | null = null;
@@ -538,8 +595,7 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
           e,
           matchInfo.homeTeamCode,
           matchInfo.awayTeamCode,
-          matchInfo.kickoffUtc,
-          matchInfo.debugMatch
+          matchInfo.kickoffUtc
         );
 
         if (matchInfo.debugMatch) {
@@ -566,13 +622,23 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
         }
       }
 
-      if (!matchedEvent || !matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
+      if (!matchedEvent) {
+        continue;
+      }
+
+      if (!matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
+        if (matchInfo.debugMatch) {
+          console.log(`[Odds-API.io] Matched event has no bookmakers.`);
+        }
         continue;
       }
 
       const bookmaker = matchedEvent.bookmakers[0];
       const market = bookmaker.markets?.find((m) => m.key === 'h2h' || m.key === '1x2');
-      if (!market || !market.outcomes || market.outcomes.length < 3) {
+      if (!market || market.outcomes.length < 3) {
+        if (matchInfo.debugMatch) {
+          console.log(`[Odds-API.io] Matched event has no valid outcomes/market.`);
+        }
         continue;
       }
 
@@ -609,12 +675,18 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
           sourceType: 'api',
           rawPayload: JSON.stringify(matchedEvent),
         };
+        if (tracker) {
+          tracker.succeeded.add('odds-api-io');
+        }
       }
     } catch (error) {
       const rawMsg = `Error in fetchOddsApiIo for league ${leagueSlug}: ${error instanceof Error ? error.message : String(error)}`;
       const msg = redactApiKey(rawMsg, [apiKey]);
       console.error(msg);
       setLastOddsError(msg);
+      if (tracker) {
+        tracker.errors.set('odds-api-io', (tracker.errors.get('odds-api-io') || 0) + 1);
+      }
     }
   }
 
@@ -624,11 +696,16 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
     console.log(`Canonical Teams:   ${matchInfo.homeTeamName} (${matchInfo.homeTeamCode}) vs ${matchInfo.awayTeamName} (${matchInfo.awayTeamCode})`);
     console.log(`Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]`);
     console.log(`Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]`);
+    console.log(`Provider Attempted: Yes`);
     console.log(`Provider:          odds-api-io`);
+    console.log(`Sport used:        ${sport}`);
     console.log(`Leagues queried:   [${leaguesToQuery.join(', ')}]`);
     console.log(`Events Considered:`);
     if (diagnostics.length === 0) {
       console.log(`  (No events found in response)`);
+      if (requestAttempted) {
+        console.log(`  [PROVIDER DETAIL] Provider returned no events.`);
+      }
     } else {
       diagnostics.forEach((d, idx) => {
         console.log(`  [${idx + 1}] League: "${d.league}" | Event: "${d.eventHome}" vs "${d.eventAway}"`);
@@ -648,14 +725,20 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
     return foundMatchOdds;
   }
 
-  // Diagnostic logging when matching fails across all checked leagues
-  console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchInfo.id} (${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}).
-    Provider: odds-api-io
-    Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]
-    Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]
-    Provider events checked: [${allProviderEventsChecked.join(' | ')}]`);
+  if (requestAttempted && allProviderEventsChecked.length === 0) {
+    const errorMsg = `Odds-API.io attempted but returned 0 leagues/events for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}.`;
+    console.warn(`[DIAGNOSTIC] ${errorMsg}`);
+    setLastOddsError(errorMsg);
+    if (tracker) {
+      tracker.empty.set('odds-api-io', (tracker.empty.get('odds-api-io') || 0) + 1);
+    }
+  } else {
+    // Diagnostic logging when matching fails across all checked leagues
+    const errorMsg = `Odds-API.io failed matching for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}.`;
+    console.warn(`[DIAGNOSTIC] ${errorMsg} Checked: [${allProviderEventsChecked.join(' | ')}]`);
+    setLastOddsError(errorMsg);
+  }
 
-  setLastOddsError(`Odds-API.io could not find matching event for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode} in checked leagues.`);
   return null;
 }
 
@@ -692,10 +775,18 @@ async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promi
 }
 
 // Fetch odds from The Odds API (Fallback)
-async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promise<MatchOdds | null> {
+async function fetchTheOddsApi(
+  matchInfo: OddsMatchInfo,
+  apiKey: string,
+  tracker?: OddsTracker
+): Promise<MatchOdds | null> {
   const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
   const regions = process.env.THE_ODDS_API_REGIONS || 'eu,uk,us';
   const markets = process.env.THE_ODDS_API_MARKETS || 'h2h';
+
+  if (tracker) {
+    tracker.attempted.add('the-odds-api');
+  }
 
   try {
     // Verify sport availability first
@@ -704,16 +795,29 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
       const msg = `provider has no market data yet: Sport key ${sportKey} is not available.`;
       console.warn(msg);
       setLastOddsError(msg);
+      if (tracker) {
+        tracker.empty.set('the-odds-api', (tracker.empty.get('the-odds-api') || 0) + 1);
+      }
       return null;
     }
 
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=${regions}&markets=${markets}`;
+    if (matchInfo.debugMatch) {
+      console.log(`[The Odds API] Fetching odds...`);
+      console.log(`[The Odds API] URL: https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=REDACTED&regions=${regions}&markets=${markets}`);
+    }
     const res = await fetchWithTimeout(url, {}, 8000);
+    if (matchInfo.debugMatch) {
+      console.log(`[The Odds API] HTTP Status: ${res.status} ${res.statusText}`);
+    }
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `The Odds API responded with status ${res.status}: ${errorText}`;
       console.warn(redactApiKey(msg, [apiKey]));
       setLastOddsError(redactApiKey(msg, [apiKey]));
+      if (tracker) {
+        tracker.errors.set('the-odds-api', (tracker.errors.get('the-odds-api') || 0) + 1);
+      }
       if (res.status === 429) {
         await setProviderCooldown('the-odds-api', 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [apiKey]));
       }
@@ -722,10 +826,16 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
     const data = await res.json();
     if (!Array.isArray(data)) {
       setLastOddsError('The Odds API response is not an array');
+      if (tracker) {
+        tracker.errors.set('the-odds-api', (tracker.errors.get('the-odds-api') || 0) + 1);
+      }
       return null;
     }
 
     const events = data as ProviderEvent[];
+    if (matchInfo.debugMatch) {
+      console.log(`[The Odds API] Event count returned: ${events.length}`);
+    }
     let matchedEvent: ProviderEvent | null = null;
     let matchedIsReverse = false;
     const diagnostics: DiagnosticRecord[] = [];
@@ -735,8 +845,7 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
         e,
         matchInfo.homeTeamCode,
         matchInfo.awayTeamCode,
-        matchInfo.kickoffUtc,
-        matchInfo.debugMatch
+        matchInfo.kickoffUtc
       );
 
       if (matchInfo.debugMatch) {
@@ -767,11 +876,13 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
       console.log(`Canonical Teams:   ${matchInfo.homeTeamName} (${matchInfo.homeTeamCode}) vs ${matchInfo.awayTeamName} (${matchInfo.awayTeamCode})`);
       console.log(`Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]`);
       console.log(`Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]`);
+      console.log(`Provider Attempted: Yes`);
       console.log(`Provider:          the-odds-api`);
       console.log(`Sport Key:         ${sportKey}`);
       console.log(`Events Considered:`);
       if (diagnostics.length === 0) {
         console.log(`  (No events found in response)`);
+        console.log(`  [PROVIDER DETAIL] Provider returned no events.`);
       } else {
         diagnostics.forEach((d, idx) => {
           console.log(`  [${idx + 1}] Event: "${d.eventHome}" vs "${d.eventAway}"`);
@@ -787,22 +898,33 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
       console.log(`====================================================\n`);
     }
 
-    if (!matchedEvent || !matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
-      // Diagnostic logging when event matching fails
+    if (!matchedEvent) {
       const providerTeams = events.map(e => `${e.home_team} vs ${e.away_team}`);
-      console.warn(`[DIAGNOSTIC] Odds matching failed for match ${matchInfo.id} (${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}).
-        Provider: the-odds-api
-        Local aliases for ${matchInfo.homeTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.homeTeamCode] || []).join(', ')}]
-        Local aliases for ${matchInfo.awayTeamCode}: [${(TEAM_NAMES_MAP[matchInfo.awayTeamCode] || []).join(', ')}]
-        Provider events checked: [${providerTeams.join(' | ')}]`);
+      if (events.length === 0) {
+        const errorMsg = `The Odds API returned 0 events for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}.`;
+        console.warn(`[DIAGNOSTIC] ${errorMsg}`);
+        setLastOddsError(errorMsg);
+        if (tracker) {
+          tracker.empty.set('the-odds-api', (tracker.empty.get('the-odds-api') || 0) + 1);
+        }
+      } else {
+        const errorMsg = `The Odds API failed matching for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}.`;
+        console.warn(`[DIAGNOSTIC] ${errorMsg} Checked: [${providerTeams.join(' | ')}]`);
+        setLastOddsError(errorMsg);
+      }
+      return null;
+    }
 
-      setLastOddsError(`The Odds API event not found for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}`);
+    if (!matchedEvent.bookmakers || matchedEvent.bookmakers.length === 0) {
+      if (matchInfo.debugMatch) {
+        console.log(`[The Odds API] Matched event has no bookmakers.`);
+      }
       return null;
     }
 
     const bookmaker = matchedEvent.bookmakers[0];
     const market = bookmaker.markets?.find((m) => m.key === 'h2h');
-    if (!market || !market.outcomes || market.outcomes.length < 3) {
+    if (!market || market.outcomes.length < 3) {
       setLastOddsError(`The Odds API outcomes not found for ${matchInfo.homeTeamCode} vs ${matchInfo.awayTeamCode}`);
       return null;
     }
@@ -831,6 +953,9 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
     if (homeOdds && drawOdds && awayOdds) {
       setLastOddsError(null);
       await setProviderCooldown('the-odds-api', 0, 200, null); // Clear cooldown
+      if (tracker) {
+        tracker.succeeded.add('the-odds-api');
+      }
       return {
         homeOdds,
         drawOdds,
@@ -848,16 +973,19 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
     const msg = redactApiKey(rawMsg, [apiKey]);
     console.error(msg);
     setLastOddsError(msg);
+    if (tracker) {
+      tracker.errors.set('the-odds-api', (tracker.errors.get('the-odds-api') || 0) + 1);
+    }
   }
   return null;
 }
-
 
 // Fetch odds using the configured settings and providers
 export async function getMatchWinnerOdds(
   matchId: string,
   bypassCooldown = false,
-  debugMatch = false
+  debugMatch = false,
+  tracker?: OddsTracker
 ): Promise<MatchOdds | null> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
@@ -879,6 +1007,10 @@ export async function getMatchWinnerOdds(
   const isFallbackEnabled = process.env.THE_ODDS_API_ENABLED === 'true';
   const fallbackKey = process.env.THE_ODDS_API_KEY;
 
+  if (debugMatch) {
+    console.log(`[Odds Discovery] Provider Chain: Primary = "${primaryProvider}", Fallback = "${fallbackProvider}"`);
+  }
+
   const matchInfo: OddsMatchInfo = {
     id: match.id,
     kickoffUtc: match.kickoffUtc,
@@ -896,37 +1028,53 @@ export async function getMatchWinnerOdds(
   const fallbackCooldown = bypassCooldown ? null : await getProviderCooldown(fallbackProvider);
 
   // 1. Try Primary Provider if not cooling down
-  if (primaryProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
-    if (primaryCooldown) {
-      console.log(`Bypassing Odds-API.io (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
+  if (primaryProvider === 'odds-api-io') {
+    if (!isPrimaryEnabled) {
+      if (debugMatch) console.log(`[Odds Discovery] Primary provider "odds-api-io" is disabled.`);
+    } else if (!primaryKey) {
+      if (debugMatch) console.log(`[Odds Discovery] Primary provider "odds-api-io" has no key.`);
+    } else if (primaryCooldown) {
+      if (debugMatch) console.log(`[Odds Discovery] Bypassing "odds-api-io" (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchOddsApiIo(matchInfo, primaryKey);
+      result = await fetchOddsApiIo(matchInfo, primaryKey, tracker);
       if (!result) primaryFailed = true;
     }
-  } else if (primaryProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
-    if (primaryCooldown) {
-      console.log(`Bypassing The Odds API (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
+  } else if (primaryProvider === 'the-odds-api') {
+    if (!isFallbackEnabled) {
+      if (debugMatch) console.log(`[Odds Discovery] Primary provider "the-odds-api" is disabled.`);
+    } else if (!fallbackKey) {
+      if (debugMatch) console.log(`[Odds Discovery] Primary provider "the-odds-api" has no key.`);
+    } else if (primaryCooldown) {
+      if (debugMatch) console.log(`[Odds Discovery] Bypassing "the-odds-api" (primary) because it is cooling down until ${primaryCooldown.toISOString()}`);
       primaryFailed = true;
     } else {
-      result = await fetchTheOddsApi(matchInfo, fallbackKey);
+      result = await fetchTheOddsApi(matchInfo, fallbackKey, tracker);
       if (!result) primaryFailed = true;
     }
   }
 
   // 2. Try Fallback Provider if primary failed
   if (!result && primaryFailed) {
-    if (fallbackProvider === 'the-odds-api' && isFallbackEnabled && fallbackKey) {
-      if (fallbackCooldown) {
-        console.log(`Bypassing The Odds API (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
+    if (fallbackProvider === 'the-odds-api') {
+      if (!isFallbackEnabled) {
+        if (debugMatch) console.log(`[Odds Discovery] Fallback provider "the-odds-api" is disabled.`);
+      } else if (!fallbackKey) {
+        if (debugMatch) console.log(`[Odds Discovery] Fallback provider "the-odds-api" has no key.`);
+      } else if (fallbackCooldown) {
+        if (debugMatch) console.log(`[Odds Discovery] Bypassing "the-odds-api" (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchTheOddsApi(matchInfo, fallbackKey);
+        result = await fetchTheOddsApi(matchInfo, fallbackKey, tracker);
       }
-    } else if (fallbackProvider === 'odds-api-io' && isPrimaryEnabled && primaryKey) {
-      if (fallbackCooldown) {
-        console.log(`Bypassing Odds-API.io (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
+    } else if (fallbackProvider === 'odds-api-io') {
+      if (!isPrimaryEnabled) {
+        if (debugMatch) console.log(`[Odds Discovery] Fallback provider "odds-api-io" is disabled.`);
+      } else if (!primaryKey) {
+        if (debugMatch) console.log(`[Odds Discovery] Fallback provider "odds-api-io" has no key.`);
+      } else if (fallbackCooldown) {
+        if (debugMatch) console.log(`[Odds Discovery] Bypassing "odds-api-io" (fallback) because it is cooling down until ${fallbackCooldown.toISOString()}`);
       } else {
-        result = await fetchOddsApiIo(matchInfo, primaryKey);
+        result = await fetchOddsApiIo(matchInfo, primaryKey, tracker);
       }
     }
   }
@@ -934,6 +1082,7 @@ export async function getMatchWinnerOdds(
   // 3. Fallback to Simulation if both failed or if keys/enabled checks failed
   if (!result) {
     if (process.env.NODE_ENV !== 'production' && process.env.ODDS_ALLOW_SIMULATED_DATA === 'true') {
+      if (debugMatch) console.log(`[Odds Discovery] Bypassing real providers to use simulated odds.`);
       result = generateSimulatedOdds(match.homeTeamCode, match.awayTeamCode);
     } else {
       if (!lastOddsError) {

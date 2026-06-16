@@ -21,6 +21,7 @@
     "results:fetch-match": "tsx scripts/fetch-results.ts",
     "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts",
     "odds:diagnose": "tsx scripts/diagnose-odds.ts",
+    "odds:discover-provider": "tsx scripts/discover-provider.ts",
     "reminders:send-due": "tsx scripts/send-reminders.ts",
     "reminders:test": "tsx scripts/test-reminder-email.ts",
     "typecheck": "tsc --noEmit"

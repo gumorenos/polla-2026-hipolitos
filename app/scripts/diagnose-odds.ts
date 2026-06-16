@@ -27,13 +27,14 @@ async function main() {
   // 1. Environment Variables Configuration Check
   console.log('--- 1. Environment Configuration ---');
   const envVars = {
-    ODDS_DISPLAY_ENABLED: process.env.ODDS_DISPLAY_ENABLED,
+    NODE_ENV: process.env.NODE_ENV,
+    ODDS_PRIMARY_PROVIDER: process.env.ODDS_PRIMARY_PROVIDER || 'odds-api-io (default)',
+    ODDS_FALLBACK_PROVIDER: process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api (default)',
     ODDS_API_IO_ENABLED: process.env.ODDS_API_IO_ENABLED,
     THE_ODDS_API_ENABLED: process.env.THE_ODDS_API_ENABLED,
-    API_FOOTBALL_ENABLED: process.env.API_FOOTBALL_ENABLED,
-    ODDS_MANUAL_USER_REFRESH_ENABLED: process.env.ODDS_MANUAL_USER_REFRESH_ENABLED,
+    ODDS_API_IO_SPORT: process.env.ODDS_API_IO_SPORT || 'football (default)',
+    ODDS_API_IO_LEAGUE: process.env.ODDS_API_IO_LEAGUE || 'NOT_CONFIGURED',
     ODDS_ALLOW_SIMULATED_DATA: process.env.ODDS_ALLOW_SIMULATED_DATA,
-    NODE_ENV: process.env.NODE_ENV,
   };
 
   for (const [k, v] of Object.entries(envVars)) {
@@ -43,7 +44,6 @@ async function main() {
   const keys = {
     ODDS_API_IO_KEY: process.env.ODDS_API_IO_KEY,
     THE_ODDS_API_KEY: process.env.THE_ODDS_API_KEY,
-    API_FOOTBALL_KEY: process.env.API_FOOTBALL_KEY,
   };
 
   for (const [k, v] of Object.entries(keys)) {
@@ -51,23 +51,80 @@ async function main() {
   }
   console.log('');
 
-  const secretList = [keys.ODDS_API_IO_KEY, keys.THE_ODDS_API_KEY, keys.API_FOOTBALL_KEY];
+  const secretList = [keys.ODDS_API_IO_KEY, keys.THE_ODDS_API_KEY];
 
-  // 2. Connectivity Checks
-  console.log('--- 2. External Provider Connectivity ---');
+  // 2. Count of snapshots by provider from DB
+  console.log('--- 2. DB Odds Snapshots Count by Provider ---');
+  try {
+    const counts = await prisma.oddsSnapshot.groupBy({
+      by: ['provider'],
+      _count: { _all: true },
+    });
+    if (counts.length === 0) {
+      console.log('No snapshots found in DB.');
+    } else {
+      counts.forEach((c) => {
+        console.log(`- ${c.provider}: ${c._count._all} snapshots`);
+      });
+    }
+  } catch (err) {
+    console.error(`Error querying snapshots count: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  console.log('');
 
-  // Odds-API.io Connectivity
+  // 3. Connectivity & Discovery Checks
+  console.log('--- 3. External Provider Connectivity & Discovery ---');
+
+  // Odds-API.io Connectivity & Discovery Detail
   if (keys.ODDS_API_IO_KEY && process.env.ODDS_API_IO_ENABLED === 'true') {
+    const sport = process.env.ODDS_API_IO_SPORT || 'football';
+    const url = `https://api.odds-api.io/v3/leagues?apiKey=${keys.ODDS_API_IO_KEY}&sport=${sport}`;
+    console.log(`Checking Odds-API.io leagues endpoint...`);
+    console.log(`URL: https://api.odds-api.io/v3/leagues?apiKey=REDACTED&sport=${sport}`);
+
+    interface LeagueInfo {
+      name?: string;
+      slug?: string;
+      id?: string;
+    }
+
     try {
-      const sport = process.env.ODDS_API_IO_SPORT || 'football';
-      const url = `https://api.odds-api.io/v3/leagues?apiKey=${keys.ODDS_API_IO_KEY}&sport=${sport}`;
-      console.log(`Checking Odds-API.io connectivity for sport: ${sport}...`);
       const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      console.log(`HTTP Status: ${res.status} ${res.statusText}`);
+
       if (res.ok) {
-        const data = await res.json();
-        const leagues = data && Array.isArray(data.data) ? data.data.map((l: { slug: string }) => l.slug) : [];
-        console.log(`[PASS] Odds-API.io is CONNECTED. Found ${leagues.length} leagues.`);
-        console.log(`Leagues available (first 10): ${leagues.slice(0, 10).join(', ')}`);
+        const data = await res.json() as { data?: LeagueInfo[] };
+        
+        // Log raw response shape summary
+        const shapeSummary = data && typeof data === 'object' 
+          ? `Object with keys: [${Object.keys(data).join(', ')}]` 
+          : typeof data;
+        console.log(`Raw Response Shape: ${shapeSummary}`);
+
+        const leagues = data && Array.isArray(data.data) ? data.data : [];
+        console.log(`Number of leagues found: ${leagues.length}`);
+
+        // Analyze first 20 candidates
+        if (leagues.length > 0) {
+          console.log('\nFirst 20 League Candidates:');
+          const candidates = leagues.slice(0, 20);
+          candidates.forEach((l: LeagueInfo, idx: number) => {
+            console.log(`  [${idx + 1}] Name: "${l.name || 'N/A'}", Slug: "${l.slug || 'N/A'}", ID/Key: "${l.id || 'N/A'}"`);
+          });
+
+          // Check if any candidate matches World Cup / FIFA / International Football
+          const targetKeywords = ['world', 'cup', 'fifa', 'international', 'friendly', 'soccer', 'football'];
+          const matchedLeagues = leagues.filter((l: LeagueInfo) => {
+            const name = (l.name || '').toLowerCase();
+            const slug = (l.slug || '').toLowerCase();
+            return targetKeywords.some(k => name.includes(k) || slug.includes(k));
+          });
+
+          console.log(`\nMatching target candidates (World Cup/FIFA/International): ${matchedLeagues.length}`);
+          matchedLeagues.forEach((l: LeagueInfo) => {
+            console.log(`  - Name: "${l.name}", Slug: "${l.slug}"`);
+          });
+        }
       } else {
         const txt = await res.text().catch(() => '');
         console.error(redact(`[FAIL] Odds-API.io responded with status ${res.status}: ${txt}`, secretList));
@@ -78,24 +135,29 @@ async function main() {
   } else {
     console.log('[WARN] Odds-API.io is disabled or key is missing.');
   }
+  console.log('');
 
-  // The Odds API Connectivity
+  // The Odds API Connectivity check
   if (keys.THE_ODDS_API_KEY && process.env.THE_ODDS_API_ENABLED === 'true') {
     try {
       const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
       const url = `https://api.the-odds-api.com/v4/sports/?apiKey=${keys.THE_ODDS_API_KEY}`;
       console.log(`Checking The Odds API connectivity and sport: ${sportKey}...`);
       const res = await fetch(url);
+      interface TheOddsApiSportInfo {
+        key?: string;
+      }
+
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as TheOddsApiSportInfo[];
         if (Array.isArray(data)) {
-          const keysList = data.map((s: { key: string }) => s.key).filter(Boolean);
+          const keysList = data.map((s: TheOddsApiSportInfo) => s.key).filter(Boolean);
           const hasSport = keysList.includes(sportKey);
           console.log(`[PASS] The Odds API is CONNECTED. Total sports: ${keysList.length}.`);
           if (hasSport) {
             console.log(`[PASS] Configured sport key "${sportKey}" is AVAILABLE.`);
           } else {
-            console.log(`[WARN] Configured sport key "${sportKey}" is NOT active/available. (It might activate closer to the tournament)`);
+            console.log(`[WARN] Configured sport key "${sportKey}" is NOT active/available.`);
           }
         } else {
           console.error('[FAIL] The Odds API response is not an array.');
@@ -111,101 +173,7 @@ async function main() {
     console.log('[WARN] The Odds API is disabled or key is missing.');
   }
 
-  // API-Football Connectivity
-  if (keys.API_FOOTBALL_KEY && process.env.API_FOOTBALL_ENABLED === 'true') {
-    try {
-      const url = 'https://v3.football.api-sports.io/status';
-      console.log('Checking API-Football connectivity...');
-      const res = await fetch(url, {
-        headers: {
-          'x-apisports-key': keys.API_FOOTBALL_KEY,
-          'Accept': 'application/json',
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.response && data.response.account) {
-          const acc = data.response.account;
-          console.log(`[PASS] API-Football is CONNECTED.`);
-          console.log(`Account details: Email: ${acc.email}, Plan: ${acc.firstname} ${acc.lastname}`);
-        } else if (data && data.errors && Object.keys(data.errors).length > 0) {
-          console.error(redact(`[FAIL] API-Football returned API errors: ${JSON.stringify(data.errors)}`, secretList));
-        } else {
-          console.log(`[PASS] API-Football is CONNECTED (unexpected status body format).`);
-        }
-      } else {
-        const txt = await res.text().catch(() => '');
-        console.error(redact(`[FAIL] API-Football responded with status ${res.status}: ${txt}`, secretList));
-      }
-    } catch (err) {
-      console.error(redact(`[FAIL] API-Football connectivity error: ${err instanceof Error ? err.message : String(err)}`, secretList));
-    }
-  } else {
-    console.log('[WARN] API-Football is disabled or key is missing.');
-  }
-  console.log('');
-
-  // 3. Database Future Matches Check
-  console.log('--- 3. Next 5 Future Matches & Snapshot Status ---');
-  try {
-    const futureMatches = await prisma.match.findMany({
-      where: {
-        kickoffUtc: {
-          gt: new Date(),
-        },
-      },
-      orderBy: { kickoffUtc: 'asc' },
-      take: 5,
-    });
-
-    if (futureMatches.length === 0) {
-      console.log('No upcoming future matches found in the database.');
-    } else {
-      for (const m of futureMatches) {
-        // Count snapshots
-        const oddsCount = await prisma.oddsSnapshot.count({
-          where: { matchId: m.id },
-        });
-        const h2hCount = await prisma.headToHeadSnapshot.count({
-          where: { matchId: m.id },
-        });
-
-        const kickoffDate = new Date(m.kickoffUtc);
-        const limaString = kickoffDate.toLocaleString('es-PE', { timeZone: 'America/Lima' });
-
-        console.log(`Match ${m.id}: ${m.homeTeamCode} vs ${m.awayTeamCode}`);
-        console.log(`  Kickoff UTC:  ${kickoffDate.toISOString()}`);
-        console.log(`  Kickoff Lima: ${limaString}`);
-        console.log(`  Snapshots:    Odds: ${oddsCount}, H2H: ${h2hCount}`);
-        console.log('');
-      }
-    }
-  } catch (err) {
-    console.error(`Error querying matches: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  // 4. Provider Cooldowns & Statuses
-  console.log('--- 4. Provider Cooldowns & Statuses ---');
-  try {
-    const statuses = await prisma.providerStatus.findMany();
-    if (statuses.length === 0) {
-      console.log('No provider status entries found in the database.\n');
-    } else {
-      for (const s of statuses) {
-        console.log(`Provider: ${s.provider}`);
-        console.log(`  Last Status:        ${s.lastStatus}`);
-        console.log(`  Cooldown Until:     ${s.cooldownUntil.toISOString()}`);
-        console.log(`  Is Cooling Down:    ${s.cooldownUntil > new Date() ? 'YES' : 'NO'}`);
-        console.log(`  Last Error Message: ${s.lastErrorMessage || 'None'}`);
-        console.log(`  Updated At:         ${s.updatedAt.toISOString()}`);
-        console.log('');
-      }
-    }
-  } catch (err) {
-    console.error(`Error querying provider statuses: ${err instanceof Error ? err.message : String(err)}\n`);
-  }
-
-  console.log('==================================================');
+  console.log('\n==================================================');
   console.log('            DIAGNOSTICS COMPLETE                  ');
   console.log('==================================================');
 }

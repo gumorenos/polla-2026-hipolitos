@@ -3,7 +3,7 @@ loadEnvConfig(process.cwd());
 
 import { prisma } from '../src/lib/db';
 import { Prisma } from '@prisma/client';
-import { getMatchWinnerOdds, saveOddsSnapshot } from '../src/lib/odds/providers';
+import { getMatchWinnerOdds, saveOddsSnapshot, lastOddsError, OddsTracker } from '../src/lib/odds/providers';
 
 async function main() {
   console.log('Running refresh-odds script...');
@@ -66,10 +66,17 @@ async function main() {
 
   let matchesProcessed = 0;
   let snapshotsCreated = 0;
-  let matchesSkipped = 0;
+  let matchesSkippedCount = 0;
   let errorsCount = 0;
-  const providersUsed = new Set<string>();
 
+  const tracker: OddsTracker = {
+    attempted: new Set<string>(),
+    succeeded: new Set<string>(),
+    empty: new Map<string, number>(),
+    errors: new Map<string, number>(),
+  };
+
+  const skippedMatches: { id: string; home: string; away: string; reason: string }[] = [];
   const isStandardTeamCode = (code: string) => /^[A-Z]{3}$/.test(code);
 
   for (const match of matches) {
@@ -78,19 +85,33 @@ async function main() {
       
       // Skip if team codes are bracket placeholders (e.g. 1A, W101)
       if (!isStandardTeamCode(match.homeTeamCode) || !isStandardTeamCode(match.awayTeamCode)) {
-        console.log(`Skipping match ${match.id} (${match.homeTeamCode} vs ${match.awayTeamCode}) because one of the team codes is a bracket placeholder.`);
-        matchesSkipped++;
+        const reason = `One of the team codes is a bracket placeholder.`;
+        console.log(`Skipping match ${match.id} (${match.homeTeamCode} vs ${match.awayTeamCode}) because ${reason}`);
+        skippedMatches.push({
+          id: match.id,
+          home: match.homeTeamCode,
+          away: match.awayTeamCode,
+          reason,
+        });
+        matchesSkippedCount++;
         continue;
       }
 
       console.log(`Refreshing odds for match ${match.id}: ${match.homeTeamCode} vs ${match.awayTeamCode}`);
-      const odds = await getMatchWinnerOdds(match.id, bypassCooldown, debugMatch);
+      const odds = await getMatchWinnerOdds(match.id, bypassCooldown, debugMatch, tracker);
       if (!odds) {
+        const reason = lastOddsError || "No real odds returned by provider";
         console.log(`No real odds returned by provider for match ${match.id}. Skipping.`);
-        matchesSkipped++;
+        skippedMatches.push({
+          id: match.id,
+          home: match.homeTeamCode,
+          away: match.awayTeamCode,
+          reason,
+        });
+        matchesSkippedCount++;
         continue;
       }
-      providersUsed.add(odds.provider);
+
       await saveOddsSnapshot(match.id, odds, { visibility: 'global' });
       snapshotsCreated++;
       console.log(`Successfully saved odds snapshot for ${match.homeTeamCode} vs ${match.awayTeamCode} using ${odds.provider}`);
@@ -101,12 +122,41 @@ async function main() {
   }
 
   console.log('\n--- Refresh Odds Summary ---');
-  console.log(`Bypass Cooldown:   ${bypassCooldown}`);
-  console.log(`Providers Used:    ${Array.from(providersUsed).join(', ') || 'None'}`);
-  console.log(`Matches Processed: ${matchesProcessed}`);
-  console.log(`Snapshots Created: ${snapshotsCreated}`);
-  console.log(`Matches Skipped:   ${matchesSkipped}`);
-  console.log(`Errors Encountered: ${errorsCount}`);
+  console.log(`Bypass Cooldown:          ${bypassCooldown}`);
+  console.log(`Providers Attempted:      ${Array.from(tracker.attempted).join(', ') || 'None'}`);
+  console.log(`Providers Succeeded:      ${Array.from(tracker.succeeded).join(', ') || 'None'}`);
+  
+  console.log('Provider Empty Responses:');
+  if (tracker.empty.size === 0) {
+    console.log('  None');
+  } else {
+    for (const [provider, count] of tracker.empty.entries()) {
+      console.log(`  - ${provider}: ${count} empty responses`);
+    }
+  }
+
+  console.log('Provider Errors:');
+  if (tracker.errors.size === 0) {
+    console.log('  None');
+  } else {
+    for (const [provider, count] of tracker.errors.entries()) {
+      console.log(`  - ${provider}: ${count} errors`);
+    }
+  }
+
+  console.log(`Snapshots Created:        ${snapshotsCreated}`);
+  console.log(`Matches Processed:        ${matchesProcessed}`);
+  console.log(`Matches Skipped:          ${matchesSkippedCount}`);
+  console.log(`Errors Encountered:       ${errorsCount}`);
+  
+  console.log('\nMatches Skipped with reason:');
+  if (skippedMatches.length === 0) {
+    console.log('  None');
+  } else {
+    skippedMatches.forEach((sm) => {
+      console.log(`  - Match ${sm.id} (${sm.home} vs ${sm.away}): ${sm.reason}`);
+    });
+  }
   console.log('----------------------------\n');
 
   console.log('Finished running refresh-odds script.');

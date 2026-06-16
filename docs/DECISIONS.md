@@ -255,6 +255,22 @@ We implement the following 6 tie-breakers sequentially:
 - Restructuring points rules (e.g. standard vs "champion weighs more") requires that all historical predictions are recomputed to keep leaderboards correct.
 - Recalculating prediction scores directly inside `recalculateAllStandings` on league updates ensures data integrity.
 
+---
+
+## ADR-015 — Opt-in Email Reminder System via Resend & Masked Auditor Logs
+
+**Date:** 2026-06-15  
+**Status:** Accepted
+
+**Decision:** Implement an opt-in email reminder worker utilizing Resend, running every 5 minutes in production to check for today's matches with kickoff in less than 30 minutes, auditing logs inside a `ReminderLog` table with unique constraint safety, and masking email logs in the admin auditing UI.
+
+**Rationale:**
+- Private prediction pool engagement benefits from alert hooks when predictions are missing, but user privacy dictates that opt-in must be disabled by default.
+- Restricting email toggles to real emails (non-placeholder) prevents failures.
+- Idempotency guard on `[userId, matchId, reminderType, channel]` protects users from receiving duplicate emails.
+- Masking emails (`g***@domain.com`) in the admin dashboard complies with strict privacy rules preventing exposure of participant addresses.
+
+
 
 
 

@@ -132,6 +132,33 @@ export async function recalculateAllStandings() {
         }
       });
 
+      // Recalculate prediction scores for finished matches according to league scoring rules
+      for (const pred of predictions) {
+        if (pred.match.status === 'result' && pred.match.homeScore !== null && pred.match.awayScore !== null) {
+          const result = calculatePoints(
+            { homePrediction: pred.homePrediction, awayPrediction: pred.awayPrediction },
+            { homeScore: pred.match.homeScore, awayScore: pred.match.awayScore },
+            {
+              pointsExactScore: league.pointsExactScore,
+              pointsWinner: league.pointsWinner,
+              pointsDraw: league.pointsDraw,
+              pointsConsolation: league.pointsConsolation,
+            }
+          );
+          if (pred.pointsEarned !== result.points || pred.scoreType !== result.type) {
+            pred.pointsEarned = result.points;
+            pred.scoreType = result.type;
+            standingUpdates.push(prisma.prediction.update({
+              where: { id: pred.id },
+              data: {
+                pointsEarned: result.points,
+                scoreType: result.type,
+              }
+            }));
+          }
+        }
+      }
+
       const predictionsSubmitted = predictions.length;
       let lastSuccessfulPredictionAt: Date | null = null;
       for (const pred of predictions) {

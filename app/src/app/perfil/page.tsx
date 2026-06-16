@@ -43,6 +43,7 @@ export default async function PerfilPage() {
     select: {
       username: true,
       status: true,
+      themeMode: true,
     }
   });
 
@@ -56,6 +57,7 @@ export default async function PerfilPage() {
     whatsapp: user.whatsapp ?? null,
     isSuperadmin: user.isSuperadmin ?? false,
     status: dbUser?.status ?? 'pending',
+    themeMode: dbUser?.themeMode ?? 'black',
   };
 
   return (

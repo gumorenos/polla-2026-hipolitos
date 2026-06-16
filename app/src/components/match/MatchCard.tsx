@@ -86,7 +86,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 }) => {
   const cardMode = mode ?? (
     match.status === 'result' ? 'result' :
-    match.status === 'live' || new Date(match.kickoffUtc) <= new Date() ? 'locked' :
+    // eslint-disable-next-line react-hooks/purity
+    match.status === 'live' || new Date(match.kickoffUtc).getTime() <= Date.now() ? 'locked' :
     'predict'
   );
 
@@ -130,11 +131,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     const now = new Date();
     const kickoff = new Date(match.kickoffUtc);
     if (kickoff <= now) {
-      const matchDurationMs = 2 * 60 * 60 * 1000;
-      if (now.getTime() - kickoff.getTime() > matchDurationMs) {
-        return 'pending_result';
-      }
-      return 'locked';
+      return 'pending_result';
     }
     return 'open';
   };
@@ -179,7 +176,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const renderOddsModule = () => {
     if (!showOdds) return null;
 
-    const isFutureMatch = new Date(match.kickoffUtc) > new Date() && (match.status === 'open' || match.status === 'soon');
+    // eslint-disable-next-line react-hooks/purity
+    const isFutureMatch = new Date(match.kickoffUtc).getTime() > Date.now();
     const showRefreshButton = manualRefreshEnabled && cardMode === 'predict' && onRefreshUserOdds && isFutureMatch;
 
     const renderRefreshButtonSection = () => {
@@ -413,12 +411,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return (
       <div className="card-base overflow-hidden flex flex-col justify-between">
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${phaseInfo.color} w-fit`}>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 px-4 py-2.5 border-b border-border-subtle bg-bg-secondary/40">
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${phaseInfo.color} w-fit max-w-full truncate sm:truncate-none`} title={`${phaseInfo.label} ${match.group ? `· Grupo ${match.group}` : ''} · ${match.jornada}`}>
             {phaseInfo.label} {match.group ? `· Grupo ${match.group}` : ''} · {match.jornada}
           </span>
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between sm:justify-end w-full sm:w-auto">
-            <MatchStatusBadge status={visualState} />
+            <MatchStatusBadge status={visualState} className="flex-shrink-0" />
             {match.status === 'soon' ? (
               <div className="flex items-center gap-1 text-xs text-text-secondary font-mono">
                 <CountdownInline targetIso={match.kickoffUtc} />
@@ -541,12 +539,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
     return (
       <div className="card-base bg-bg-secondary/60 border border-border-default rounded-xl overflow-hidden shadow-lg">
         {/* Solari Header */}
-        <div className="flex items-center justify-between px-3 py-2 bg-black/40 border-b border-border-subtle">
-          <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider uppercase text-gold-400">
-            <span className={`w-2 h-2 rounded-full bg-gold-400 ${match.status === 'live' ? 'animate-[softPulse_1s_ease-in-out_infinite]' : ''}`} />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-black/40 border-b border-border-subtle">
+          <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider uppercase text-gold-400 w-fit">
+            <span className={`w-2 h-2 rounded-full bg-gold-400 flex-shrink-0 ${match.status === 'live' ? 'animate-[softPulse_1s_ease-in-out_infinite]' : ''}`} />
             {phaseInfo.label} · {match.jornada}
           </span>
-          <span className="font-mono text-[10px] text-text-secondary uppercase">
+          <span className="font-mono text-[10px] text-text-secondary uppercase w-fit">
             {match.status === 'live' ? '● EN JUEGO' : match.status === 'soon' ? 'CERRANDO' : 'CERRADO'}
           </span>
         </div>
@@ -632,11 +630,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         }`}
       >
         {/* Ticket Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-dashed border-border-active bg-bg-secondary/20">
-          <span className="text-[10px] font-mono tracking-wider text-text-secondary uppercase">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2 border-b border-dashed border-border-active bg-bg-secondary/20">
+          <span className="text-[10px] font-mono tracking-wider text-text-secondary uppercase w-fit">
             TICKET APUESTA · {phaseInfo.label}
           </span>
-          <span className="text-[10px] font-mono text-text-muted uppercase">
+          <span className="text-[10px] font-mono text-text-muted uppercase w-fit">
             {match.status.toUpperCase()}
           </span>
         </div>

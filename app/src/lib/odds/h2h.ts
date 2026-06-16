@@ -138,12 +138,24 @@ async function lookupTeamId(code: string, apiKey: string): Promise<number | null
         'Accept': 'application/json',
       },
     });
+    if (res.status === 429) {
+      throw new Error('HTTP 429');
+    }
     if (!res.ok) return null;
     const data = await res.json();
+    if (data && data.errors) {
+      const errStr = JSON.stringify(data.errors);
+      if (errStr.toLowerCase().includes('rate limit') || errStr.toLowerCase().includes('429') || errStr.toLowerCase().includes('requests')) {
+        throw new Error(`HTTP 429: ${errStr}`);
+      }
+    }
     if (data && data.response && data.response.length > 0) {
       return data.response[0].team.id;
     }
   } catch (error) {
+    if (error instanceof Error && error.message.includes('429')) {
+      throw error;
+    }
     console.error(`Error looking up API-Football team ID for ${code}:`, error);
   }
   return null;
@@ -216,6 +228,10 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
       },
     });
 
+    if (res.status === 429) {
+      throw new Error('HTTP 429');
+    }
+
     if (!res.ok) {
       const msg = `API-Football H2H request failed with status ${res.status}`;
       console.warn(msg);
@@ -227,6 +243,13 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
     }
 
     const data = await res.json();
+    if (data && data.errors) {
+      const errStr = JSON.stringify(data.errors);
+      if (errStr.toLowerCase().includes('rate limit') || errStr.toLowerCase().includes('429') || errStr.toLowerCase().includes('requests')) {
+        throw new Error(`HTTP 429: ${errStr}`);
+      }
+    }
+
     if (!data || !data.response || !Array.isArray(data.response)) {
       const msg = 'API-Football H2H response format invalid';
       console.warn(msg);
@@ -298,6 +321,9 @@ export async function getHeadToHeadStats(matchId: string): Promise<HeadToHeadSta
       provider: 'api-football',
     };
   } catch (error) {
+    if (error instanceof Error && error.message.includes('429')) {
+      throw error;
+    }
     const rawMsg = `Error fetching Head-to-Head from API-Football: ${error instanceof Error ? error.message : String(error)}`;
     const msg = redactApiKey(rawMsg, apiKey);
     console.error(msg);

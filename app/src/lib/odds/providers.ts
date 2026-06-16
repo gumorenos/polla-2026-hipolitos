@@ -26,7 +26,7 @@ interface ProviderEvent {
   }[];
 }
 
-// Map of team codes to common English names for matching API data
+// Map of team codes to common English/Spanish names for matching API data
 const TEAM_NAMES_MAP: Record<string, string[]> = {
   ARG: ['Argentina'],
   BRA: ['Brazil', 'Brasil'],
@@ -51,7 +51,7 @@ const TEAM_NAMES_MAP: Record<string, string[]> = {
   PAR: ['Paraguay'],
   PAN: ['Panama', 'Panamá'],
   CPV: ['Cape Verde', 'Cabo Verde'],
-  CUR: ['Curacao', 'Curazao'],
+  CUR: ['Curacao', 'Curazao', 'Curaçao'],
   JOR: ['Jordan', 'Jordania'],
   NZL: ['New Zealand', 'Nueva Zelanda'],
   HAI: ['Haiti', 'Haití'],
@@ -61,7 +61,7 @@ const TEAM_NAMES_MAP: Record<string, string[]> = {
   KSA: ['Saudi Arabia', 'Arabia Saudita'],
   AUS: ['Australia'],
   EGY: ['Egypt', 'Egipto'],
-  CIV: ['Ivory Coast', 'Costa de Marfil'],
+  CIV: ['Ivory Coast', 'Costa de Marfil', "Côte d'Ivoire", "Cote d'Ivoire"],
   GHA: ['Ghana'],
   TUN: ['Tunisia', 'Túnez'],
   ALG: ['Algeria', 'Argelia'],
@@ -72,6 +72,12 @@ const TEAM_NAMES_MAP: Record<string, string[]> = {
   NOR: ['Norway', 'Noruega'],
   CZE: ['Czech Republic', 'Chequia'],
   SCO: ['Scotland', 'Escocia'],
+  IRI: ['Iran', 'Irán'],
+  IRN: ['Iran', 'Irán'],
+  IRQ: ['Iraq', 'Irak'],
+  COD: ['DR Congo', 'Congo DR', 'Congo Democrático', 'Congo, Democratic Republic of the'],
+  BIH: ['Bosnia', 'Bosnia and Herzegovina', 'Bosnia y Herzegovina'],
+  RSA: ['South Africa', 'Sudáfrica']
 };
 
 // Check if a team name matches a team code
@@ -146,96 +152,191 @@ export function setLastOddsError(err: string | null) {
   lastOddsError = err;
 }
 
-function redactApiKey(msg: string, key?: string): string {
-  if (!key) return msg;
-  return msg.split(key).join('REDACTED');
+function redactApiKey(msg: string, keys: string[]): string {
+  let output = msg;
+  for (const key of keys) {
+    if (key && key.trim().length > 3) {
+      output = output.split(key).join('REDACTED');
+    }
+  }
+  return output;
+}
+
+// Caching active football leagues for Odds-API.io
+let discoveredOddsApiIoLeaguesCache: string[] | null = null;
+
+async function discoverOddsApiIoLeagues(apiKey: string, sport: string): Promise<string[]> {
+  if (discoveredOddsApiIoLeaguesCache) return discoveredOddsApiIoLeaguesCache;
+  try {
+    const url = `https://api.odds-api.io/v3/leagues?apiKey=${apiKey}&sport=${sport}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      const msg = `Odds-API.io leagues discovery failed with status ${res.status}: ${errorText}`;
+      console.warn(redactApiKey(msg, [apiKey]));
+      return [];
+    }
+    const data = await res.json();
+    if (data && Array.isArray(data.data)) {
+      const slugs = data.data.map((l: { slug: string }) => l.slug).filter(Boolean);
+      discoveredOddsApiIoLeaguesCache = slugs;
+      return slugs;
+    }
+  } catch (error) {
+    const rawMsg = `Error in discoverOddsApiIoLeagues: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(redactApiKey(rawMsg, [apiKey]));
+  }
+  return [];
 }
 
 // Fetch odds from Odds-API.io (Primary)
 async function fetchOddsApiIo(homeCode: string, awayCode: string, apiKey: string): Promise<MatchOdds | null> {
-  try {
-    const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=football`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) {
-      const msg = `Odds-API.io responded with status ${res.status}`;
-      console.warn(msg);
+  const sport = process.env.ODDS_API_IO_SPORT || 'football';
+  const leagueConf = process.env.ODDS_API_IO_LEAGUE || '';
+
+  const leaguesToQuery: string[] = [];
+  if (leagueConf) {
+    leaguesToQuery.push(leagueConf);
+  } else {
+    const discovered = await discoverOddsApiIoLeagues(apiKey, sport);
+    // Sort so cup, world cup, and international slugs are queried first
+    const keywords = ['world-cup', 'worldcup', 'fifa', 'international', 'friendly', 'friendlies', 'cup', 'soccer'];
+    const sorted = [...discovered].sort((a, b) => {
+      const aVal = keywords.some(k => a.toLowerCase().includes(k)) ? 1 : 0;
+      const bVal = keywords.some(k => b.toLowerCase().includes(k)) ? 1 : 0;
+      return bVal - aVal;
+    });
+    leaguesToQuery.push(...sorted.slice(0, 5));
+  }
+
+  if (leaguesToQuery.length === 0) {
+    setLastOddsError('No leagues found/configured for Odds-API.io.');
+    return null;
+  }
+
+  for (const leagueSlug of leaguesToQuery) {
+    try {
+      const url = `https://api.odds-api.io/v3/odds?apiKey=${apiKey}&sport=${sport}&league=${leagueSlug}`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        const msg = `Odds-API.io responded with status ${res.status} for league ${leagueSlug}: ${errorText}`;
+        console.warn(redactApiKey(msg, [apiKey]));
+        setLastOddsError(redactApiKey(msg, [apiKey]));
+        continue;
+      }
+      const data = await res.json();
+      if (!data || !Array.isArray(data.data)) {
+        continue;
+      }
+
+      const events = data.data as ProviderEvent[];
+      const event = events.find((e) => {
+        const homeMatch = matchTeamName(e.home_team, homeCode) || matchTeamName(e.home_team, awayCode);
+        const awayMatch = matchTeamName(e.away_team, homeCode) || matchTeamName(e.away_team, awayCode);
+        return homeMatch && awayMatch;
+      });
+
+      if (!event || !event.bookmakers || event.bookmakers.length === 0) {
+        continue;
+      }
+
+      const bookmaker = event.bookmakers[0];
+      const market = bookmaker.markets?.find((m) => m.key === 'h2h' || m.key === '1x2');
+      if (!market || !market.outcomes || market.outcomes.length < 3) {
+        continue;
+      }
+
+      let homeOdds = 0;
+      let drawOdds = 0;
+      let awayOdds = 0;
+
+      for (const outcome of market.outcomes) {
+        if (matchTeamName(outcome.name, homeCode)) {
+          homeOdds = outcome.price;
+        } else if (matchTeamName(outcome.name, awayCode)) {
+          awayOdds = outcome.price;
+        } else if (outcome.name.toLowerCase() === 'draw' || outcome.name.toLowerCase() === 'empate') {
+          drawOdds = outcome.price;
+        }
+      }
+
+      if (homeOdds && drawOdds && awayOdds) {
+        setLastOddsError(null);
+        return {
+          homeOdds,
+          drawOdds,
+          awayOdds,
+          bookmaker: bookmaker.title || bookmaker.key || 'Unknown Bookmaker',
+          provider: 'odds-api-io',
+          sourceType: 'api',
+          rawPayload: JSON.stringify(event),
+        };
+      }
+    } catch (error) {
+      const rawMsg = `Error in fetchOddsApiIo for league ${leagueSlug}: ${error instanceof Error ? error.message : String(error)}`;
+      const msg = redactApiKey(rawMsg, [apiKey]);
+      console.error(msg);
       setLastOddsError(msg);
-      return null;
+    }
+  }
+
+  setLastOddsError(`Odds-API.io could not find matching event for ${homeCode} vs ${awayCode} in checked leagues.`);
+  return null;
+}
+
+// Caching active sports keys for The Odds API
+let discoveredTheOddsApiSportsCache: string[] | null = null;
+
+async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promise<boolean> {
+  if (discoveredTheOddsApiSportsCache) {
+    return discoveredTheOddsApiSportsCache.includes(sportKey);
+  }
+  try {
+    const url = `https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      const msg = `The Odds API sports list request failed with status ${res.status}: ${errorText}`;
+      console.warn(redactApiKey(msg, [apiKey]));
+      return false;
     }
     const data = await res.json();
-    if (!data || !Array.isArray(data.data)) {
-      setLastOddsError('Odds-API.io response does not contain data array');
-      return null;
-    }
-
-    const events = data.data as ProviderEvent[];
-    // Try to find the matching event
-    const event = events.find((e) => {
-      const homeMatch = matchTeamName(e.home_team, homeCode) || matchTeamName(e.home_team, awayCode);
-      const awayMatch = matchTeamName(e.away_team, homeCode) || matchTeamName(e.away_team, awayCode);
-      return homeMatch && awayMatch;
-    });
-
-    if (!event || !event.bookmakers || event.bookmakers.length === 0) {
-      setLastOddsError(`Odds-API.io event not found for ${homeCode} vs ${awayCode}`);
-      return null;
-    }
-
-    // Use the first available bookmaker (e.g. Betsson, Bet365) or fallback to 1X2 market
-    const bookmaker = event.bookmakers[0];
-    const market = bookmaker.markets?.find((m) => m.key === 'h2h' || m.key === '1x2');
-    if (!market || !market.outcomes || market.outcomes.length < 3) {
-      setLastOddsError(`Odds-API.io outcomes not found for ${homeCode} vs ${awayCode}`);
-      return null;
-    }
-
-    let homeOdds = 0;
-    let drawOdds = 0;
-    let awayOdds = 0;
-
-    for (const outcome of market.outcomes) {
-      if (matchTeamName(outcome.name, homeCode)) {
-        homeOdds = outcome.price;
-      } else if (matchTeamName(outcome.name, awayCode)) {
-        awayOdds = outcome.price;
-      } else if (outcome.name.toLowerCase() === 'draw' || outcome.name.toLowerCase() === 'empate') {
-        drawOdds = outcome.price;
-      }
-    }
-
-    if (homeOdds && drawOdds && awayOdds) {
-      setLastOddsError(null);
-      return {
-        homeOdds,
-        drawOdds,
-        awayOdds,
-        bookmaker: bookmaker.title || bookmaker.key || 'Unknown Bookmaker',
-        provider: 'odds-api-io',
-        sourceType: 'api',
-        rawPayload: JSON.stringify(event),
-      };
-    } else {
-      setLastOddsError(`Odds-API.io could not extract home, draw or away odds for ${homeCode} vs ${awayCode}`);
+    if (Array.isArray(data)) {
+      const keys = data.map((s: { key: string }) => s.key).filter(Boolean);
+      discoveredTheOddsApiSportsCache = keys;
+      return keys.includes(sportKey);
     }
   } catch (error) {
-    const rawMsg = `Error in fetchOddsApiIo: ${error instanceof Error ? error.message : String(error)}`;
-    const msg = redactApiKey(rawMsg, apiKey);
-    console.error(msg);
-    setLastOddsError(msg);
+    const rawMsg = `Error in verifyTheOddsApiSportKey: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(redactApiKey(rawMsg, [apiKey]));
   }
-  return null;
+  return false;
 }
 
 // Fetch odds from The Odds API (Fallback)
 async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: string): Promise<MatchOdds | null> {
+  const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
+  const regions = process.env.THE_ODDS_API_REGIONS || 'eu,uk,us';
+  const markets = process.env.THE_ODDS_API_MARKETS || 'h2h';
+
   try {
-    const sportKey = 'soccer_fifa_world_cup';
-    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=eu&markets=h2h`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      const msg = `The Odds API responded with status ${res.status}`;
+    // Verify sport availability first
+    const isSportAvailable = await verifyTheOddsApiSportKey(apiKey, sportKey);
+    if (!isSportAvailable) {
+      const msg = `provider has no market data yet: Sport key ${sportKey} is not available.`;
       console.warn(msg);
       setLastOddsError(msg);
+      return null;
+    }
+
+    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=${regions}&markets=${markets}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      const msg = `The Odds API responded with status ${res.status}: ${errorText}`;
+      console.warn(redactApiKey(msg, [apiKey]));
+      setLastOddsError(redactApiKey(msg, [apiKey]));
       return null;
     }
     const data = await res.json();
@@ -293,7 +394,7 @@ async function fetchTheOddsApi(homeCode: string, awayCode: string, apiKey: strin
     }
   } catch (error) {
     const rawMsg = `Error in fetchTheOddsApi: ${error instanceof Error ? error.message : String(error)}`;
-    const msg = redactApiKey(rawMsg, apiKey);
+    const msg = redactApiKey(rawMsg, [apiKey]);
     console.error(msg);
     setLastOddsError(msg);
   }

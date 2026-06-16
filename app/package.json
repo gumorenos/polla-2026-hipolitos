@@ -17,7 +17,8 @@
     "odds:refresh-match": "tsx scripts/refresh-odds.ts",
     "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts",
     "h2h:fetch-match": "tsx scripts/fetch-h2h.ts",
-    "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts"
+    "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts",
+    "odds:diagnose": "tsx scripts/diagnose-odds.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

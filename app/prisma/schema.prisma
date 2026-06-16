@@ -26,6 +26,7 @@ model User {
   displayName      String?
   whatsapp         String?
   isSuperadmin     Boolean   @default(false)
+  themeMode        String    @default("black")
 
   // Auth Relations
   sessions      Session[]

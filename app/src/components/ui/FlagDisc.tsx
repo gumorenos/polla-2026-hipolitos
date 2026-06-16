@@ -54,28 +54,44 @@ export const FLAG_MAP: Record<string, string> = {
   CUR: '🇨🇼'
 };
 
+export const ISO_MAP: Record<string, string> = {
+  ARG: 'ar', BRA: 'br', FRA: 'fr', ESP: 'es', GER: 'de',
+  ENG: 'gb-eng', POR: 'pt', NED: 'nl', BEL: 'be', CRO: 'hr',
+  URU: 'uy', COL: 'co', USA: 'us', MEX: 'mx', CAN: 'ca',
+  JPN: 'jp', SEN: 'sn', MAR: 'ma', ECU: 'ec', PAR: 'py',
+  PAN: 'pa', CPV: 'cv', CUR: 'cw', JOR: 'jo', NZL: 'nz',
+  HAI: 'ht', UZB: 'uz', QAT: 'qa', KOR: 'kr', KSA: 'sa',
+  AUS: 'au', EGY: 'eg', CIV: 'ci', GHA: 'gh', TUN: 'tn',
+  ALG: 'dz', SUI: 'ch', AUT: 'at', TUR: 'tr', SWE: 'se',
+  NOR: 'no', CZE: 'cz', SCO: 'gb-sct', IRI: 'ir', IRN: 'ir',
+  IRQ: 'iq', COD: 'cd', BIH: 'ba', RSA: 'za'
+};
+
 interface FlagDiscProps {
   code: string;
   size?: number;
 }
 
 export const FlagDisc: React.FC<FlagDiscProps> = ({ code, size = 38 }) => {
-  const upperCode = code.toUpperCase();
-  const flag = FLAG_MAP[upperCode];
+  const upperCode = code.toUpperCase().trim();
+  const isoCode = ISO_MAP[upperCode];
 
-  if (flag) {
+  if (isoCode) {
     return (
       <div
-        className="flex items-center justify-center flex-shrink-0 select-none"
+        className="relative flex-shrink-0 overflow-hidden rounded-full border border-white/10 shadow-sm flex items-center justify-center bg-bg-secondary"
         style={{
           width: size,
           height: size,
-          fontSize: size * 0.75,
-          lineHeight: 1,
         }}
         title={code}
       >
-        {flag}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`https://flagcdn.com/w80/${isoCode}.png`}
+          alt={code}
+          className="w-full h-full object-cover select-none"
+        />
       </div>
     );
   }

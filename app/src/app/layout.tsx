@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Mono, Bebas_Neue } from "next/font/google";
 import "./globals.css";
 import { AppLayoutWrapper } from "../components/layout/AppLayoutWrapper";
+import { cookies } from "next/headers";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -42,15 +43,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const themeMode = cookieStore.get('themeMode')?.value || 'black';
+
   return (
     <html
       lang="es"
-      className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased`}
+      className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased theme-${themeMode}`}
     >
       <body className="min-h-full flex flex-col">
         <AppLayoutWrapper>{children}</AppLayoutWrapper>

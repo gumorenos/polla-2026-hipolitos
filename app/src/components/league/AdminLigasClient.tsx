@@ -36,6 +36,10 @@ interface LeagueAdminData {
   members: LeagueMemberData[];
   championDeadline: string | null;
   championPoints: number;
+  pointsExactScore: number;
+  pointsWinner: number;
+  pointsDraw: number;
+  pointsConsolation: number;
   entryFee: number;
   currency: string;
   isDefault: boolean;
@@ -90,6 +94,10 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
     const currency = formData.get('currency') as string;
     const showOdds = formData.get('showOdds') === 'true';
     const championPoints = parseInt(formData.get('championPoints') as string) || 10;
+    const pointsExactScore = parseInt(formData.get('pointsExactScore') as string) || 5;
+    const pointsWinner = parseInt(formData.get('pointsWinner') as string) || 3;
+    const pointsDraw = parseInt(formData.get('pointsDraw') as string) || 3;
+    const pointsConsolation = parseInt(formData.get('pointsConsolation') as string) || 1;
     const localDeadline = formData.get('championDeadline') as string;
     const championDeadline = localDeadline ? parseLimaDateTimeToUtc(localDeadline) : null;
 
@@ -102,6 +110,10 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
       showOdds,
       championPoints,
       championDeadline,
+      pointsExactScore,
+      pointsWinner,
+      pointsDraw,
+      pointsConsolation,
     });
 
     setIsSubmitting(false);
@@ -657,6 +669,104 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     Valor almacenado actual (UTC): <code className="bg-bg-secondary px-1 py-0.5 rounded">{settingsLeague.championDeadline}</code>
                   </p>
                 )}
+              </div>
+
+              <div className="border-t border-border-subtle pt-4 space-y-4">
+                <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-gold-400">
+                  Reglas de Puntuación
+                </h4>
+                
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const form = document.querySelector('form') as HTMLFormElement | null;
+                      if (form) {
+                        form.championPoints.value = '10';
+                        form.pointsExactScore.value = '5';
+                        form.pointsWinner.value = '3';
+                        form.pointsDraw.value = '3';
+                        form.pointsConsolation.value = '1';
+                      }
+                    }}
+                    className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
+                  >
+                    Por defecto (10, 5, 3, 3, 1)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const form = document.querySelector('form') as HTMLFormElement | null;
+                      if (form) {
+                        form.championPoints.value = '50';
+                        form.pointsExactScore.value = '5';
+                        form.pointsWinner.value = '2';
+                        form.pointsDraw.value = '2';
+                        form.pointsConsolation.value = '1';
+                      }
+                    }}
+                    className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
+                  >
+                    Campeón pesa más (50, 5, 2, 2, 1)
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Resultado Exacto
+                    </label>
+                    <input
+                      type="number"
+                      name="pointsExactScore"
+                      required
+                      defaultValue={settingsLeague.pointsExactScore}
+                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Tendencia Ganador
+                    </label>
+                    <input
+                      type="number"
+                      name="pointsWinner"
+                      required
+                      defaultValue={settingsLeague.pointsWinner}
+                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Tendencia Empate
+                    </label>
+                    <input
+                      type="number"
+                      name="pointsDraw"
+                      required
+                      defaultValue={settingsLeague.pointsDraw}
+                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Consolación (1 equipo exacto)
+                    </label>
+                    <input
+                      type="number"
+                      name="pointsConsolation"
+                      required
+                      defaultValue={settingsLeague.pointsConsolation}
+                      className="input-base text-xs py-1.5 w-full bg-[#0a0a0c]"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

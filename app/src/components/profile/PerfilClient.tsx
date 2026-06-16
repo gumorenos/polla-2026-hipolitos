@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { User, Mail, Phone, Calendar, Save, CheckCircle, LogOut, Key, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '../../lib/auth-client';
-import { updateProfileSettingsAction } from '../../lib/actions/users';
+import { updateProfileSettingsAction, updateThemeAction } from '../../lib/actions/users';
 
 interface UserData {
   id: string;
@@ -16,6 +16,7 @@ interface UserData {
   whatsapp: string | null;
   isSuperadmin: boolean;
   status: string;
+  themeMode: string;
 }
 
 interface UserStats {
@@ -45,6 +46,44 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
   const [whatsapp, setWhatsapp] = useState(user.whatsapp || '');
   const [isSaved, setIsSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Theme preference state
+  const [themeMode, setThemeMode] = useState<'black' | 'dark' | 'light'>(
+    (user.themeMode as 'black' | 'dark' | 'light') || 'black'
+  );
+  const [themeSaving, setThemeSaving] = useState(false);
+
+  const handleThemeChange = async (newTheme: 'black' | 'dark' | 'light') => {
+    const oldTheme = themeMode;
+    setThemeMode(newTheme);
+    setThemeSaving(true);
+    
+    // Apply class immediately on document element to avoid flash
+    document.documentElement.classList.remove('theme-black', 'theme-dark', 'theme-light');
+    document.documentElement.classList.add(`theme-${newTheme}`);
+
+    try {
+      const res = await updateThemeAction(newTheme);
+      if (res.error) {
+        alert(res.error);
+        // Rollback
+        document.documentElement.classList.remove(`theme-${newTheme}`);
+        document.documentElement.classList.add(`theme-${oldTheme}`);
+        setThemeMode(oldTheme);
+      } else {
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar el tema.');
+      // Rollback
+      document.documentElement.classList.remove(`theme-${newTheme}`);
+      document.documentElement.classList.add(`theme-${oldTheme}`);
+      setThemeMode(oldTheme);
+    } finally {
+      setThemeSaving(false);
+    }
+  };
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState('');
@@ -203,7 +242,8 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       autoComplete="name"
-                      className="field !pl-11"
+                      className="field field-icon-left"
+                      style={{ paddingLeft: '2.75rem' }}
                       required
                       disabled={loading}
                     />
@@ -226,7 +266,8 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
-                      className="field !pl-11"
+                      className="field field-icon-left"
+                      style={{ paddingLeft: '2.75rem' }}
                       required
                       disabled={loading}
                     />
@@ -250,7 +291,8 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
-                      className="field !pl-11"
+                      className="field field-icon-left"
+                      style={{ paddingLeft: '2.75rem' }}
                       disabled={loading}
                     />
                   </div>
@@ -273,7 +315,8 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                       onChange={(e) => setWhatsapp(e.target.value)}
                       placeholder="+51 999 999 999"
                       autoComplete="tel"
-                      className="field !pl-11"
+                      className="field field-icon-left"
+                      style={{ paddingLeft: '2.75rem' }}
                       disabled={loading}
                     />
                   </div>
@@ -313,6 +356,37 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                 </div>
               </div>
             </form>
+          </div>
+
+          {/* Visual Theme Selection */}
+          <div className="card-base p-5 space-y-4">
+            <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">
+              Apariencia
+            </h3>
+            <p className="text-xs text-text-secondary">
+              Personaliza el tema visual de la aplicación. Se aplicará de forma privada a tu cuenta.
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {(['black', 'dark', 'light'] as const).map((t) => {
+                const label = t === 'black' ? 'Negro' : t === 'dark' ? 'Oscuro' : 'Claro';
+                const isActive = themeMode === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={themeSaving}
+                    onClick={() => handleThemeChange(t)}
+                    className={`py-2.5 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all border cursor-pointer ${
+                      isActive
+                        ? 'bg-gold-400 border-gold-400 text-[#0A0A0F] shadow-[0_4px_12px_rgba(212,168,67,0.2)]'
+                        : 'bg-bg-secondary hover:bg-bg-hover border-border-default text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Change Password Form */}

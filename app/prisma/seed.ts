@@ -359,11 +359,11 @@ async function main() {
     admin = await prisma.user.create({
       data: {
         id: 'u-admin',
-        name: 'Super Admin',
-        username: 'admin',
-        displayUsername: 'admin',
-        displayName: 'Admin',
-        email: 'admin@example.com',
+        name: 'Gus Moreno',
+        username: 'gumorenos',
+        displayUsername: 'gumorenos',
+        displayName: 'Gus Moreno',
+        email: 'gumorenos@example.com',
         emailVerified: true,
         isSuperadmin: true,
         status: 'approved',
@@ -375,7 +375,7 @@ async function main() {
     await prisma.account.create({
       data: {
         id: 'acc-admin',
-        accountId: 'admin@example.com',
+        accountId: 'gumorenos@example.com',
         providerId: 'email',
         userId: admin.id,
         password: adminHash,

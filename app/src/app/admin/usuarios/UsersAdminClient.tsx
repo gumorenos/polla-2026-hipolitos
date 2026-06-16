@@ -159,7 +159,8 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
             placeholder="Buscar por nombre, usuario, etc..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="field !pl-11 text-xs"
+            className="field field-icon-left text-xs"
+            style={{ paddingLeft: '2.75rem' }}
           />
         </div>
 

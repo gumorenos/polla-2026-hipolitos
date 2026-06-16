@@ -359,23 +359,23 @@ async function main() {
   const userHash = await ctx.password.hash('User123!');
 
   const admin = await prisma.user.upsert({
-    where: { email: 'gustavo@example.com' },
+    where: { email: 'gumorenos@example.com' },
     update: {
-      name: 'Gustavo',
-      username: 'gustavo',
-      displayUsername: 'gustavo',
-      displayName: 'Gus_Hipolito',
+      name: 'Gus Moreno',
+      username: 'gumorenos',
+      displayUsername: 'gumorenos',
+      displayName: 'Gus Moreno',
       isSuperadmin: true,
       status: 'approved',
       whatsapp: '+573000000000',
     },
     create: {
       id: 'u-1',
-      name: 'Gustavo',
-      username: 'gustavo',
-      displayUsername: 'gustavo',
-      displayName: 'Gus_Hipolito',
-      email: 'gustavo@example.com',
+      name: 'Gus Moreno',
+      username: 'gumorenos',
+      displayUsername: 'gumorenos',
+      displayName: 'Gus Moreno',
+      email: 'gumorenos@example.com',
       emailVerified: true,
       isSuperadmin: true,
       status: 'approved',
@@ -392,7 +392,7 @@ async function main() {
     await prisma.account.create({
       data: {
         id: 'acc-1',
-        accountId: 'gustavo@example.com',
+        accountId: 'gumorenos@example.com',
         providerId: 'email',
         userId: admin.id,
         password: adminHash,
@@ -403,7 +403,10 @@ async function main() {
   } else {
     await prisma.account.update({
       where: { id: adminAcc.id },
-      data: { password: adminHash },
+      data: {
+        accountId: 'gumorenos@example.com',
+        password: adminHash,
+      },
     });
   }
 

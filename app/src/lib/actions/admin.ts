@@ -563,12 +563,23 @@ export async function toggleUserSuperadminAction(targetUserId: string, isSuperad
     }
 
     const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-    if (!user?.isSuperadmin) {
+    if (!user || user.status !== 'approved' || !user.isSuperadmin) {
       return { error: 'No tienes permisos de superadministrador' };
     }
 
     if (targetUserId === user.id) {
-      return { error: 'No puedes quitarte el rol de superadministrador a ti mismo' };
+      if (!isSuperadmin) {
+        const otherActiveSuperadmins = await prisma.user.count({
+          where: {
+            isSuperadmin: true,
+            status: 'approved',
+            NOT: { id: user.id }
+          }
+        });
+        if (otherActiveSuperadmins === 0) {
+          return { error: 'No puedes quitarte el rol de superadministrador a ti mismo porque eres el único superadministrador activo.' };
+        }
+      }
     }
 
     await prisma.user.update({
@@ -602,8 +613,23 @@ export async function updateUserStatusAction(targetUserId: string, status: strin
     }
 
     const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
-    if (!adminUser?.isSuperadmin) {
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
       return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (targetUserId === adminUser.id) {
+      if (status !== 'approved') {
+        const otherActiveSuperadmins = await prisma.user.count({
+          where: {
+            isSuperadmin: true,
+            status: 'approved',
+            NOT: { id: adminUser.id }
+          }
+        });
+        if (otherActiveSuperadmins === 0) {
+          return { error: 'No puedes desactivar o rechazar tu propio usuario porque eres el único superadministrador activo.' };
+        }
+      }
     }
 
     const validStatuses = ['pending', 'approved', 'rejected', 'disabled'];
@@ -812,6 +838,7 @@ export async function adminUpdateUserAction(
     remindersEnabled?: boolean;
     emailRemindersEnabled?: boolean;
     reminderEmail?: string;
+    themeMode?: string;
   },
   reason?: string
 ) {
@@ -822,36 +849,67 @@ export async function adminUpdateUserAction(
     }
 
     const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
-    if (!adminUser?.isSuperadmin) {
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
       return { error: 'No tienes permisos de superadministrador' };
     }
 
     if (targetUserId === adminUser.id) {
       if (data.isSuperadmin === false) {
-        return { error: 'No puedes quitarte el rol de superadministrador a ti mismo' };
+        const otherActiveSuperadmins = await prisma.user.count({
+          where: {
+            isSuperadmin: true,
+            status: 'approved',
+            NOT: { id: adminUser.id }
+          }
+        });
+        if (otherActiveSuperadmins === 0) {
+          return { error: 'No puedes quitarte el rol de superadministrador a ti mismo porque eres el único superadministrador activo.' };
+        }
       }
       if (data.status && data.status !== 'approved') {
-        return { error: 'No puedes cambiar tu propio estado' };
+        const otherActiveSuperadmins = await prisma.user.count({
+          where: {
+            isSuperadmin: true,
+            status: 'approved',
+            NOT: { id: adminUser.id }
+          }
+        });
+        if (otherActiveSuperadmins === 0) {
+          return { error: 'No puedes desactivar tu propio usuario porque eres el único superadministrador activo.' };
+        }
       }
     }
 
+    const oldUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!oldUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
     const updateData: Prisma.UserUpdateInput = {};
-    if (data.name !== undefined) updateData.name = data.name.trim();
+    const changes: Record<string, { old: unknown; new: unknown }> = {};
+
+    if (data.name !== undefined && data.name.trim() !== oldUser.name) {
+      updateData.name = data.name.trim();
+      changes.name = { old: oldUser.name, new: data.name.trim() };
+    }
     if (data.username !== undefined) {
       const usernameLower = data.username.trim().toLowerCase();
-      if (!/^[a-z0-9_.-]+$/.test(usernameLower)) {
-        return { error: 'El nombre de usuario solo puede contener letras, números, guiones, puntos y guiones bajos' };
+      if (usernameLower !== oldUser.username) {
+        if (!/^[a-z0-9_.-]+$/.test(usernameLower)) {
+          return { error: 'El nombre de usuario solo puede contener letras, números, guiones, puntos y guiones bajos' };
+        }
+        const existingUser = await prisma.user.findFirst({
+          where: { username: usernameLower, NOT: { id: targetUserId } }
+        });
+        if (existingUser) {
+          return { error: 'El nombre de usuario ya está registrado por otro usuario' };
+        }
+        updateData.username = usernameLower;
+        updateData.displayUsername = data.name || oldUser.name;
+        changes.username = { old: oldUser.username, new: usernameLower };
       }
-      const existingUser = await prisma.user.findFirst({
-        where: { username: usernameLower, NOT: { id: targetUserId } }
-      });
-      if (existingUser) {
-        return { error: 'El nombre de usuario ya está registrado por otro usuario' };
-      }
-      updateData.username = usernameLower;
-      updateData.displayUsername = data.name || undefined;
     }
-    if (data.email !== undefined) {
+    if (data.email !== undefined && data.email.trim().toLowerCase() !== oldUser.email) {
       const emailLower = data.email.trim().toLowerCase();
       const existingEmail = await prisma.user.findFirst({
         where: { email: emailLower, NOT: { id: targetUserId } }
@@ -860,20 +918,50 @@ export async function adminUpdateUserAction(
         return { error: 'El correo electrónico ya está registrado por otro usuario' };
       }
       updateData.email = emailLower;
+      changes.email = { old: oldUser.email, new: emailLower };
     }
-    if (data.whatsapp !== undefined) updateData.whatsapp = data.whatsapp.trim() || null;
-    if (data.status !== undefined) updateData.status = data.status;
-    if (data.isSuperadmin !== undefined) updateData.isSuperadmin = data.isSuperadmin;
-    if (data.canCreateLeagues !== undefined) updateData.canCreateLeagues = data.canCreateLeagues;
-    if (data.remindersEnabled !== undefined) updateData.remindersEnabled = data.remindersEnabled;
-    if (data.emailRemindersEnabled !== undefined) updateData.emailRemindersEnabled = data.emailRemindersEnabled;
-    if (data.reminderEmail !== undefined) updateData.reminderEmail = data.reminderEmail.trim() || null;
+    if (data.whatsapp !== undefined && (data.whatsapp.trim() || null) !== oldUser.whatsapp) {
+      const val = data.whatsapp.trim() || null;
+      updateData.whatsapp = val;
+      changes.whatsapp = { old: oldUser.whatsapp, new: val };
+    }
+    if (data.status !== undefined && data.status !== oldUser.status) {
+      updateData.status = data.status;
+      changes.status = { old: oldUser.status, new: data.status };
+    }
+    if (data.isSuperadmin !== undefined && data.isSuperadmin !== oldUser.isSuperadmin) {
+      updateData.isSuperadmin = data.isSuperadmin;
+      changes.isSuperadmin = { old: oldUser.isSuperadmin, new: data.isSuperadmin };
+    }
+    if (data.canCreateLeagues !== undefined && data.canCreateLeagues !== oldUser.canCreateLeagues) {
+      updateData.canCreateLeagues = data.canCreateLeagues;
+      changes.canCreateLeagues = { old: oldUser.canCreateLeagues, new: data.canCreateLeagues };
+    }
+    if (data.themeMode !== undefined && data.themeMode !== oldUser.themeMode) {
+      updateData.themeMode = data.themeMode;
+      changes.themeMode = { old: oldUser.themeMode, new: data.themeMode };
+    }
+    if (data.remindersEnabled !== undefined && data.remindersEnabled !== oldUser.remindersEnabled) {
+      updateData.remindersEnabled = data.remindersEnabled;
+      changes.remindersEnabled = { old: oldUser.remindersEnabled, new: data.remindersEnabled };
+    }
+    if (data.emailRemindersEnabled !== undefined && data.emailRemindersEnabled !== oldUser.emailRemindersEnabled) {
+      updateData.emailRemindersEnabled = data.emailRemindersEnabled;
+      changes.emailRemindersEnabled = { old: oldUser.emailRemindersEnabled, new: data.emailRemindersEnabled };
+    }
+    if (data.reminderEmail !== undefined && (data.reminderEmail.trim() || null) !== oldUser.reminderEmail) {
+      const val = data.reminderEmail.trim() || null;
+      updateData.reminderEmail = val;
+      changes.reminderEmail = { old: oldUser.reminderEmail, new: val };
+    }
 
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: targetUserId },
-        data: updateData
-      });
+      if (Object.keys(updateData).length > 0) {
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: updateData
+        });
+      }
 
       if (data.passwordText) {
         const ctx = await auth.$context;
@@ -891,20 +979,253 @@ export async function adminUpdateUserAction(
       }
     });
 
-    await prisma.adminActionLog.create({
-      data: {
-        userId: adminUser.id,
-        action: 'user_updated_by_admin',
-        target: `user:${targetUserId}`,
-        details: JSON.stringify({ updatedFields: Object.keys(updateData), passwordChanged: !!data.passwordText, reason }),
-      },
-    });
+    if (Object.keys(changes).length > 0 || data.passwordText) {
+      await prisma.adminActionLog.create({
+        data: {
+          userId: adminUser.id,
+          action: 'user_updated_by_admin',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({ changes, passwordChanged: !!data.passwordText, reason }),
+        },
+      });
+    }
 
     revalidatePath('/admin/usuarios');
     return { success: true };
   } catch (error) {
     console.error('Error in adminUpdateUserAction:', error);
     return { error: 'Ocurrió un error al actualizar el usuario' };
+  }
+}
+
+export async function adminResetUserPasswordAction(
+  targetUserId: string,
+  newPasswordOption: 'manual' | 'generate',
+  customPasswordText: string,
+  reason: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo es obligatorio para restablecer la contraseña.' };
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
+    let passwordToSet = '';
+    if (newPasswordOption === 'manual') {
+      if (!customPasswordText || customPasswordText.length < 6) {
+        return { error: 'La contraseña manual debe tener al menos 6 caracteres.' };
+      }
+      passwordToSet = customPasswordText;
+    } else {
+      // Generate secure temporary password
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$';
+      for (let i = 0; i < 12; i++) {
+        passwordToSet += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    }
+
+    const ctx = await auth.$context;
+    const hashedPassword = await ctx.password.hash(passwordToSet);
+
+    await prisma.$transaction(async (tx) => {
+      const account = await tx.account.findFirst({
+        where: { userId: targetUserId, providerId: 'email' }
+      });
+      if (account) {
+        await tx.account.update({
+          where: { id: account.id },
+          data: { password: hashedPassword }
+        });
+      } else {
+        // Create account if not present (fallback)
+        await tx.account.create({
+          data: {
+            id: `acc-admin-reset-${Math.random().toString(36).substring(2, 11)}`,
+            accountId: targetUser.email,
+            providerId: 'email',
+            userId: targetUserId,
+            password: hashedPassword,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }
+        });
+      }
+    });
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'user_password_reset',
+        target: `user:${targetUserId}`,
+        details: JSON.stringify({ newPasswordOption, reason }),
+      },
+    });
+
+    return { success: true, temporaryPassword: passwordToSet };
+  } catch (error) {
+    console.error('Error in adminResetUserPasswordAction:', error);
+    return { error: 'Ocurrió un error al restablecer la contraseña.' };
+  }
+}
+
+export async function adminSoftDeleteUserAction(
+  targetUserId: string,
+  anonymize: boolean,
+  reason: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo es obligatorio para desactivar/archivar al usuario.' };
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
+    if (targetUserId === adminUser.id) {
+      const otherActiveSuperadmins = await prisma.user.count({
+        where: {
+          isSuperadmin: true,
+          status: 'approved',
+          NOT: { id: adminUser.id }
+        }
+      });
+      if (otherActiveSuperadmins === 0) {
+        return { error: 'No puedes desactivar tu propio usuario porque eres el único superadministrador activo.' };
+      }
+    }
+
+    const updateData: Prisma.UserUpdateInput = {
+      status: 'disabled'
+    };
+
+    if (anonymize) {
+      updateData.displayName = 'Usuario Archivado';
+      updateData.name = 'Usuario Archivado';
+      updateData.whatsapp = null;
+      updateData.reminderEmail = null;
+      updateData.email = `deleted_${targetUserId}@polla.local`;
+      updateData.username = `deleted_${targetUserId}`;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Update user status & data
+      await tx.user.update({
+        where: { id: targetUserId },
+        data: updateData
+      });
+
+      // Invalidate sessions
+      await tx.session.deleteMany({
+        where: { userId: targetUserId }
+      });
+    });
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'user_soft_deleted',
+        target: `user:${targetUserId}`,
+        details: JSON.stringify({ anonymized: anonymize, reason }),
+      },
+    });
+
+    revalidatePath('/admin/usuarios');
+    return { success: true };
+  } catch (error) {
+    console.error('Error in adminSoftDeleteUserAction:', error);
+    return { error: 'Ocurrió un error al archivar al usuario.' };
+  }
+}
+
+export async function adminHardDeleteUserAction(
+  targetUserId: string,
+  reason: string,
+  typedUsernameConfirmation: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (targetUserId === adminUser.id) {
+      return { error: 'No puedes eliminarte a ti mismo de la base de datos.' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo es obligatorio para la eliminación definitiva.' };
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
+    if (typedUsernameConfirmation.trim().toLowerCase() !== targetUser.username?.toLowerCase()) {
+      return { error: 'El nombre de usuario ingresado no coincide con el del usuario a eliminar.' };
+    }
+
+    // Check related records
+    const predictionCount = await prisma.prediction.count({ where: { userId: targetUserId } });
+    const winnerPredictionCount = await prisma.winnerPrediction.count({ where: { userId: targetUserId } });
+
+    if (predictionCount > 0 || winnerPredictionCount > 0) {
+      return {
+        error: 'Este usuario tiene historial de competencia (pronósticos o predicción de campeón). Usa desactivar/archivar para conservar la integridad y auditoría de la liga.'
+      };
+    }
+
+    // Write log BEFORE deletion since user relation is Cascade
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'user_hard_deleted',
+        target: `user:${targetUserId}`,
+        details: JSON.stringify({ username: targetUser.username, email: targetUser.email, reason }),
+      },
+    });
+
+    // Cascade deletion of User
+    await prisma.user.delete({
+      where: { id: targetUserId }
+    });
+
+    revalidatePath('/admin/usuarios');
+    return { success: true };
+  } catch (error) {
+    console.error('Error in adminHardDeleteUserAction:', error);
+    return { error: 'Ocurrió un error al eliminar definitivamente al usuario.' };
   }
 }
 

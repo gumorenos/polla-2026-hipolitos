@@ -2,21 +2,23 @@
 
 import React, { useState } from 'react';
 import { 
-  toggleUserSuperadminAction, 
   updateUserStatusAction, 
   adminCreateUserAction,
   adminUpdateUserAction,
   adminResetUserChampionAction,
   adminUpdateLeagueMemberRoleAction,
   adminRemoveFromLeagueAction,
-  adminAddToLeagueAction
+  adminAddToLeagueAction,
+  adminResetUserPasswordAction,
+  adminSoftDeleteUserAction,
+  adminHardDeleteUserAction
 } from '../../../lib/actions/admin';
 import {
   allowWinnerPredictionCorrectionAction,
   directCorrectWinnerPredictionAction
 } from '../../../lib/actions/predictions';
 import { useRouter } from 'next/navigation';
-import { Plus, X, Search, Eye, EyeOff } from 'lucide-react';
+import { Plus, X, Search, Eye, EyeOff, ShieldAlert, Ban, Info, Key } from 'lucide-react';
 
 interface UserFromDB {
   id: string;
@@ -32,6 +34,7 @@ interface UserFromDB {
   remindersEnabled?: boolean;
   emailRemindersEnabled?: boolean;
   reminderEmail?: string | null;
+  themeMode?: string;
   memberships?: {
     league: {
       id: string;
@@ -68,6 +71,9 @@ interface UserFromDB {
       name: string;
     };
   }[];
+  _count?: {
+    predictions: number;
+  };
 }
 
 export default function UsersAdminClient({ 
@@ -81,7 +87,7 @@ export default function UsersAdminClient({
 }) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'disabled' | 'superadmins'>('all');
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -108,7 +114,29 @@ export default function UsersAdminClient({
   const [editReminders, setEditReminders] = useState(false);
   const [editEmailReminders, setEditEmailReminders] = useState(false);
   const [editReminderEmail, setEditReminderEmail] = useState('');
+  const [editThemeMode, setEditThemeMode] = useState('black');
   const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // New Modals
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailUser, setDetailUser] = useState<UserFromDB | null>(null);
+
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
+  const [resetUser, setResetUser] = useState<UserFromDB | null>(null);
+  const [passwordResetOption, setPasswordResetOption] = useState<'manual' | 'generate'>('generate');
+  const [passwordResetCustomText, setPasswordResetCustomText] = useState('');
+  const [passwordResetReason, setPasswordResetReason] = useState('');
+  const [passwordResetSuccessText, setPasswordResetSuccessText] = useState<string | null>(null);
+
+  const [showSoftDeleteModal, setShowSoftDeleteModal] = useState(false);
+  const [softDeleteUser, setSoftDeleteUser] = useState<UserFromDB | null>(null);
+  const [softDeleteAnonymize, setSoftDeleteAnonymize] = useState(false);
+  const [softDeleteReason, setSoftDeleteReason] = useState('');
+
+  const [showHardDeleteModal, setShowHardDeleteModal] = useState(false);
+  const [hardDeleteUser, setHardDeleteUser] = useState<UserFromDB | null>(null);
+  const [hardDeleteReason, setHardDeleteReason] = useState('');
+  const [hardDeleteConfirmation, setHardDeleteConfirmation] = useState('');
 
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -116,7 +144,6 @@ export default function UsersAdminClient({
   const [success, setSuccess] = useState<string | null>(null);
 
   // Teams list used for champion pick corrections
-  // Usually this is loaded dynamically or we can just fetch the static map keys
   const teams = [
     { code: 'ARG', name: 'Argentina' },
     { code: 'BRA', name: 'Brasil' },
@@ -151,6 +178,7 @@ export default function UsersAdminClient({
     setEditReminders(user.remindersEnabled || false);
     setEditEmailReminders(user.emailRemindersEnabled || false);
     setEditReminderEmail(user.reminderEmail || '');
+    setEditThemeMode(user.themeMode || 'black');
     setShowEditModal(true);
   };
 
@@ -195,6 +223,7 @@ export default function UsersAdminClient({
       remindersEnabled: editReminders,
       emailRemindersEnabled: editEmailReminders,
       reminderEmail: editReminderEmail,
+      themeMode: editThemeMode,
     }, reason);
 
     if (res.error) {
@@ -232,30 +261,6 @@ export default function UsersAdminClient({
       setActionLoading(false);
       router.refresh();
     }
-  };
-
-  const handleToggleSuperadmin = async (userId: string, currentVal: boolean) => {
-    const actionLabel = currentVal ? 'quitar' : 'dar';
-    const reason = prompt(`¿Estás seguro de que deseas ${actionLabel} el rol de Superadmin a este usuario? Ingrese el motivo (se registrará en la auditoría):`);
-    if (reason === null) return;
-    if (!reason.trim()) {
-      alert("El motivo es obligatorio.");
-      return;
-    }
-
-    setLoadingUserId(userId);
-    setError(null);
-    setSuccess(null);
-
-    const res = await toggleUserSuperadminAction(userId, !currentVal, reason);
-
-    if (res.error) {
-      setError(res.error);
-    } else {
-      setSuccess('Usuario actualizado exitosamente');
-      router.refresh();
-    }
-    setLoadingUserId(null);
   };
 
   const handleUpdateStatus = async (userId: string, targetStatus: string) => {
@@ -322,6 +327,117 @@ export default function UsersAdminClient({
     }
   };
 
+  // Password reset modal trigger
+  const handleStartPasswordReset = (user: UserFromDB) => {
+    setResetUser(user);
+    setPasswordResetOption('generate');
+    setPasswordResetCustomText('');
+    setPasswordResetReason('');
+    setPasswordResetSuccessText(null);
+    setShowPasswordResetModal(true);
+  };
+
+  const handlePasswordResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUser) return;
+    if (!passwordResetReason.trim()) {
+      alert("El motivo es obligatorio.");
+      return;
+    }
+
+    setActionLoading(true);
+    const res = await adminResetUserPasswordAction(
+      resetUser.id,
+      passwordResetOption,
+      passwordResetCustomText,
+      passwordResetReason
+    );
+    setActionLoading(false);
+
+    if (res.error) {
+      alert(res.error);
+    } else if (res.temporaryPassword) {
+      setPasswordResetSuccessText(res.temporaryPassword);
+      setSuccess("Contraseña restablecida con éxito.");
+    }
+  };
+
+  // Soft delete modal trigger
+  const handleStartSoftDelete = (user: UserFromDB) => {
+    setSoftDeleteUser(user);
+    setSoftDeleteAnonymize(false);
+    setSoftDeleteReason('');
+    setShowSoftDeleteModal(true);
+  };
+
+  const handleSoftDeleteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!softDeleteUser) return;
+    if (!softDeleteReason.trim()) {
+      alert("El motivo es obligatorio.");
+      return;
+    }
+
+    setActionLoading(true);
+    const res = await adminSoftDeleteUserAction(
+      softDeleteUser.id,
+      softDeleteAnonymize,
+      softDeleteReason
+    );
+    setActionLoading(false);
+
+    if (res.error) {
+      alert(res.error);
+    } else {
+      setSuccess("Usuario desactivado y archivado correctamente.");
+      setShowSoftDeleteModal(false);
+      router.refresh();
+    }
+  };
+
+  // Hard delete modal trigger
+  const handleStartHardDelete = (user: UserFromDB) => {
+    setHardDeleteUser(user);
+    setHardDeleteReason('');
+    setHardDeleteConfirmation('');
+    setShowHardDeleteModal(true);
+  };
+
+  const handleHardDeleteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hardDeleteUser) return;
+    if (!hardDeleteReason.trim()) {
+      alert("El motivo es obligatorio.");
+      return;
+    }
+    if (hardDeleteConfirmation.trim().toLowerCase() !== hardDeleteUser.username?.toLowerCase()) {
+      alert("El nombre de usuario no coincide.");
+      return;
+    }
+
+    setActionLoading(true);
+    const res = await adminHardDeleteUserAction(
+      hardDeleteUser.id,
+      hardDeleteReason,
+      hardDeleteConfirmation
+    );
+    setActionLoading(false);
+
+    if (res.error) {
+      alert(res.error);
+    } else {
+      setSuccess("Usuario eliminado definitivamente del sistema.");
+      setShowHardDeleteModal(false);
+      router.refresh();
+    }
+  };
+
+  // Detail Modal trigger
+  const handleOpenDetailModal = (user: UserFromDB) => {
+    setDetailUser(user);
+    setShowDetailModal(true);
+  };
+
   // Filter logic
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
@@ -334,7 +450,9 @@ export default function UsersAdminClient({
 
     if (statusFilter === 'pending') return u.status === 'pending';
     if (statusFilter === 'approved') return u.status === 'approved';
-    if (statusFilter === 'blocked') return u.status === 'rejected' || u.status === 'disabled';
+    if (statusFilter === 'rejected') return u.status === 'rejected';
+    if (statusFilter === 'disabled') return u.status === 'disabled';
+    if (statusFilter === 'superadmins') return u.isSuperadmin === true;
 
     return true;
   });
@@ -355,8 +473,8 @@ export default function UsersAdminClient({
             placeholder="Buscar por nombre, usuario, etc..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="field field-icon-left text-xs"
-            style={{ paddingLeft: '2.75rem' }}
+            className="field field-icon-left text-xs text-text-primary bg-bg-secondary border border-border rounded-lg"
+            style={{ paddingLeft: '2.75rem', height: '2.5rem' }}
           />
         </div>
 
@@ -365,34 +483,50 @@ export default function UsersAdminClient({
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
-              statusFilter === 'all' ? 'bg-gold-400 text-bg-primary' : 'text-text-secondary hover:text-text-primary'
+              statusFilter === 'all' ? 'bg-gold text-black' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
             Todos
           </button>
           <button
+            onClick={() => setStatusFilter('approved')}
+            className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
+              statusFilter === 'approved' ? 'bg-green-500 text-white' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Activos
+          </button>
+          <button
             onClick={() => setStatusFilter('pending')}
             className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
-              statusFilter === 'pending' ? 'bg-yellow-500 text-bg-primary' : 'text-text-secondary hover:text-text-primary'
+              statusFilter === 'pending' ? 'bg-yellow-500 text-black' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
             Pendientes
           </button>
           <button
-            onClick={() => setStatusFilter('approved')}
+            onClick={() => setStatusFilter('rejected')}
             className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
-              statusFilter === 'approved' ? 'bg-green-500 text-bg-primary' : 'text-text-secondary hover:text-text-primary'
+              statusFilter === 'rejected' ? 'bg-red-500 text-white' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
-            Aprobados
+            Rechazados
           </button>
           <button
-            onClick={() => setStatusFilter('blocked')}
+            onClick={() => setStatusFilter('disabled')}
             className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
-              statusFilter === 'blocked' ? 'bg-red-500 text-bg-primary' : 'text-text-secondary hover:text-text-primary'
+              statusFilter === 'disabled' ? 'bg-gray-500 text-white' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
-            Bloqueados
+            Desactivados
+          </button>
+          <button
+            onClick={() => setStatusFilter('superadmins')}
+            className={`px-3 py-1.5 text-xs rounded-lg font-semibold uppercase tracking-wider whitespace-nowrap transition-all ${
+              statusFilter === 'superadmins' ? 'bg-gold text-black' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Superadmins
           </button>
         </div>
 
@@ -407,160 +541,541 @@ export default function UsersAdminClient({
 
       {/* Users List Table */}
       <div className="card-base overflow-hidden">
-        <table className="w-full text-left text-xs whitespace-nowrap">
-          <thead className="bg-surface border-b border-border text-text-muted">
-            <tr className="uppercase font-mono tracking-wider font-bold">
-              <th className="p-3">Nombre</th>
-              <th className="p-3">Usuario</th>
-              <th className="p-3">WhatsApp</th>
-              <th className="p-3">Competencias</th>
-              <th className="p-3 text-center">En Ranking?</th>
-              <th className="p-3">Estado</th>
-              <th className="p-3">Rol</th>
-              <th className="p-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-8 text-center text-text-muted">
-                  No se encontraron usuarios coincidentes.
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead className="bg-surface border-b border-border text-text-muted">
+              <tr className="uppercase font-mono tracking-wider font-bold">
+                <th className="p-3">Nombre</th>
+                <th className="p-3">Usuario</th>
+                <th className="p-3">WhatsApp</th>
+                <th className="p-3">Competencias</th>
+                <th className="p-3 text-center">Pronósticos</th>
+                <th className="p-3">Estado</th>
+                <th className="p-3">Rol</th>
+                <th className="p-3 text-right">Acciones</th>
               </tr>
-            ) : (
-              filteredUsers.map((user) => {
-                const isYou = user.id === currentUserId;
-                const isLoading = loadingUserId === user.id;
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-text-muted">
+                    No se encontraron usuarios coincidentes.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user) => {
+                  const isYou = user.id === currentUserId;
+                  const isLoading = loadingUserId === user.id;
 
-                return (
-                  <tr key={user.id} className="hover:bg-surface/50 transition-colors">
-                    <td className="p-3 font-semibold">
-                      {user.name}
-                      {isYou && (
-                        <span className="text-[9px] text-gold border border-gold/30 px-1.5 py-0.5 rounded ml-2 uppercase font-mono tracking-wider font-bold">
-                          TÚ
+                  return (
+                    <tr key={user.id} className="hover:bg-surface/50 transition-colors">
+                      <td className="p-3 font-semibold">
+                        {user.name}
+                        {isYou && (
+                          <span className="text-[9px] text-gold border border-gold/30 px-1.5 py-0.5 rounded ml-2 uppercase font-mono tracking-wider font-bold">
+                            TÚ
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 font-mono text-[11px] text-gold-400">@{user.username}</td>
+                      <td className="p-3 font-mono text-[11px]">
+                        {user.whatsapp || <span className="text-text-muted italic">-</span>}
+                      </td>
+                      <td className="p-3 text-xs max-w-xs truncate">
+                        {user.memberships && user.memberships.length > 0 ? (
+                          user.memberships.map((m) => m.league.name).join(', ')
+                        ) : (
+                          <span className="text-text-muted italic">Ninguna</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-xs text-center font-bold">
+                        {user._count?.predictions ?? 0}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[10px] ${
+                          user.status === 'approved'
+                            ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                            : user.status === 'pending'
+                            ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                            : user.status === 'disabled'
+                            ? 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                            : 'bg-red-500/10 text-red-400 border-red-500/30'
+                        }`}>
+                          {user.status === 'approved' ? 'Aprobado' :
+                           user.status === 'pending' ? 'Pendiente' :
+                           user.status === 'disabled' ? 'Desactivado' :
+                           user.status === 'rejected' ? 'Rechazado' : user.status}
                         </span>
-                      )}
-                    </td>
-                    <td className="p-3 font-mono text-[11px] text-gold-400">@{user.username}</td>
-                    <td className="p-3 font-mono text-[11px]">
-                      {user.whatsapp || <span className="text-text-muted italic">-</span>}
-                    </td>
-                    <td className="p-3 text-xs max-w-xs truncate">
-                      {user.memberships && user.memberships.length > 0 ? (
-                        user.memberships.map((m) => m.league.name).join(', ')
-                      ) : (
-                        <span className="text-text-muted italic">Ninguna</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-xs text-center font-bold">
-                      {user.status === 'approved' ? (
-                        <span className="text-green-400">Sí</span>
-                      ) : (
-                        <span className="text-text-muted">No</span>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[10px] ${
-                        user.status === 'approved'
-                          ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                          : user.status === 'pending'
-                          ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                          : user.status === 'disabled'
-                          ? 'bg-gray-500/10 text-gray-400 border-gray-500/30'
-                          : 'bg-red-500/10 text-red-400 border-red-500/30'
-                      }`}>
-                        {user.status === 'approved' ? 'Aprobado' :
-                         user.status === 'pending' ? 'Pendiente' :
-                         user.status === 'disabled' ? 'Desactivado' :
-                         user.status === 'rejected' ? 'Rechazado' : user.status}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[10px] ${
-                        user.isSuperadmin ? 'bg-gold-400/10 text-gold-400 border-gold-400/30' : 'bg-surface border-border text-text-secondary'
-                      }`}>
-                        {user.isSuperadmin ? 'Superadmin' : 'Usuario'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right space-x-1.5">
-                      <button
-                        onClick={() => handleStartEditUser(user)}
-                        disabled={isLoading}
-                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
-                      >
-                        Editar
-                      </button>
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[10px] ${
+                          user.isSuperadmin ? 'bg-gold-400/10 text-gold-400 border-gold-400/30' : 'bg-surface border-border text-text-secondary'
+                        }`}>
+                          {user.isSuperadmin ? 'Superadmin' : 'Usuario'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right space-x-1.5">
+                        <button
+                          onClick={() => handleOpenDetailModal(user)}
+                          disabled={isLoading}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                        >
+                          Detalle
+                        </button>
+                        <button
+                          onClick={() => handleStartEditUser(user)}
+                          disabled={isLoading}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                        >
+                          Editar
+                        </button>
 
-                      {!isYou && (
-                        <>
-                          {/* Approval / Rejection controls */}
-                          {user.status === 'pending' && (
-                            <>
+                        <button
+                          onClick={() => handleStartPasswordReset(user)}
+                          disabled={isLoading}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                          title="Restablecer Contraseña"
+                        >
+                          Clave
+                        </button>
+
+                        {!isYou && (
+                          <>
+                            {/* Explicit status management controls */}
+                            {user.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateStatus(user.id, 'approved')}
+                                  disabled={isLoading}
+                                  className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20"
+                                >
+                                  Aprobar
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateStatus(user.id, 'rejected')}
+                                  disabled={isLoading}
+                                  className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
+                                >
+                                  Rechazar
+                                </button>
+                              </>
+                            )}
+
+                            {user.status === 'approved' && (
+                              <button
+                                onClick={() => handleStartSoftDelete(user)}
+                                disabled={isLoading}
+                                className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
+                              >
+                                Archivar
+                              </button>
+                            )}
+
+                            {(user.status === 'disabled' || user.status === 'rejected') && (
                               <button
                                 onClick={() => handleUpdateStatus(user.id, 'approved')}
                                 disabled={isLoading}
                                 className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20"
                               >
-                                Aprobar
+                                Reactivar
                               </button>
-                              <button
-                                onClick={() => handleUpdateStatus(user.id, 'rejected')}
-                                disabled={isLoading}
-                                className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
-                              >
-                                Rechazar
-                              </button>
-                            </>
-                          )}
+                            )}
 
-                          {user.status === 'approved' && (
+                            {/* Hard Delete Trigger */}
                             <button
-                              onClick={() => handleUpdateStatus(user.id, 'disabled')}
+                              onClick={() => handleStartHardDelete(user)}
                               disabled={isLoading}
-                              className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
+                              className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-950 border-red-500/30 text-red-400 hover:bg-red-900"
+                              title="Eliminar permanentemente de la BD"
                             >
-                              Deshabilitar
+                              Eliminar
                             </button>
-                          )}
-
-                          {(user.status === 'disabled' || user.status === 'rejected') && (
-                            <button
-                              onClick={() => handleUpdateStatus(user.id, 'approved')}
-                              disabled={isLoading}
-                              className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20"
-                            >
-                              Re-Habilitar
-                            </button>
-                          )}
-
-                          {/* Toggle Superadmin privileges */}
-                          <button
-                            onClick={() => handleToggleSuperadmin(user.id, user.isSuperadmin)}
-                            disabled={isLoading}
-                            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all ${
-                              user.isSuperadmin
-                                ? 'bg-red-500/15 border-red-500/30 text-red-400 hover:bg-red-500/25'
-                                : 'bg-gold-400/10 border-gold-400/30 text-gold-400 hover:bg-gold-400/20'
-                            }`}
-                          >
-                            {user.isSuperadmin ? 'Quitar Admin' : 'Hacer Admin'}
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Detail View Modal */}
+      {showDetailModal && detailUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card-base p-6 max-w-lg w-full border border-border rounded-lg space-y-6 relative bg-bg-tertiary">
+            <button
+              onClick={() => setShowDetailModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-4">
+              <div className="bg-gold/10 text-gold rounded-full p-3 border border-gold/30">
+                <Info className="w-6 h-6" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">{detailUser.name}</h3>
+                <p className="font-mono text-xs text-gold-400">@{detailUser.username}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono border-t border-b border-border py-4 text-left">
+              <div>
+                <p className="text-text-secondary">CORREO:</p>
+                <p className="text-text-primary font-semibold">{detailUser.email}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">WHATSAPP:</p>
+                <p className="text-text-primary font-semibold">{detailUser.whatsapp || '-'}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">ESTADO:</p>
+                <p className="text-text-primary font-semibold uppercase">{detailUser.status}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">ROL GLOBAL:</p>
+                <p className="text-text-primary font-semibold uppercase">{detailUser.isSuperadmin ? 'Superadmin' : 'Usuario General'}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">CREACIÓN:</p>
+                <p className="text-text-primary font-semibold">{new Date(detailUser.createdAt).toLocaleString('es-ES')}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">MODO DE TEMA:</p>
+                <p className="text-text-primary font-semibold uppercase">{detailUser.themeMode || 'black'}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">TOTAL PRONÓSTICOS:</p>
+                <p className="text-text-primary font-semibold font-bold text-gold">{detailUser._count?.predictions ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">PUEDE CREAR LIGAS:</p>
+                <p className="text-text-primary font-semibold">{detailUser.canCreateLeagues ? 'SÍ' : 'NO'}</p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-text-secondary">ALERTAS DE RECORDATORIO:</p>
+                <p className="text-text-primary font-semibold">
+                  Habilitado: {detailUser.remindersEnabled ? 'SÍ' : 'NO'} | Email: {detailUser.emailRemindersEnabled ? 'SÍ' : 'NO'}
+                  {detailUser.reminderEmail && ` (${detailUser.reminderEmail})`}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-left text-xs">
+              <p className="font-bold font-mono text-gold uppercase tracking-wider text-[10px]">Competencias Participando:</p>
+              {detailUser.memberships && detailUser.memberships.length > 0 ? (
+                <div className="space-y-1 max-h-24 overflow-y-auto">
+                  {detailUser.memberships.map((m) => (
+                    <div key={m.league.id} className="bg-bg-secondary p-1.5 rounded border border-border/45 flex justify-between">
+                      <span>{m.league.name}</span>
+                      <span className="text-gold font-bold uppercase text-[9px]">{m.role}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-text-muted italic">No está unido a ninguna competencia.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-5 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Modal */}
+      {showPasswordResetModal && resetUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+            <button
+              onClick={() => setShowPasswordResetModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <Key className="w-6 h-6 text-gold" />
+              <div className="text-left">
+                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Restablecer Contraseña</h3>
+                <p className="text-xs text-text-secondary">@{resetUser.username} ({resetUser.name})</p>
+              </div>
+            </div>
+
+            {passwordResetSuccessText ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-950/40 border border-green-500/40 rounded-lg text-left space-y-2">
+                  <p className="text-xs text-green-300 font-bold uppercase tracking-wider">¡Contraseña restablecida exitosamente!</p>
+                  <p className="text-xs text-text-primary">Por favor, copia la siguiente contraseña temporal. **Solo se mostrará una vez**:</p>
+                  <div className="bg-black/60 p-3 rounded border border-border font-mono text-center text-sm font-bold text-gold tracking-widest select-all">
+                    {passwordResetSuccessText}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPasswordResetModal(false);
+                    setResetUser(null);
+                    setPasswordResetSuccessText(null);
+                  }}
+                  className="w-full btn-gold py-2 text-xs uppercase font-mono"
+                >
+                  Entendido, ya la copié
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handlePasswordResetSubmit} className="space-y-4 text-left">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono text-text-secondary uppercase block">Opción de Contraseña</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPasswordResetOption('generate')}
+                      className={`p-2.5 rounded-lg border text-xs font-semibold uppercase tracking-wider text-center transition-all ${
+                        passwordResetOption === 'generate'
+                          ? 'border-gold bg-gold/10 text-gold'
+                          : 'border-border bg-bg-secondary text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      Generar Temporal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordResetOption('manual')}
+                      className={`p-2.5 rounded-lg border text-xs font-semibold uppercase tracking-wider text-center transition-all ${
+                        passwordResetOption === 'manual'
+                          ? 'border-gold bg-gold/10 text-gold'
+                          : 'border-border bg-bg-secondary text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      Manual
+                    </button>
+                  </div>
+                </div>
+
+                {passwordResetOption === 'manual' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-text-secondary uppercase">Contraseña Manual</label>
+                    <input
+                      type="text"
+                      placeholder="Mínimo 6 caracteres"
+                      value={passwordResetCustomText}
+                      onChange={(e) => setPasswordResetCustomText(e.target.value)}
+                      className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none"
+                      style={{ color: '#fff', backgroundColor: '#111' }}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo del restablecimiento</label>
+                  <textarea
+                    placeholder="Escriba el motivo aquí (Obligatorio, se audita)"
+                    value={passwordResetReason}
+                    onChange={(e) => setPasswordResetReason(e.target.value)}
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordResetModal(false)}
+                    className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="btn-gold py-2 px-5 text-xs uppercase font-mono"
+                  >
+                    {actionLoading ? 'Guardando...' : 'Cambiar Clave'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Soft Delete Modal */}
+      {showSoftDeleteModal && softDeleteUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+            <button
+              onClick={() => setShowSoftDeleteModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <Ban className="w-6 h-6 text-yellow-500" />
+              <div className="text-left">
+                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Archivar / Desactivar Usuario</h3>
+                <p className="text-xs text-text-secondary">@{softDeleteUser.username} ({softDeleteUser.name})</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-text-secondary bg-black/20 p-3 rounded-lg border border-border/40 text-left space-y-1.5">
+              <p>&bull; El estado del usuario pasará a **desactivado**.</p>
+              <p>&bull; No se le eliminarán pronósticos, memberships ni logs.</p>
+              <p>&bull; Se cerrarán de inmediato todas sus sesiones activas.</p>
+              <p>&bull; Dejará de contar en los participantes activos y de recibir notificaciones.</p>
+            </div>
+
+            <form onSubmit={handleSoftDeleteSubmit} className="space-y-4 text-left">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary text-xs">
+                <input
+                  type="checkbox"
+                  checked={softDeleteAnonymize}
+                  onChange={(e) => setSoftDeleteAnonymize(e.target.checked)}
+                  className="rounded border-border text-gold bg-background accent-gold w-4 h-4"
+                />
+                <span>Anonimizar campos del perfil (Remover nombre, email y teléfono)</span>
+              </label>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo del archivo</label>
+                <textarea
+                  placeholder="Ingrese el motivo de la desactivación (Obligatorio, se audita)"
+                  value={softDeleteReason}
+                  onChange={(e) => setSoftDeleteReason(e.target.value)}
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSoftDeleteModal(false)}
+                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold text-xs rounded-xl uppercase font-mono"
+                >
+                  {actionLoading ? 'Archivando...' : 'Desactivar Cuenta'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Hard Delete Modal */}
+      {showHardDeleteModal && hardDeleteUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+            <button
+              onClick={() => setShowHardDeleteModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="w-6 h-6 text-red-500" />
+              <div className="text-left">
+                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Eliminación Definitiva</h3>
+                <p className="text-xs text-text-secondary">@{hardDeleteUser.username} ({hardDeleteUser.name})</p>
+              </div>
+            </div>
+
+            {((hardDeleteUser._count?.predictions ?? 0) > 0 || (hardDeleteUser.winnerPredictions?.length ?? 0) > 0) ? (
+              <div className="space-y-4 text-left">
+                <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-xs text-red-200 space-y-2">
+                  <p className="font-bold uppercase text-red-400">Acción Bloqueada</p>
+                  <p>Este usuario tiene historial de competencia en la base de datos ({hardDeleteUser._count?.predictions} pronósticos o predicción de campeón).</p>
+                  <p className="font-semibold text-text-primary">Usa desactivar/archivar para conservar la auditoría de la liga.</p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowHardDeleteModal(false)}
+                    className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleHardDeleteSubmit} className="space-y-4 text-left">
+                <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-[11px] text-red-200">
+                  <p className="font-bold uppercase mb-1">¡Advertencia Peligrosa!</p>
+                  <p>Esta acción es irreversible y purgará por completo al usuario de la base de datos. Solo se permite porque no tiene pronósticos registrados.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo de la eliminación</label>
+                  <textarea
+                    placeholder="Ingrese el motivo de la eliminación (Obligatorio, se audita)"
+                    value={hardDeleteReason}
+                    onChange={(e) => setHardDeleteReason(e.target.value)}
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Confirmar Nombre de Usuario</label>
+                  <p className="text-[10px] text-text-muted mb-1">Escribe <strong className="text-gold">@{hardDeleteUser.username}</strong> para proceder:</p>
+                  <input
+                    type="text"
+                    placeholder={`Escribe ${hardDeleteUser.username}`}
+                    value={hardDeleteConfirmation}
+                    onChange={(e) => setHardDeleteConfirmation(e.target.value)}
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowHardDeleteModal(false)}
+                    className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading || hardDeleteConfirmation.trim().toLowerCase() !== hardDeleteUser.username?.toLowerCase()}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold text-xs rounded-xl uppercase font-mono"
+                  >
+                    {actionLoading ? 'Eliminando...' : 'Eliminar permanentemente'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Manual Create User Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border-border-active space-y-4 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
             <button
               onClick={() => setShowCreateModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -575,33 +1090,35 @@ export default function UsersAdminClient({
 
             <form onSubmit={handleCreateUser} className="space-y-3">
               {/* Full Name */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
                 <input
                   type="text"
                   placeholder="Ej. Carlos Fuentes"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="field py-1.5 px-3 text-xs"
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
                   required
                 />
               </div>
 
               {/* Username */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
                 <input
                   type="text"
                   placeholder="Ej. carlosf"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
-                  className="field py-1.5 px-3 text-xs"
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
                   required
                 />
               </div>
 
               {/* Temporary Password */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Contraseña Temporal</label>
                 <div className="relative">
                   <input
@@ -609,13 +1126,14 @@ export default function UsersAdminClient({
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="field py-1.5 pl-3 pr-10 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-text-muted hover:text-text-primary"
+                    className="absolute right-3 top-2 text-text-muted hover:text-text-primary"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -623,36 +1141,39 @@ export default function UsersAdminClient({
               </div>
 
               {/* Email (Optional) */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Correo (Opcional)</label>
                 <input
                   type="email"
                   placeholder="Ej. carlos@correo.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="field py-1.5 px-3 text-xs"
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
                 />
               </div>
 
               {/* Whatsapp (Optional) */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp (Opcional)</label>
                 <input
                   type="tel"
                   placeholder="Ej. +51 999 999 999"
                   value={newWhatsapp}
                   onChange={(e) => setNewWhatsapp(e.target.value)}
-                  className="field py-1.5 px-3 text-xs"
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
                 />
               </div>
 
               {/* Initial Status */}
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Estado Inicial</label>
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value)}
-                  className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary"
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  style={{ color: '#fff', backgroundColor: '#111' }}
                 >
                   <option value="approved">Aprobado / Activo de inmediato</option>
                   <option value="pending">Pendiente de Aprobación</option>
@@ -663,7 +1184,7 @@ export default function UsersAdminClient({
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all"
+                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all text-text-primary"
                 >
                   Cancelar
                 </button>
@@ -683,7 +1204,7 @@ export default function UsersAdminClient({
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="card-base p-6 max-w-xl w-full border-border-active space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
+          <div className="card-base p-6 max-w-xl w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               type="button"
               onClick={() => setShowEditModal(false)}
@@ -692,13 +1213,13 @@ export default function UsersAdminClient({
               <X className="w-5 h-5" />
             </button>
 
-            <div>
+            <div className="text-left">
               <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Editar Usuario</h3>
               <p className="text-xs text-text-secondary">Modifica los datos del usuario y gestiona su participación.</p>
             </div>
 
             <form onSubmit={handleEditUserSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 {/* Full Name */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
@@ -706,7 +1227,8 @@ export default function UsersAdminClient({
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="field py-1.5 px-3 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -718,7 +1240,8 @@ export default function UsersAdminClient({
                     type="text"
                     value={editUsername}
                     onChange={(e) => setEditUsername(e.target.value)}
-                    className="field py-1.5 px-3 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -730,7 +1253,8 @@ export default function UsersAdminClient({
                     type="email"
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
-                    className="field py-1.5 px-3 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -742,7 +1266,8 @@ export default function UsersAdminClient({
                     type="tel"
                     value={editWhatsapp}
                     onChange={(e) => setEditWhatsapp(e.target.value)}
-                    className="field py-1.5 px-3 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                   />
                 </div>
 
@@ -752,7 +1277,8 @@ export default function UsersAdminClient({
                   <select
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value)}
-                    className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                   >
                     <option value="approved">Aprobado</option>
                     <option value="pending">Pendiente</option>
@@ -770,7 +1296,8 @@ export default function UsersAdminClient({
                       placeholder="Nueva contraseña"
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
-                      className="field py-1.5 pl-3 pr-10 text-xs"
+                      className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
+                      style={{ color: '#fff', backgroundColor: '#111' }}
                     />
                     <button
                       type="button"
@@ -789,14 +1316,30 @@ export default function UsersAdminClient({
                     type="email"
                     value={editReminderEmail}
                     onChange={(e) => setEditReminderEmail(e.target.value)}
-                    className="field py-1.5 px-3 text-xs"
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
                     placeholder="Opcional. Si se deja en blanco se usará el correo principal"
                   />
+                </div>
+
+                {/* Theme Mode */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Preferencia de Tema</label>
+                  <select
+                    value={editThemeMode}
+                    onChange={(e) => setEditThemeMode(e.target.value)}
+                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                    style={{ color: '#fff', backgroundColor: '#111' }}
+                  >
+                    <option value="black">Oscuro (Black)</option>
+                    <option value="dark">Gris (Dark)</option>
+                    <option value="light">Claro (Light)</option>
+                  </select>
                 </div>
               </div>
 
               {/* Toggles */}
-              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs text-left">
                 <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Permisos y Recordatorios</span>
                 
                 <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
@@ -841,7 +1384,7 @@ export default function UsersAdminClient({
               </div>
 
               {/* Competencia Memberships */}
-              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs text-left">
                 <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Membresías de Competencias</span>
                 <div className="space-y-2">
                   {selectedUser.memberships && selectedUser.memberships.length > 0 ? (
@@ -872,6 +1415,7 @@ export default function UsersAdminClient({
                               }
                             }}
                             className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
+                            style={{ color: '#fff', backgroundColor: '#111' }}
                           >
                             <option value="member">Miembro</option>
                             <option value="admin">Admin</option>
@@ -912,7 +1456,8 @@ export default function UsersAdminClient({
                       <select
                         id="add-to-league-select"
                         defaultValue=""
-                        className="flex-1 field py-1 px-2 text-xs bg-bg-secondary text-text-primary border border-border"
+                        className="flex-1 w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                        style={{ color: '#fff', backgroundColor: '#111' }}
                       >
                         <option value="" disabled>Seleccionar competencia para unir...</option>
                         {leagues
@@ -940,7 +1485,7 @@ export default function UsersAdminClient({
                             setShowEditModal(false);
                           }
                         }}
-                        className="px-3 py-1 bg-gold-400/10 border border-gold-500/30 hover:bg-gold-400/20 text-gold-400 text-xs rounded font-bold font-mono uppercase"
+                        className="px-3 py-1 bg-gold text-black text-xs rounded-lg font-bold font-mono uppercase whitespace-nowrap hover:bg-gold-600 transition-colors"
                       >
                         Unir
                       </button>
@@ -951,7 +1496,7 @@ export default function UsersAdminClient({
 
               {/* Winner Predictions / Champion Selection Reset */}
               {selectedUser.winnerPredictions && selectedUser.winnerPredictions.length > 0 && (
-                <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+                <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs text-left">
                   <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Predicción de Campeón</span>
                   <div className="space-y-3">
                     {selectedUser.winnerPredictions.map((wp) => {
@@ -1028,6 +1573,7 @@ export default function UsersAdminClient({
                                 }
                               }}
                               className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
+                              style={{ color: '#fff', backgroundColor: '#111' }}
                             >
                               <option value="" disabled>Cambiar Selección...</option>
                               {teams.map(t => (
@@ -1053,7 +1599,7 @@ export default function UsersAdminClient({
                                   <span>Historial de cambios ({historyList.length})</span>
                                   <span className="transition-transform group-open:rotate-180">▼</span>
                                 </summary>
-                                <div className="mt-1 space-y-1.5 pl-2 border-l border-border/50 max-h-32 overflow-y-auto">
+                                <div className="mt-1 space-y-1.5 pl-2 border-l border-border/50 max-h-32 overflow-y-auto text-left">
                                   {historyList.map(h => (
                                     <div key={h.id} className="text-[9px] text-text-muted py-0.5 border-b border-border/10 pb-1">
                                       <p className="font-semibold text-text-secondary font-mono">
@@ -1078,7 +1624,7 @@ export default function UsersAdminClient({
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all"
+                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all text-text-primary"
                 >
                   Cancelar
                 </button>

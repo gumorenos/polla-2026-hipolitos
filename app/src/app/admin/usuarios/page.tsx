@@ -58,6 +58,11 @@ export default async function AdminUsuariosPage() {
         orderBy: {
           createdAt: 'desc',
         }
+      },
+      _count: {
+        select: {
+          predictions: true
+        }
       }
     },
     orderBy: { createdAt: 'desc' },

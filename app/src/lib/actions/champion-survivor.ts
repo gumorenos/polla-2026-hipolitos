@@ -15,16 +15,34 @@ import {
   isChampionSurvivorCompetition,
   normalizeTeamStatus,
   sortChampionSurvivorRanking,
-  type ChampionPickStatus,
   type ChampionRankingEntry,
   type TeamTournamentStatusValue,
 } from '../champion-survivor';
 
 type ActionResult<T> = Promise<{ success: true; data: T } | { error: string }>;
+type ActionError = { error: string };
+type ApprovedSessionUser = {
+  id: string;
+  status: string;
+  isSuperadmin: boolean;
+};
 
-async function getApprovedSessionUser() {
+function actionError(error: string): ActionError {
+  return { error };
+}
+
+function isActionError(result: unknown): result is ActionError {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'error' in result &&
+    typeof (result as { error?: unknown }).error === 'string'
+  );
+}
+
+async function getApprovedSessionUser(): Promise<ActionError | { user: ApprovedSessionUser }> {
   const session = await getCurrentSession();
-  if (!session?.user) return { error: 'No autorizado.' } as const;
+  if (!session?.user) return actionError('No autorizado.');
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -32,17 +50,17 @@ async function getApprovedSessionUser() {
   });
 
   if (!user || user.status !== 'approved') {
-    return { error: 'Tu cuenta debe estar aprobada para participar.' } as const;
+    return actionError('Tu cuenta debe estar aprobada para participar.');
   }
 
-  return { user } as const;
+  return { user };
 }
 
-async function requireLeagueAdmin(leagueId: string) {
+async function requireLeagueAdmin(leagueId: string): Promise<ActionError | { user: ApprovedSessionUser }> {
   const result = await getApprovedSessionUser();
-  if ('error' in result) return result;
+  if (isActionError(result)) return result;
 
-  if (result.user.isSuperadmin) return { user: result.user } as const;
+  if (result.user.isSuperadmin) return { user: result.user };
 
   const membership = await prisma.leagueMember.findUnique({
     where: { leagueId_userId: { leagueId, userId: result.user.id } },
@@ -50,10 +68,10 @@ async function requireLeagueAdmin(leagueId: string) {
   });
 
   if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
-    return { error: 'No tienes permisos para administrar esta polla.' } as const;
+    return actionError('No tienes permisos para administrar esta polla.');
   }
 
-  return { user: result.user } as const;
+  return { user: result.user };
 }
 
 async function requireChampionSurvivorLeague(leagueId: string) {
@@ -61,9 +79,9 @@ async function requireChampionSurvivorLeague(leagueId: string) {
     where: { id: leagueId },
   });
 
-  if (!league) return { error: 'La polla no existe.' } as const;
+  if (!league) return actionError('La polla no existe.');
   if (!isChampionSurvivorCompetition(league.competitionType)) {
-    return { error: 'Esta operación solo aplica a pollas Champion Survivor.' } as const;
+    return actionError('Esta operación solo aplica a pollas Champion Survivor.');
   }
 
   return { league } as const;
@@ -191,10 +209,10 @@ async function buildChampionSurvivorEntries(leagueId: string) {
 
 export async function getChampionSurvivorState(leagueId: string): ActionResult<unknown> {
   const sessionResult = await getApprovedSessionUser();
-  if ('error' in sessionResult) return { error: sessionResult.error };
+  if (isActionError(sessionResult)) return sessionResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const userId = sessionResult.user.id;
   const membership = await prisma.leagueMember.findUnique({
@@ -255,10 +273,10 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
 
 export async function submitChampionPick(leagueId: string, teamCode: string): ActionResult<unknown> {
   const sessionResult = await getApprovedSessionUser();
-  if ('error' in sessionResult) return { error: sessionResult.error };
+  if (isActionError(sessionResult)) return sessionResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const normalizedTeamCode = teamCode.trim().toUpperCase();
   if (!normalizedTeamCode) {
@@ -323,13 +341,13 @@ export async function submitChampionPick(leagueId: string, teamCode: string): Ac
 
 export async function getChampionSurvivorAdminState(leagueId: string): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const state = await buildChampionSurvivorEntries(leagueId);
-  if ('error' in state) return { error: state.error };
+  if (isActionError(state)) return state;
 
   return {
     success: true,
@@ -356,10 +374,10 @@ export async function adminChangeChampionPick(
   reason: string
 ): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   let normalizedReason: string;
   try {
@@ -441,10 +459,10 @@ export async function adminResetChampionPick(
   reason: string
 ): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   let normalizedReason: string;
   try {
@@ -495,10 +513,10 @@ export async function adminSetTeamTournamentStatus(
   options?: { eliminatedInMatchId?: string | null; finalRank?: number | null }
 ): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const normalizedStatus = normalizeTeamStatus(status);
   if (normalizedStatus === 'unknown') {
@@ -560,10 +578,10 @@ export async function adminCreateChampionOddsSnapshot(
   input?: { provider?: string; bookmaker?: string; rawSourceRef?: string | null }
 ): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) {
     return { error: 'La cuota decimal debe ser mayor a 1.' };
@@ -610,10 +628,10 @@ export async function adminCreateChampionOddsSnapshot(
 
 export async function adminListChampionOddsSnapshots(leagueId: string): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const teams = await prisma.team.findMany({ orderBy: { name: 'asc' } });
   const latestByTeam = await latestChampionOddsByTeam(leagueId);
@@ -629,13 +647,13 @@ export async function adminListChampionOddsSnapshots(leagueId: string): ActionRe
 
 export async function adminExportChampionSurvivorCsv(leagueId: string): ActionResult<unknown> {
   const adminResult = await requireLeagueAdmin(leagueId);
-  if ('error' in adminResult) return { error: adminResult.error };
+  if (isActionError(adminResult)) return adminResult;
 
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
-  if ('error' in leagueResult) return { error: leagueResult.error };
+  if (isActionError(leagueResult)) return leagueResult;
 
   const state = await buildChampionSurvivorEntries(leagueId);
-  if ('error' in state) return { error: state.error };
+  if (isActionError(state)) return state;
 
   const csv = buildChampionSurvivorCsv(
     state.entries.map((entry) => ({

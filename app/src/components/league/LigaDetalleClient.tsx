@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { RankingTable } from './RankingTable';
 import {
   Users,
-  DollarSign,
   ArrowLeft,
   Share2,
   Settings,
@@ -16,6 +15,7 @@ import {
   UserX,
   CheckCircle,
 } from 'lucide-react';
+import { formatLeagueCurrency } from '../../lib/utils/currency';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -70,6 +70,10 @@ interface LigaDetalleClientProps {
     inviteCode: string;
     status: string;
     createdBy: string;
+    entryFee?: number;
+    currency?: string;
+    prizePoolOverride?: number | null;
+    memberCount?: number;
   };
   currentUserRole: string | null;
   isSuperadmin: boolean;
@@ -260,10 +264,15 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                   <Users className="w-3.5 h-3.5 text-gold-400" />
                   {members.length} miembros
                 </span>
-                <span className="flex items-center gap-0.5">
-                  <DollarSign className="w-3.5 h-3.5 text-gold-400" />
-                  Premio total: $0 USD
-                </span>
+                {(league.entryFee ?? 0) > 0 && (
+                  <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
+                    {(() => {
+                      const memberCount = league.memberCount ?? members.length;
+                      const prize = league.prizePoolOverride ?? (memberCount * (league.entryFee ?? 0));
+                      return `Premio total: ${formatLeagueCurrency(prize, league.currency ?? 'PEN')}`;
+                    })()}
+                  </span>
+                )}
                 {league.status === 'active' && (
                   <span className="font-mono bg-bg-secondary px-2 py-0.5 rounded border border-border-default">
                     CÓDIGO: {league.inviteCode}

@@ -19,6 +19,7 @@ export async function updateMatchResultInternal(
     winnerTeamCode?: string | null;
     resultStatus?: string | null;
     resultNotes?: string | null;
+    resultSource?: string | null;
   },
   actingUserId?: string
 ) {
@@ -111,6 +112,7 @@ export async function updateMatchResultInternal(
       homePenaltyScore,
       awayPenaltyScore,
       winnerTeamCode,
+      resultSource: knockoutDetails?.resultSource || null,
       resultNotes: knockoutDetails?.resultNotes || null,
       resultUpdatedAt: new Date(),
     },

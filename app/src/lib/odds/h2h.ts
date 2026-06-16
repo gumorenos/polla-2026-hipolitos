@@ -99,6 +99,13 @@ export const FIFA_TO_APIFOOTBALL_IDS: Record<string, number> = {
   NOR: 21,   // Norway
   CZE: 22,   // Czech Republic
   SCO: 282,  // Scotland
+  IRI: 2324, // Iran (also IRN)
+  IRN: 2324, // Iran alias
+  RSA: 769,  // South Africa
+  BIH: 1456, // Bosnia and Herzegovina
+  COD: 1580, // DR Congo
+  DRC: 1580, // DR Congo alias
+  DZA: 32,   // Algeria alias (same as ALG)
 };
 
 // Generate simulated Head-to-Head stats for local testing

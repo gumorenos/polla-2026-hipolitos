@@ -7,6 +7,9 @@ import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { parseLimaDateTimeToUtc } from '../../../lib/utils/dates';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
+import { getComputedMatchStatus, getComputedStatusDisplay } from '../../../lib/utils/matchStatus';
+
+type FilterType = 'all' | 'scheduled' | 'closed_pending' | 'final' | 'postponed' | 'cancelled';
 
 export default function MatchesManagementClient({ matches }: { matches: Match[] }) {
   const router = useRouter();
@@ -14,6 +17,21 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterType>('all');
+
+  const filteredMatches = matches.filter(m => {
+    if (filter === 'all') return true;
+    return getComputedMatchStatus(m) === filter;
+  });
+
+  const filterCounts: Record<FilterType, number> = {
+    all: matches.length,
+    scheduled: matches.filter(m => getComputedMatchStatus(m) === 'scheduled').length,
+    closed_pending: matches.filter(m => getComputedMatchStatus(m) === 'closed_pending').length,
+    final: matches.filter(m => getComputedMatchStatus(m) === 'final').length,
+    postponed: matches.filter(m => getComputedMatchStatus(m) === 'postponed').length,
+    cancelled: matches.filter(m => getComputedMatchStatus(m) === 'cancelled').length,
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>, matchId: string) => {
     e.preventDefault();
@@ -72,6 +90,23 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
         </div>
       )}
 
+      {/* Filter Bar */}
+      <div className="flex flex-wrap gap-1.5">
+        {([['all','Todos'],['scheduled','Próximos'],['closed_pending','Pendientes'],['final','Finalizados'],['postponed','Postergados'],['cancelled','Cancelados']] as [FilterType, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`px-3 py-1 rounded-full text-xs font-mono font-semibold border transition-all ${
+              filter === key
+                ? 'bg-gold text-background border-gold'
+                : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-border-hover'
+            }`}
+          >
+            {label} <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${filter === key ? 'bg-background/20' : 'bg-background'}`}>{filterCounts[key]}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-surface border-b border-border text-text-muted">
@@ -85,7 +120,9 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {matches.map((match) => {
+            {filteredMatches.length === 0 ? (
+              <tr><td colSpan={6} className="p-8 text-center text-text-muted text-sm">No hay partidos con el filtro seleccionado</td></tr>
+            ) : filteredMatches.map((match) => {
               const isEditing = editingMatchId === match.id;
               return (
                 <React.Fragment key={match.id}>
@@ -110,13 +147,15 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
                       {match.phase} / {match.jornada}
                     </td>
                     <td className="p-3">
-                      <span className={`px-2 py-0.5 text-xs rounded-full uppercase border ${
-                        match.status === 'result' ? 'bg-gold/15 text-gold border-gold/30' :
-                        match.status === 'live' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
-                        'bg-surface border-border text-text-muted'
-                      }`}>
-                        {match.status}
-                      </span>
+                      {(() => {
+                        const cs = getComputedMatchStatus(match);
+                        const disp = getComputedStatusDisplay(cs);
+                        return (
+                          <span className={`px-2 py-0.5 text-[10px] font-mono rounded-full uppercase border ${disp.bgClass} ${disp.colorClass} ${disp.borderClass}`}>
+                            {disp.labelShort}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="p-3">
                       <button

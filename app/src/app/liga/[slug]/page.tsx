@@ -158,6 +158,10 @@ export default async function LigaDetallePage({
     inviteCode: league.inviteCode,
     status: league.status,
     createdBy: league.createdBy,
+    entryFee: league.entryFee,
+    currency: league.currency,
+    prizePoolOverride: league.prizePoolOverride ?? null,
+    memberCount: members.filter(m => m.user).length,
   };
 
   const canSeeContactInfo = isSuperadmin || currentUserRole === 'admin' || currentUserRole === 'owner';

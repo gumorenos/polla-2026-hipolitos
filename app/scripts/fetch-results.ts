@@ -15,11 +15,19 @@ async function main() {
   console.log('      LA POLLA 2026 - MATCH RESULTS FETCHER       ');
   console.log('==================================================\n');
 
-  // Diagnostics
+  // Diagnostics (never log API keys)
   const apiKey = process.env.API_FOOTBALL_KEY;
   const isEnabled = process.env.API_FOOTBALL_ENABLED === 'true';
-  console.log(`API-Football Enabled: ${isEnabled ? 'yes' : 'no'}`);
-  console.log(`API Key Configured:   ${apiKey ? 'yes' : 'no'}`);
+  const fdEnabled = process.env.FOOTBALL_DATA_ENABLED === 'true';
+  const fdKey = process.env.FOOTBALL_DATA_API_KEY;
+  const resultsFetchEnabled = process.env.RESULTS_FETCH_ENABLED !== 'false';
+
+  console.log(`RESULTS_FETCH_ENABLED:   ${resultsFetchEnabled ? 'yes' : 'no (usa --dryRun para testear de todas formas)'}`);
+  console.log(`API-Football Enabled:    ${isEnabled ? 'yes' : 'no'}`);
+  console.log(`API-Football Key:        ${apiKey ? 'present' : 'MISSING'}`);
+  console.log(`Football-Data Enabled:   ${fdEnabled ? 'yes' : 'no'}`);
+  console.log(`Football-Data Key:       ${fdKey ? 'present' : 'MISSING'}`);
+  console.log(`RESULTS_PROVIDER_CHAIN:  ${process.env.RESULTS_PROVIDER_CHAIN ?? 'api-football,football-data'}`);
   console.log('');
 
   // Argument parsing
@@ -34,6 +42,12 @@ async function main() {
 
   const dryRun = process.argv.includes('--dryRun') || process.argv.includes('--dry-run');
   const force = process.argv.includes('--force');
+
+  const providerArg = process.argv.find((arg) => arg.startsWith('--provider='));
+  const provider = providerArg ? providerArg.split('=')[1] : 'auto';
+
+  const dateArg = process.argv.find((arg) => arg.startsWith('--date='));
+  const targetDate = dateArg ? dateArg.split('=')[1] : null;
 
   // Now override for testing
   let now = new Date();
@@ -53,59 +67,76 @@ async function main() {
     console.log('*** DRY RUN MODE ENABLED - No results will be updated in the database ***\n');
   }
 
-  // Cooldown check before calling API
-  const initialCooldown = force ? null : await getProviderCooldown('api-football');
-  if (initialCooldown) {
-    console.warn(`[ABORT] API-Football está en cooldown hasta ${initialCooldown.toISOString()}. Halting execution.`);
+  // Respect RESULTS_FETCH_ENABLED unless dryRun or --force
+  if (!resultsFetchEnabled && !dryRun && !force) {
+    console.log('[INFO] RESULTS_FETCH_ENABLED=false — abortando. Usa --dryRun para simular, o establece RESULTS_FETCH_ENABLED=true.');
     process.exit(0);
+  }
+
+  console.log(`Provider mode: ${provider}`);
+  if (targetDate) console.log(`Target date filter: ${targetDate}`);
+  console.log('');
+
+  // Cooldown checks (per primary provider)
+  if (provider === 'auto' || provider === 'api-football') {
+    const initialCooldown = force ? null : await getProviderCooldown('api-football');
+    if (initialCooldown && provider === 'api-football') {
+      console.warn(`[ABORT] API-Football en cooldown hasta ${initialCooldown.toISOString()}. No hay fallback disponible en modo api-football.`);
+      process.exit(0);
+    }
+    if (initialCooldown) {
+      console.warn(`[WARN] API-Football en cooldown hasta ${initialCooldown.toISOString()}. Se usará fallback (football-data).`);
+    }
   }
 
   let matches = [];
 
   if (targetMatchId) {
-    const singleMatch = await prisma.match.findUnique({
-      where: { id: targetMatchId },
-    });
+    const singleMatch = await prisma.match.findUnique({ where: { id: targetMatchId } });
     if (!singleMatch) {
-      console.error(`Error: Match with ID ${targetMatchId} not found.`);
+      console.error(`Error: Partido con ID ${targetMatchId} no encontrado.`);
       process.exit(1);
     }
     matches = [singleMatch];
-    console.log(`Processing single result fetch for match ID: ${targetMatchId}`);
+    console.log(`Procesando partido único ID: ${targetMatchId}`);
   } else {
-    // Find due matches
     const whereClause: Prisma.MatchWhereInput = {};
-
     if (!force) {
       whereClause.status = { not: 'result' };
     }
 
-    const allUnfinishedMatches = await prisma.match.findMany({
+    let allUnfinishedMatches = await prisma.match.findMany({
       where: whereClause,
       orderBy: { kickoffUtc: 'asc' },
     });
 
+    // Filter by target date if specified
+    if (targetDate) {
+      allUnfinishedMatches = allUnfinishedMatches.filter((match) => {
+        const matchDate = new Date(match.kickoffUtc).toISOString().slice(0, 10);
+        return matchDate === targetDate;
+      });
+      console.log(`Filtrado por fecha ${targetDate}: ${allUnfinishedMatches.length} partidos`);
+    }
+
     // Filter by kickoff delay and concrete team codes
     matches = allUnfinishedMatches.filter((match) => {
-      // Must be concrete team codes (no placeholders like W53/RU2)
       if (!isConcreteTeamCode(match.homeTeamCode) || !isConcreteTeamCode(match.awayTeamCode)) {
         return false;
       }
+      if (force) return true;
 
-      if (force) {
-        return true;
-      }
-
-      // Check kickoff delay
       const isGroupStage = match.phase === 'groups';
-      const delayMinutes = isGroupStage ? 150 : 210; // 150 mins for group, 210 mins for knockout
+      const delayMinutes = isGroupStage
+        ? parseInt(process.env.RESULTS_FETCH_DELAY_MINUTES_GROUPS ?? '150')
+        : parseInt(process.env.RESULTS_FETCH_DELAY_MINUTES_KNOCKOUT ?? '210');
       const kickoffTime = new Date(match.kickoffUtc).getTime();
       const cutoffTime = now.getTime() - (delayMinutes * 60 * 1000);
 
       return kickoffTime <= cutoffTime;
     });
 
-    console.log(`Found ${matches.length} matches due for results. Processing up to ${limit} (force=${force}).`);
+    console.log(`Encontrados ${matches.length} partidos listos. Procesando hasta ${limit} (force=${force}).`);
     matches = matches.slice(0, limit);
   }
 
@@ -113,63 +144,71 @@ async function main() {
   let updatedCount = 0;
   let skippedCount = 0;
   let errorsCount = 0;
+  let fallbackCount = 0;
 
   for (const match of matches) {
-    // Check cooldown again inside loop
-    const currentCooldown = force ? null : await getProviderCooldown('api-football');
-    if (currentCooldown) {
-      console.warn(`[ABORT] API-Football entró en cooldown durante la ejecución. Deteniendo script.`);
-      break;
+    // Check cooldown again inside loop (only for api-football)
+    if (provider === 'auto' || provider === 'api-football') {
+      const currentCooldown = force ? null : await getProviderCooldown('api-football');
+      if (currentCooldown && provider === 'api-football') {
+        console.warn(`[ABORT] API-Football entró en cooldown. Deteniendo script.`);
+        break;
+      }
     }
 
     try {
       checkedCount++;
-      console.log(`[${checkedCount}/${matches.length}] Checking result for match ${match.id}: ${match.homeTeamCode} vs ${match.awayTeamCode}`);
-      
-      const res = await fetchAndSaveMatchResultInternal(match.id, { force, dryRun });
-      
-      if (res.error) {
+      console.log(`[${checkedCount}/${matches.length}] ${match.id}: ${match.homeTeamCode} vs ${match.awayTeamCode}`);
+
+      const res = await fetchAndSaveMatchResultInternal(match.id, { force, dryRun, provider });
+
+      if ('error' in res && res.error) {
         console.log(`  -> Skipped/Failed: ${res.error}`);
-        skippedCount++;
-      } else if (res.success) {
-        const r = res.result;
-        if (res.dryRun) {
-          console.log(`  -> [DRY RUN SUCCESS] Found score: ${r.homeScore}-${r.awayScore} (wentToPenalties: ${r.wentToPenalties})`);
-        } else {
-          console.log(`  -> [SUCCESS] Applied score: ${r.homeScore}-${r.awayScore} (wentToPenalties: ${r.wentToPenalties})`);
+        if (res.diagnostics) {
+          res.diagnostics.forEach(d => {
+            console.log(`     [${d.provider}] ${d.success ? 'OK' : d.errorMessage ?? 'error'}`);
+          });
         }
+        skippedCount++;
+      } else if ('success' in res && res.success) {
+        const r = res.result;
+        const providerUsed = res.usedProvider ?? 'unknown';
+        const fallbackStr = res.isFallback ? ' (FALLBACK)' : '';
+        if (res.dryRun) {
+          console.log(`  -> [DRY RUN] ${r!.homeScore}-${r!.awayScore} via ${providerUsed}${fallbackStr}`);
+        } else {
+          console.log(`  -> [SUCCESS] ${r!.homeScore}-${r!.awayScore} via ${providerUsed}${fallbackStr}`);
+        }
+        if (res.isFallback) fallbackCount++;
         updatedCount++;
       }
 
-      // Delay to respect API limits if real provider is enabled
-      if (isEnabled && checkedCount < matches.length) {
-        console.log(`Waiting ${delayMs}ms...`);
+      if (checkedCount < matches.length) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     } catch (error) {
       if (error instanceof Error && error.message.includes('429')) {
-        console.error(`\n[CRITICAL] API-Football Rate Limit (429) encountered. Halting script execution immediately.`);
+        console.error(`\n[CRITICAL] Rate limit (429) encontrado. Deteniendo script.`);
         errorsCount++;
-        break; // Stop loop immediately to prevent further requests
+        break;
       }
       errorsCount++;
-      console.error(`Error processing match ${match.id}:`, error instanceof Error ? error.message : String(error));
+      console.error(`Error procesando ${match.id}:`, error instanceof Error ? error.message : String(error));
     }
   }
 
-  console.log('\n--- Fetch Results Summary ---');
-  console.log(`Matches Checked:    ${checkedCount}`);
-  console.log(`Results Updated:    ${updatedCount}`);
-  console.log(`Matches Skipped:    ${skippedCount}`);
-  console.log(`Errors Encountered: ${errorsCount}`);
-  console.log('-----------------------------\n');
-
-  console.log('Finished fetch-results script.');
+  console.log('\n--- Resumen ---');
+  console.log(`Partidos revisados: ${checkedCount}`);
+  console.log(`Resultados ${dryRun ? 'encontrados (dry run)' : 'aplicados'}: ${updatedCount}`);
+  if (fallbackCount > 0) console.log(`Vía fallback: ${fallbackCount}`);
+  console.log(`Omitidos:           ${skippedCount}`);
+  console.log(`Errores:            ${errorsCount}`);
+  console.log('---------------\n');
 }
 
 main()
   .catch((e) => {
-    console.error('Critical failure in fetch-results:', e);
+    console.error('Error crítico en fetch-results:', e);
     process.exit(1);
   })
   .finally(async () => {

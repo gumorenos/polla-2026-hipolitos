@@ -50,6 +50,9 @@ export default async function LigasPage() {
       inviteCode: m.league.inviteCode,
       status: m.league.status,
       createdAt: m.league.createdAt.toISOString(),
+      entryFee: m.league.entryFee,
+      currency: m.league.currency,
+      prizePoolOverride: m.league.prizePoolOverride ?? null,
       _count: m.league._count,
     },
   }));

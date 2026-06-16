@@ -2,10 +2,11 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentSession } from '../lib/auth-helpers';
 import { prisma } from '../lib/db';
-import { ArrowRight, Zap, Users, Trophy, DollarSign, ShieldAlert, Award } from 'lucide-react';
+import { ArrowRight, Zap, Users, Award, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { JoinPoolForm } from '../components/league/JoinPoolForm';
 import { FlagDisc } from '../components/ui/FlagDisc';
+import { formatLeagueCurrency, currencySymbol } from '../lib/utils/currency';
 
 export const dynamic = 'force-dynamic';
 
@@ -317,16 +318,16 @@ export default async function Home() {
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-text-secondary">Cuota por Participante:</span>
                   <span className="font-mono font-bold text-text-primary">
-                    {league.currency} {league.entryFee.toFixed(2)}
+                    {formatLeagueCurrency(league.entryFee, league.currency)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center text-sm pt-2 border-t border-dashed border-border-subtle">
                   <span className="text-gold-400 font-semibold flex items-center gap-1">
-                    <DollarSign className="w-4 h-4" /> Pozo Estimado:
+                    <span className="text-base font-bold">{currencySymbol(league.currency)}</span> Pozo Estimado:
                   </span>
                   <span className="font-mono text-lg font-bold text-gold-400">
-                    {league.currency} {estimatedPrizePool.toFixed(2)}
+                    {formatLeagueCurrency(estimatedPrizePool, league.currency)}
                   </span>
                 </div>
               </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Users, DollarSign, Plus, ArrowRight, Clipboard, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Users, Plus, ArrowRight, Clipboard, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { formatLeagueCurrency } from '../../lib/utils/currency';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createLeagueAction } from '../../lib/actions/leagues';
@@ -13,6 +14,9 @@ interface LeagueData {
   inviteCode: string;
   status: string;
   createdAt: string;
+  entryFee?: number;
+  currency?: string;
+  prizePoolOverride?: number | null;
   _count?: {
     members: number;
   };
@@ -126,10 +130,15 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                         <Users className="w-3.5 h-3.5 text-gold-400" />
                         {league._count?.members ?? 1} miembros
                       </span>
-                      <span className="flex items-center gap-0.5">
-                        <DollarSign className="w-3.5 h-3.5 text-gold-400" />
-                        Pozo: $0 USD
-                      </span>
+                      {(league.entryFee ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
+                          {(() => {
+                            const memberCount = league._count?.members ?? 1;
+                            const prize = league.prizePoolOverride ?? (memberCount * (league.entryFee ?? 0));
+                            return `Pozo: ${formatLeagueCurrency(prize, league.currency ?? 'PEN')}`;
+                          })()}
+                        </span>
+                      )}
                     </div>
                   </div>
 

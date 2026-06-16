@@ -159,7 +159,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Added reusable Champion Survivor business logic for competition type resolution, deadline checks, dynamic pick status, prize pool calculation, champion odds expected value, pick distribution, survival summary, ranking order, and CSV export.
 - [x] Added Server Actions for user state, explicit champion pick save, admin pick management, team tournament status management, manual champion odds snapshots, latest odds listing, and CSV export.
 - [x] Kept full prediction mode on `WinnerPrediction`; Champion Survivor uses `ChampionPick`.
-- [ ] Full Champion Survivor admin UI pages.
+- [x] Champion Survivor admin UI for picks, team statuses, manual champion odds, distribution, exclusive picks, and CSV export.
 - [ ] Full Champion Survivor user UI pages.
 - [ ] Champion Survivor visual dashboard.
 

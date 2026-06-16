@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
-import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award } from 'lucide-react';
+import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award, Crown } from 'lucide-react';
 import Link from 'next/link';
 import { RecalculateButton } from './RecalculateButton';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
@@ -242,6 +242,12 @@ export default async function AdminDashboardPage() {
               </Link>
               <Link href="/admin/campeon" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
                 <span>Corregir Elección de Campeón</span>
+                <span className="text-xs text-text-muted">&rarr;</span>
+              </Link>
+              <Link href="/admin/supervivencia" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-gold-400" /> Gestión Solo Campeón
+                </span>
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>
             </div>

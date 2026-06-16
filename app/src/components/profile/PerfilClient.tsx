@@ -20,6 +20,7 @@ interface UserData {
   remindersEnabled: boolean;
   emailRemindersEnabled: boolean;
   reminderMinutesBeforeDeadline: number;
+  reminderEmail: string | null;
 }
 
 interface UserStats {
@@ -45,7 +46,6 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
   const [username, setUsername] = useState(user.username || '');
   // If email is just placeholder, display empty, otherwise real email
   const isPlaceholderEmail = user.email.endsWith('@polla.local');
-  const [email, setEmail] = useState(isPlaceholderEmail ? '' : user.email);
   const [whatsapp, setWhatsapp] = useState(user.whatsapp || '');
   const [isSaved, setIsSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,6 +58,8 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
 
   // Reminders preferences state
   const [emailReminders, setEmailReminders] = useState<boolean>(user.emailRemindersEnabled);
+  const [reminderEmail, setReminderEmail] = useState<string>(user.reminderEmail || '');
+  const [reminderEmailConfirm, setReminderEmailConfirm] = useState<string>(user.reminderEmail || '');
   const [remindersSaving, setRemindersSaving] = useState<boolean>(false);
   const [remindersError, setRemindersError] = useState<string | null>(null);
   const [remindersSuccess, setRemindersSuccess] = useState<string | null>(null);
@@ -68,8 +70,33 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
     setRemindersError(null);
     setRemindersSuccess(null);
 
+    const cleanEmail = reminderEmail.trim();
+    const cleanConfirm = reminderEmailConfirm.trim();
+
+    if (emailReminders) {
+      if (!cleanEmail) {
+        setRemindersError('El correo electrónico para recordatorios es requerido.');
+        setRemindersSaving(false);
+        return;
+      }
+      if (cleanEmail !== cleanConfirm) {
+        setRemindersError('Los correos no coinciden.');
+        setRemindersSaving(false);
+        return;
+      }
+      if (!cleanEmail.includes('@')) {
+        setRemindersError('El correo electrónico no es válido.');
+        setRemindersSaving(false);
+        return;
+      }
+    }
+
     try {
-      const res = await updateReminderPreferencesAction(emailReminders, emailReminders);
+      const res = await updateReminderPreferencesAction(
+        emailReminders,
+        cleanEmail || null,
+        cleanConfirm || null
+      );
       if (res.error) {
         setRemindersError(res.error);
       } else {
@@ -134,13 +161,10 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
       return;
     }
 
-    const cleanEmail = email.trim() || `${cleanUsername}@polla.local`;
-
     try {
       const result = await updateProfileSettingsAction({
         name: name.trim(),
         username: cleanUsername,
-        email: email.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
       });
 
@@ -305,26 +329,21 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                   </div>
                 </div>
 
-                {/* Email (Optional) */}
+                {/* Email (Read-only login info) */}
                 <div className="space-y-1">
                   <label
-                    htmlFor="perfil-email"
                     className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
                   >
-                    Correo electrónico (Opcional)
+                    Correo de Inicio de Sesión
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
-                      id="perfil-email"
-                      type="email"
-                      placeholder="Ej. correo@ejemplo.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoComplete="email"
-                      className="field field-icon-left"
+                      type="text"
+                      value={isPlaceholderEmail ? 'No configurado' : user.email}
+                      disabled
+                      className="field field-icon-left opacity-60 cursor-not-allowed"
                       style={{ paddingLeft: '2.75rem' }}
-                      disabled={loading}
                     />
                   </div>
                 </div>
@@ -429,22 +448,69 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
               Te enviaremos un recordatorio 30 minutos antes del cierre solo si aún no enviaste tu predicción para un partido de hoy.
             </p>
 
-            {isPlaceholderEmail && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
-                <span className="text-[11px] text-yellow-500 font-mono">
-                  Agrega tu correo en la sección de información personal arriba para activar recordatorios.
-                </span>
-              </div>
-            )}
-
             <form onSubmit={handleSaveReminders} className="space-y-4">
-              <div className="flex items-center gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Email para recordatorios */}
+                <div className="space-y-1">
+                  <label
+                    htmlFor="perfil-reminder-email"
+                    className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+                  >
+                    Email para recordatorios
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                    <input
+                      id="perfil-reminder-email"
+                      type="email"
+                      placeholder="correo@ejemplo.com"
+                      value={reminderEmail}
+                      onChange={(e) => {
+                        setReminderEmail(e.target.value);
+                        setRemindersSuccess(null);
+                        setRemindersError(null);
+                      }}
+                      className="field field-icon-left text-sm"
+                      style={{ paddingLeft: '2.75rem' }}
+                      disabled={remindersSaving}
+                    />
+                  </div>
+                </div>
+
+                {/* Confirmar email */}
+                <div className="space-y-1">
+                  <label
+                    htmlFor="perfil-reminder-email-confirm"
+                    className="text-xs font-semibold text-text-secondary uppercase tracking-wider block"
+                  >
+                    Confirmar email
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                    <input
+                      id="perfil-reminder-email-confirm"
+                      type="email"
+                      placeholder="Repite el correo"
+                      value={reminderEmailConfirm}
+                      onChange={(e) => {
+                        setReminderEmailConfirm(e.target.value);
+                        setRemindersSuccess(null);
+                        setRemindersError(null);
+                      }}
+                      className="field field-icon-left text-sm"
+                      style={{ paddingLeft: '2.75rem' }}
+                      disabled={remindersSaving}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 py-1">
                 <input
                   id="emailRemindersEnabled"
                   type="checkbox"
                   checked={emailReminders}
-                  disabled={isPlaceholderEmail || remindersSaving}
+                  disabled={remindersSaving}
                   onChange={(e) => {
                     setEmailReminders(e.target.checked);
                     setRemindersSuccess(null);
@@ -454,9 +520,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
                 />
                 <label
                   htmlFor="emailRemindersEnabled"
-                  className={`text-xs font-semibold uppercase tracking-wider cursor-pointer ${
-                    isPlaceholderEmail ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary'
-                  }`}
+                  className="text-xs font-semibold uppercase tracking-wider cursor-pointer text-text-secondary hover:text-text-primary"
                 >
                   Recibir recordatorios por email
                 </label>
@@ -477,7 +541,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={isPlaceholderEmail || remindersSaving}
+                  disabled={remindersSaving}
                   className="btn-gold py-2 px-6 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4" /> {remindersSaving ? 'Guardando...' : 'Guardar preferencias'}

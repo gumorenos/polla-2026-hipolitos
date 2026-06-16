@@ -35,48 +35,15 @@ export async function updateProfileSettingsAction(data: {
       return { error: 'El nombre de usuario ya está en uso.' };
     }
 
-    const email = data.email?.trim() || `${cleanUsername}@polla.local`;
-    
-    // Check email uniqueness
-    const existingEmail = await prisma.user.findFirst({
-      where: {
-        email,
-        id: { not: userId }
-      }
-    });
-
-    if (existingEmail) {
-      return { error: 'El correo electrónico ya está en uso.' };
-    }
-
-    const isPlaceholderEmail = email.endsWith('@polla.local');
-
-    await prisma.$transaction(async (tx) => {
-      // 1. Update User
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          name: data.name.trim(),
-          username: cleanUsername,
-          displayUsername: cleanUsername,
-          displayName: data.name.trim(),
-          email,
-          whatsapp: data.whatsapp?.trim() || null,
-          ...(isPlaceholderEmail ? { remindersEnabled: false, emailRemindersEnabled: false } : {}),
-        }
-      });
-
-      // 2. Update Account mapping (if it exists)
-      const account = await tx.account.findFirst({
-        where: { userId, providerId: 'email' }
-      });
-      if (account) {
-        await tx.account.update({
-          where: { id: account.id },
-          data: {
-            accountId: email
-          }
-        });
+    // Update User profile details ONLY (DO NOT touch login email or account mappings)
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: data.name.trim(),
+        username: cleanUsername,
+        displayUsername: cleanUsername,
+        displayName: data.name.trim(),
+        whatsapp: data.whatsapp?.trim() || null,
       }
     });
 
@@ -125,8 +92,9 @@ export async function updateThemeAction(themeMode: 'black' | 'dark' | 'light') {
 }
 
 export async function updateReminderPreferencesAction(
-  remindersEnabled: boolean,
-  emailRemindersEnabled: boolean
+  emailRemindersEnabled: boolean,
+  reminderEmail: string | null,
+  reminderEmailConfirm?: string | null
 ) {
   try {
     const session = await getCurrentSession();
@@ -143,18 +111,28 @@ export async function updateReminderPreferencesAction(
       return { error: 'Usuario no encontrado' };
     }
 
-    const email = dbUser.email;
-    const isPlaceholderEmail = !email || email.endsWith('@polla.local') || !email.includes('@');
+    const cleanEmail = reminderEmail?.trim() || null;
+    const cleanConfirm = reminderEmailConfirm?.trim() || null;
 
-    if ((remindersEnabled || emailRemindersEnabled) && isPlaceholderEmail) {
-      return { error: 'Agrega tu correo para activar recordatorios.' };
+    if (emailRemindersEnabled) {
+      if (!cleanEmail) {
+        return { error: 'El correo electrónico para recordatorios es requerido.' };
+      }
+      if (cleanEmail !== cleanConfirm) {
+        return { error: 'Los correos no coinciden.' };
+      }
+      if (!cleanEmail.includes('@')) {
+        return { error: 'El correo electrónico no es válido.' };
+      }
     }
 
     await prisma.user.update({
       where: { id: userId },
       data: {
-        remindersEnabled,
+        reminderEmail: cleanEmail,
+        remindersEnabled: emailRemindersEnabled,
         emailRemindersEnabled,
+        reminderEmailConfirmedAt: cleanEmail ? new Date() : null,
       },
     });
 

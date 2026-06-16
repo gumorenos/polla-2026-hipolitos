@@ -19,7 +19,9 @@
     "h2h:fetch-match": "tsx scripts/fetch-h2h.ts",
     "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts",
     "odds:diagnose": "tsx scripts/diagnose-odds.ts",
-    "reminders:send-due": "tsx scripts/send-reminders.ts"
+    "reminders:send-due": "tsx scripts/send-reminders.ts",
+    "reminders:test": "tsx scripts/test-reminder-email.ts",
+    "typecheck": "tsc --noEmit"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

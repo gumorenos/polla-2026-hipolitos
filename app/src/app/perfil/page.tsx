@@ -47,6 +47,7 @@ export default async function PerfilPage() {
       remindersEnabled: true,
       emailRemindersEnabled: true,
       reminderMinutesBeforeDeadline: true,
+      reminderEmail: true,
     }
   });
 
@@ -64,6 +65,7 @@ export default async function PerfilPage() {
     remindersEnabled: dbUser?.remindersEnabled ?? false,
     emailRemindersEnabled: dbUser?.emailRemindersEnabled ?? false,
     reminderMinutesBeforeDeadline: dbUser?.reminderMinutesBeforeDeadline ?? 30,
+    reminderEmail: dbUser?.reminderEmail ?? null,
   };
 
   return (

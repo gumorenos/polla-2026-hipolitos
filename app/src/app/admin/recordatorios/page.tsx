@@ -6,14 +6,17 @@ import { RemindersAdminClient } from './RemindersAdminClient';
 
 export const dynamic = 'force-dynamic';
 
-// Helper to check if email is real
-function isRealEmail(email: string): boolean {
-  return !!email && !email.endsWith('@polla.local') && email.includes('@');
-}
+
 
 export default async function AdminRemindersPage() {
   const session = await getCurrentSession();
-  if (!session || !session.user || !session.user.isSuperadmin) {
+  if (!session || !session.user) {
+    redirect('/login');
+  }
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id }
+  });
+  if (!dbUser || !dbUser.isSuperadmin) {
     redirect('/');
   }
 
@@ -63,7 +66,7 @@ export default async function AdminRemindersPage() {
     });
     for (const m of ms) {
       uniqueMemberIds.add(m.userId);
-      if (m.user.remindersEnabled && m.user.emailRemindersEnabled && isRealEmail(m.user.email)) {
+      if (m.user.remindersEnabled && m.user.emailRemindersEnabled && m.user.reminderEmail) {
         uniqueOptedInIds.add(m.userId);
       }
     }
@@ -74,7 +77,7 @@ export default async function AdminRemindersPage() {
   // 2. Fetch recent Reminder logs
   const logs = await prisma.reminderLog.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: 20,
     include: {
       user: {
         select: {
@@ -82,6 +85,7 @@ export default async function AdminRemindersPage() {
           email: true,
           displayName: true,
           username: true,
+          reminderEmail: true,
         }
       },
       match: {
@@ -112,7 +116,7 @@ export default async function AdminRemindersPage() {
     errorMessage: l.errorMessage,
     user: {
       name: l.user.name,
-      email: l.user.email,
+      email: l.user.reminderEmail || l.user.email,
       displayName: l.user.displayName,
       username: l.user.username,
     },

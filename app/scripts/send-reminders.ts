@@ -20,9 +20,7 @@ function maskEmail(email: string): string {
   return `${name[0]}***${name[name.length - 1]}@${domain}`;
 }
 
-function isRealEmail(email: string): boolean {
-  return !!email && !email.endsWith('@polla.local') && email.includes('@');
-}
+
 
 async function main() {
   console.log('==================================================');
@@ -150,13 +148,15 @@ async function main() {
 
       for (const member of members) {
         const user = member.user;
-        const masked = maskEmail(user.email);
+        const targetEmail = user.reminderEmail;
+        const masked = maskEmail(targetEmail || '');
 
         // Check unique ReminderLog first to avoid duplicates
         const existingLog = await prisma.reminderLog.findUnique({
           where: {
-            userId_matchId_reminderType_channel: {
+            userId_leagueId_matchId_reminderType_channel: {
               userId: user.id,
+              leagueId: league.id,
               matchId: match.id,
               reminderType: 'match_prediction_deadline',
               channel: 'email',
@@ -171,9 +171,8 @@ async function main() {
 
         // Check if user is opted in and has real email
         const optedIn = user.remindersEnabled && user.emailRemindersEnabled;
-        const realEmail = isRealEmail(user.email);
 
-        if (!optedIn || !realEmail) {
+        if (!optedIn || !targetEmail) {
           totalSkippedNotOptedIn++;
           continue;
         }
@@ -270,7 +269,7 @@ Este recordatorio se envió porque lo activaste en tu perfil. Puedes desactivarl
 
         try {
           const emailRes = await sendEmail({
-            to: user.email,
+            to: targetEmail,
             subject,
             text: textBody,
             html: htmlBody,

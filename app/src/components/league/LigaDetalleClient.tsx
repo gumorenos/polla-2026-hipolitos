@@ -33,7 +33,7 @@ import {
 interface MemberUser {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   displayName: string | null;
   whatsapp: string | null;
 }
@@ -394,7 +394,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                             {member.user.displayName || member.user.name}
                             {isTargetYou && <span className="text-[9px] text-gold-400 font-mono font-semibold ml-1.5 uppercase">TÚ</span>}
                           </p>
-                          <p className="text-xs text-text-secondary truncate">{member.user.email}</p>
+                          {member.user.email && <p className="text-xs text-text-secondary truncate">{member.user.email}</p>}
                         </div>
                       </div>
                       <span className="col-span-4 text-center text-xs text-text-secondary">

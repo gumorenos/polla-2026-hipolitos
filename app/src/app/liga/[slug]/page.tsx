@@ -5,6 +5,25 @@ export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
 import { LigaDetalleClient } from '../../../components/league/LigaDetalleClient';
 
+function maskEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  if (email.endsWith('@polla.local')) return null;
+  const parts = email.split('@');
+  if (parts.length !== 2) return '***';
+  const name = parts[0];
+  const domain = parts[1];
+  if (name.length <= 2) {
+    return `${name[0]}***@${domain}`;
+  }
+  return `${name[0]}***${name[name.length - 1]}@${domain}`;
+}
+
+function maskPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  if (phone.length <= 4) return '***';
+  return `${phone.slice(0, 3)}***${phone.slice(-3)}`;
+}
+
 interface SearchParams {
   showDisabled?: string;
 }
@@ -141,19 +160,32 @@ export default async function LigaDetallePage({
     createdBy: league.createdBy,
   };
 
-  const serializedMembers = members.map((m) => ({
-    id: m.id,
-    userId: m.userId,
-    role: m.role,
-    joinedAt: m.joinedAt.toISOString(),
-    user: {
-      id: m.user.id,
-      name: m.user.name,
-      email: m.user.email,
-      displayName: m.user.displayName,
-      whatsapp: m.user.whatsapp,
-    },
-  }));
+  const canSeeContactInfo = isSuperadmin || currentUserRole === 'admin' || currentUserRole === 'owner';
+
+  const serializedMembers = members.map((m) => {
+    const isSelf = m.userId === userId;
+    return {
+      id: m.id,
+      userId: m.userId,
+      role: m.role,
+      joinedAt: m.joinedAt.toISOString(),
+      user: {
+        id: m.user.id,
+        name: m.user.name,
+        email: isSelf
+          ? m.user.email
+          : canSeeContactInfo
+            ? maskEmail(m.user.email)
+            : null,
+        displayName: m.user.displayName,
+        whatsapp: isSelf
+          ? m.user.whatsapp
+          : canSeeContactInfo
+            ? maskPhone(m.user.whatsapp)
+            : null,
+      },
+    };
+  });
 
   const serializedStandings = standings.map((s) => {
     const predictionsCount = s.user.predictions.length;

@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 
 const resendApiKey = process.env.RESEND_API_KEY;
-const emailFrom = process.env.EMAIL_FROM || 'La Polla Hipólitos <no-reply@todoestaaca.com>';
+const emailFrom = process.env.EMAIL_FROM || 'La Polla Hipólitos <recordatorios@todoestaaca.com>';
 
 export const resend = resendApiKey ? new Resend(resendApiKey) : null;
 

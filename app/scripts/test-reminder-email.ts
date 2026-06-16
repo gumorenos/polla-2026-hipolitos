@@ -1,6 +1,4 @@
-import { loadEnvConfig } from '@next/env';
-loadEnvConfig(process.cwd());
-
+import './load-env';
 import { sendEmail } from '../src/lib/email';
 
 function maskEmail(email: string): string {
@@ -20,6 +18,12 @@ async function main() {
   console.log('      LA POLLA 2026 - TEST EMAIL REMINDER         ');
   console.log('==================================================\n');
 
+  // Diagnostics
+  const resendApiKey = process.env.RESEND_API_KEY;
+  console.log(`RESEND_API_KEY: ${resendApiKey ? 'present' : 'missing'}`);
+  console.log(`EMAIL_FROM: ${process.env.EMAIL_FROM || 'not set (using fallback)'}`);
+  console.log('');
+
   // Argument parsing
   const toArg = process.argv.find((arg) => arg.startsWith('--to='));
   const toEmail = toArg ? toArg.split('=')[1] : null;
@@ -29,7 +33,6 @@ async function main() {
     process.exit(1);
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) {
     console.error('Error: RESEND_API_KEY no está configurado en las variables de entorno.');
     process.exit(1);

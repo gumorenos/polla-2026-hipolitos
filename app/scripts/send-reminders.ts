@@ -1,6 +1,4 @@
-import { loadEnvConfig } from '@next/env';
-loadEnvConfig(process.cwd());
-
+import './load-env';
 import { prisma } from '../src/lib/db';
 import { sendEmail } from '../src/lib/email';
 
@@ -26,6 +24,14 @@ async function main() {
   console.log('==================================================');
   console.log('      LA POLLA 2026 - EMAIL REMINDERS SENDER      ');
   console.log('==================================================\n');
+
+  // Diagnostics
+  const resendApiKey = process.env.RESEND_API_KEY;
+  console.log(`RESEND_API_KEY: ${resendApiKey ? 'present' : 'missing'}`);
+  console.log(`REMINDERS_ENABLED: ${process.env.REMINDERS_ENABLED}`);
+  console.log(`EMAIL_REMINDERS_ENABLED: ${process.env.EMAIL_REMINDERS_ENABLED}`);
+  console.log(`EMAIL_FROM: ${process.env.EMAIL_FROM || 'not set'}`);
+  console.log('');
 
   // Argument parsing
   const dryRunArg = process.argv.find((arg) => arg === '--dryRun' || arg === '--dry-run');
@@ -80,7 +86,18 @@ async function main() {
   console.log('');
 
   // 3. Find today's matches in America/Lima
-  const nowUtc = new Date();
+  let nowUtc = new Date();
+  const nowArg = process.argv.find((arg) => arg.startsWith('--now='));
+  if (nowArg) {
+    const val = nowArg.split('=')[1];
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) {
+      nowUtc = parsed;
+      console.log(`[NOW OVERRIDE] Simulating current UTC time: ${nowUtc.toISOString()}`);
+    } else {
+      console.error(`[WARN] Invalid --now date value: "${val}". Using system clock.`);
+    }
+  }
   const nowLima = new Date(nowUtc.getTime() + LIMA_OFFSET_MS);
 
   const year = nowLima.getUTCFullYear();

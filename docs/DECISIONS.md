@@ -215,5 +215,46 @@ We implement the following 6 tie-breakers sequentially:
 4. **SQLite Atomic Lock Transactions:** To prevent double-clicks or concurrent requests from bypassing the rate-limit checks, we check previous usage and write the new `UserOddsRefreshUsage` log within a single atomic database transaction. If the unique constraint on `userId_dateKey` is violated, the transaction rolls back immediately.
 5. **Outcome-Based Odds Schema:** Modified `OddsSnapshot` to record individual outcome items (Home, Draw, Away) as independent rows. This allows storing outcomes separately and referencing selection keys easily.
 
+---
+
+## ADR-012 — Personal Theme Mode Cookie Sync & SSR Integration
+
+**Date:** 2026-06-15  
+**Status:** Accepted
+
+**Decision:** Store `themeMode` in the user database table and synchronize it via a `'themeMode'` cookie, allowing SSR (`layout.tsx`) to apply the correct theme class (`theme-black`, `theme-dark`, `theme-light`) before sending HTML to the client.
+
+**Rationale:**
+- Toggling theme only on the client causes a jarring flash of default theme (dark/black) before loading user preferences.
+- Server-side cookie reading allows injecting class name directly into `<html>` at SSR time, resolving the flash.
+- Standard Server Actions update database and cookies atomically, keeping preferences in sync.
+
+---
+
+## ADR-013 — Hardened H2H Processing & API-Football Rate Limit Safeguards
+
+**Date:** 2026-06-15  
+**Status:** Accepted
+
+**Decision:** Skip matches with knockout bracket placeholders (`1A`, `W101`, etc.) gracefully using `isConcreteTeamCode` matching during H2H fetch cycles, and halt execution immediately if API-Football returns `HTTP 429`.
+
+**Rationale:**
+- Knockout placeholders do not represent real countries and trigger failed API lookups. Skipping them avoids wasting quotas and error logs.
+- Halt execution immediately on `HTTP 429` stops script loops from hammering the server and incurring bans.
+
+---
+
+## ADR-014 — Expose Configurable Scoring Rules & Dynamic Standings Recalculation
+
+**Date:** 2026-06-15  
+**Status:** Accepted
+
+**Decision:** Expose competition scoring parameters in the UI league settings form and dynamically re-grade finished matches' predictions for the league's users whenever point configuration changes.
+
+**Rationale:**
+- Restructuring points rules (e.g. standard vs "champion weighs more") requires that all historical predictions are recomputed to keep leaderboards correct.
+- Recalculating prediction scores directly inside `recalculateAllStandings` on league updates ensures data integrity.
+
+
 
 

@@ -7,7 +7,72 @@ import { Match } from '@prisma/client';
 import { AlertCircle, CheckCircle, RefreshCw, PauseCircle, XCircle, Upload, Download, ChevronDown } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { getComputedMatchStatus, getComputedStatusDisplay } from '../../../lib/utils/matchStatus';
-import * as XLSX from 'xlsx';
+function parseCSV(text: string): Record<string, string>[] {
+  const result: Record<string, string>[] = [];
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let col = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (next === '"') {
+          col += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        col += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        row.push(col.trim());
+        col = '';
+      } else if (char === '\r' || char === '\n') {
+        row.push(col.trim());
+        col = '';
+        if (row.length > 0 && (row.length > 1 || row[0] !== '')) {
+          lines.push(row);
+        }
+        row = [];
+        if (char === '\r' && next === '\n') {
+          i++;
+        }
+      } else {
+        col += char;
+      }
+    }
+  }
+
+  if (row.length > 0 || col !== '') {
+    row.push(col.trim());
+    if (row.length > 0 && (row.length > 1 || row[0] !== '')) {
+      lines.push(row);
+    }
+  }
+
+  if (lines.length <= 1) return [];
+
+  const headers = lines[0].map(h => h.trim());
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const obj: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      obj[header] = line[index] !== undefined ? line[index] : '';
+    });
+    result.push(obj);
+  }
+
+  return result;
+}
 
 export interface MatchUpdateDetails {
   wentToExtraTime?: boolean;
@@ -272,51 +337,76 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
     setActionLoadingMatchId(null);
   };
 
-  // CSV/Excel template download
+  // CSV template download (Excel deshabilitado por seguridad)
   const handleDownloadTemplate = (format: 'csv' | 'xlsx') => {
-    const ws = XLSX.utils.aoa_to_sheet([
+    if (format === 'xlsx') {
+      alert("Excel deshabilitado temporalmente por seguridad. Por favor, usa la plantilla CSV.");
+      return;
+    }
+
+    const rows = [
       CSV_COLUMNS,
       ...matches.slice(0, 3).map(m => [
         m.id, m.homeTeamCode, m.awayTeamCode, 'final',
         m.homeScore ?? '', m.awayScore ?? '',
         'false', 'false', '', '', '', '',
       ]),
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
+    ];
 
-    if (format === 'xlsx') {
-      XLSX.writeFile(wb, 'plantilla-resultados.xlsx');
-    } else {
-      XLSX.writeFile(wb, 'plantilla-resultados.csv', { bookType: 'csv' });
-    }
+    const csvContent = rows
+      .map(row => row.map(val => {
+        const strVal = String(val);
+        if (strVal.includes(',') || strVal.includes('"') || strVal.includes('\n') || strVal.includes('\r')) {
+          return `"${strVal.replace(/"/g, '""')}"`;
+        }
+        return strVal;
+      }).join(','))
+      .join('\n');
+
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'plantilla-resultados.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  // File upload + validation
+  // File upload + validation (CSV Nativo)
   const handleFileUpload = useCallback(async (file: File) => {
     setCsvLoading(true);
     setCsvError(null);
     setCsvValidationResults(null);
     setCsvSuccess(null);
 
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: '' });
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const rows = parseCSV(text);
 
-      if (rows.length === 0) {
-        setCsvError('El archivo está vacío o sin datos');
-        return;
+        if (rows.length === 0) {
+          setCsvError('El archivo está vacío, no contiene filas o tiene formato inválido');
+          return;
+        }
+
+        const validations = await validateCSVRows(rows);
+        setCsvValidationResults(validations);
+      } catch (e) {
+        setCsvError(`Error leyendo archivo CSV: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setCsvLoading(false);
       }
+    };
 
-      const validations = await validateCSVRows(rows);
-      setCsvValidationResults(validations);
-    } catch (e) {
-      setCsvError(`Error leyendo archivo: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
+    reader.onerror = () => {
+      setCsvError('Error al leer el archivo del disco.');
       setCsvLoading(false);
-    }
+    };
+
+    reader.readAsText(file, 'UTF-8');
   }, []);
 
   const handleApplyCSV = async () => {
@@ -446,10 +536,12 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
 
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => handleDownloadTemplate('xlsx')}
-            className="flex items-center gap-2 px-4 py-2 border border-border text-text-secondary hover:text-text-primary hover:border-border-hover text-xs rounded transition-colors"
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 border border-border/40 text-text-muted text-xs rounded bg-black/10 cursor-not-allowed"
+            title="Excel temporalmente deshabilitado por seguridad; usa CSV"
+            disabled
           >
-            <Download className="w-4 h-4 text-gold" /> Plantilla Excel (.xlsx)
+            <span className="w-2 h-2 rounded-full bg-red-500"></span> Excel deshabilitado; usa CSV
           </button>
           <button
             onClick={() => handleDownloadTemplate('csv')}
@@ -460,12 +552,12 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm text-text-secondary">Subir archivo de resultados</label>
+          <label className="text-sm text-text-secondary">Subir archivo de resultados (.csv)</label>
           <div className="flex items-center gap-3">
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) handleFileUpload(f);

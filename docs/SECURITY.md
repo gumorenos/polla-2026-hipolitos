@@ -44,3 +44,14 @@ Client-provided parameters are never trusted. All access control checks are vali
 
 All sensitive administrative events (league updates, user role promotions, match modifications, results updates, and global odds/H2H updates) write structured logs to the `AdminActionLog` table. This creates a transparent audit trail that can be viewed directly from the global Superadmin dashboard.
 
+---
+
+## 6. Dependency Vulnerability Status
+
+We periodically audit our dependencies to minimize vulnerability exposure:
+
+- **esbuild / vite**: Any reported vulnerabilities in esbuild or Vite are contained within development-only tooling and do not impact the production Next.js runtime environment.
+- **postcss**: Managed and tracked directly as an internal dependency of the `next` framework packages. Next.js releases regularly include updates to its sub-dependencies.
+- **xlsx**: The Excel spreadsheet library was completely uninstalled and removed from our dependencies due to high-severity vulnerabilities without available patches. Excel results import/export has been replaced by native RFC 4180-compliant CSV generation and parsing, eliminating the risk entirely.
+
+

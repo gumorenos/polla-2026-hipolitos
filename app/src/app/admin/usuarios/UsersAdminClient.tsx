@@ -540,7 +540,7 @@ export default function UsersAdminClient({
       </div>
 
       {/* Users List Table */}
-      <div className="card-base overflow-hidden">
+      <div className="card-base overflow-hidden hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-surface border-b border-border text-text-muted">
@@ -614,7 +614,7 @@ export default function UsersAdminClient({
                           {user.isSuperadmin ? 'Superadmin' : 'Usuario'}
                         </span>
                       </td>
-                      <td className="p-3 text-right space-x-1.5">
+                      <td className="p-3 text-right flex flex-wrap gap-1.5 justify-end whitespace-normal">
                         <button
                           onClick={() => handleOpenDetailModal(user)}
                           disabled={isLoading}
@@ -702,10 +702,159 @@ export default function UsersAdminClient({
         </div>
       </div>
 
-      {/* Detail View Modal */}
+      
+      {/* Users List Mobile Cards */}
+      <div className="block md:hidden space-y-4">
+        {filteredUsers.length === 0 ? (
+          <div className="card-base p-6 text-center text-text-muted bg-bg-tertiary">
+            No se encontraron usuarios coincidentes.
+          </div>
+        ) : (
+          filteredUsers.map((user) => {
+            const isYou = user.id === currentUserId;
+            const isLoading = loadingUserId === user.id;
+
+            return (
+              <div key={user.id} className="card-base p-4 border border-border rounded-xl space-y-3 bg-bg-tertiary">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-0.5 text-left min-w-0">
+                    <p className="font-semibold text-text-primary text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="truncate max-w-[150px]">{user.name}</span>
+                      {isYou && (
+                        <span className="text-[8px] text-gold border border-gold/30 px-1.5 py-0.2 rounded uppercase font-mono tracking-wider font-bold">
+                          TÚ
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] font-mono text-gold-400 truncate max-w-[150px]">@{user.username}</p>
+                    <p className="text-[10px] text-text-secondary truncate max-w-[180px]">{user.email}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[8px] ${
+                      user.status === 'approved'
+                        ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                        : user.status === 'pending'
+                        ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                        : user.status === 'disabled'
+                        ? 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                        : 'bg-red-500/10 text-red-400 border-red-500/30'
+                    }`}>
+                      {user.status === 'approved' ? 'Aprobado' :
+                       user.status === 'pending' ? 'Pendiente' :
+                       user.status === 'disabled' ? 'Desactivado' :
+                       user.status === 'rejected' ? 'Rechazado' : user.status}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full uppercase border font-semibold text-[8px] ${
+                      user.isSuperadmin ? 'bg-gold-400/10 text-gold-400 border-gold-400/30' : 'bg-surface border-border text-text-secondary'
+                    }`}>
+                      {user.isSuperadmin ? 'Superadmin' : 'Usuario'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-left text-[11px] pt-2 border-t border-border/40 font-mono">
+                  <div>
+                    <span className="text-text-muted block">WhatsApp:</span>
+                    <span className="text-text-primary">{user.whatsapp || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted block">Pronósticos:</span>
+                    <span className="text-text-primary font-bold">{user._count?.predictions ?? 0}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-text-muted block">Competencias:</span>
+                    <span className="text-text-primary truncate block" title={user.memberships?.map(m => m.league.name).join(', ')}>
+                      {user.memberships && user.memberships.length > 0 ? (
+                        user.memberships.map((m) => m.league.name).join(', ')
+                      ) : (
+                        <span className="text-text-muted italic">Ninguna</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mobile Actions Panel */}
+                <div className="flex flex-wrap gap-1.5 pt-3 border-t border-border/40 justify-start">
+                  <button
+                    onClick={() => handleOpenDetailModal(user)}
+                    disabled={isLoading}
+                    className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    Detalle
+                  </button>
+                  <button
+                    onClick={() => handleStartEditUser(user)}
+                    disabled={isLoading}
+                    className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleStartPasswordReset(user)}
+                    disabled={isLoading}
+                    className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                    title="Restablecer Contraseña"
+                  >
+                    Clave
+                  </button>
+                  {!isYou && (
+                    <>
+                      {user.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleUpdateStatus(user.id, 'approved')}
+                            disabled={isLoading}
+                            className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20"
+                          >
+                            Aprobar
+                          </button>
+                          <button
+                            onClick={() => handleUpdateStatus(user.id, 'rejected')}
+                            disabled={isLoading}
+                            className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
+                          >
+                            Rechazar
+                          </button>
+                        </>
+                      )}
+                      {user.status === 'approved' && (
+                        <button
+                          onClick={() => handleStartSoftDelete(user)}
+                          disabled={isLoading}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"
+                        >
+                          Archivar
+                        </button>
+                      )}
+                      {(user.status === 'disabled' || user.status === 'rejected') && (
+                        <button
+                          onClick={() => handleUpdateStatus(user.id, 'approved')}
+                          disabled={isLoading}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20"
+                        >
+                          Reactivar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleStartHardDelete(user)}
+                        disabled={isLoading}
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-950 border-red-500/30 text-red-400 hover:bg-red-900"
+                      >
+                        Eliminar
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+{/* Detail View Modal */}
       {showDetailModal && detailUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-lg w-full border border-border rounded-lg space-y-6 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-lg w-full border border-border rounded-lg space-y-6 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowDetailModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -796,7 +945,7 @@ export default function UsersAdminClient({
       {/* Password Reset Modal */}
       {showPasswordResetModal && resetUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowPasswordResetModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -871,7 +1020,6 @@ export default function UsersAdminClient({
                       value={passwordResetCustomText}
                       onChange={(e) => setPasswordResetCustomText(e.target.value)}
                       className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none"
-                      style={{ color: '#fff', backgroundColor: '#111' }}
                       required
                     />
                   </div>
@@ -884,7 +1032,6 @@ export default function UsersAdminClient({
                     value={passwordResetReason}
                     onChange={(e) => setPasswordResetReason(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -914,7 +1061,7 @@ export default function UsersAdminClient({
       {/* Soft Delete Modal */}
       {showSoftDeleteModal && softDeleteUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowSoftDeleteModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -955,7 +1102,6 @@ export default function UsersAdminClient({
                   value={softDeleteReason}
                   onChange={(e) => setSoftDeleteReason(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                   required
                 />
               </div>
@@ -984,7 +1130,7 @@ export default function UsersAdminClient({
       {/* Hard Delete Modal */}
       {showHardDeleteModal && hardDeleteUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowHardDeleteModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -1031,7 +1177,6 @@ export default function UsersAdminClient({
                     value={hardDeleteReason}
                     onChange={(e) => setHardDeleteReason(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-16 resize-none"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -1045,7 +1190,6 @@ export default function UsersAdminClient({
                     value={hardDeleteConfirmation}
                     onChange={(e) => setHardDeleteConfirmation(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -1075,7 +1219,7 @@ export default function UsersAdminClient({
       {/* Manual Create User Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowCreateModal(false)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
@@ -1098,7 +1242,6 @@ export default function UsersAdminClient({
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                   required
                 />
               </div>
@@ -1112,7 +1255,6 @@ export default function UsersAdminClient({
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                   required
                 />
               </div>
@@ -1127,7 +1269,6 @@ export default function UsersAdminClient({
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                   <button
@@ -1149,7 +1290,6 @@ export default function UsersAdminClient({
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                 />
               </div>
 
@@ -1162,7 +1302,6 @@ export default function UsersAdminClient({
                   value={newWhatsapp}
                   onChange={(e) => setNewWhatsapp(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                 />
               </div>
 
@@ -1173,7 +1312,6 @@ export default function UsersAdminClient({
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value)}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  style={{ color: '#fff', backgroundColor: '#111' }}
                 >
                   <option value="approved">Aprobado / Activo de inmediato</option>
                   <option value="pending">Pendiente de Aprobación</option>
@@ -1228,7 +1366,6 @@ export default function UsersAdminClient({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -1241,7 +1378,6 @@ export default function UsersAdminClient({
                     value={editUsername}
                     onChange={(e) => setEditUsername(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -1254,7 +1390,6 @@ export default function UsersAdminClient({
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     required
                   />
                 </div>
@@ -1267,7 +1402,6 @@ export default function UsersAdminClient({
                     value={editWhatsapp}
                     onChange={(e) => setEditWhatsapp(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                   />
                 </div>
 
@@ -1278,7 +1412,6 @@ export default function UsersAdminClient({
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                   >
                     <option value="approved">Aprobado</option>
                     <option value="pending">Pendiente</option>
@@ -1297,7 +1430,6 @@ export default function UsersAdminClient({
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
                       className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
-                      style={{ color: '#fff', backgroundColor: '#111' }}
                     />
                     <button
                       type="button"
@@ -1317,7 +1449,6 @@ export default function UsersAdminClient({
                     value={editReminderEmail}
                     onChange={(e) => setEditReminderEmail(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                     placeholder="Opcional. Si se deja en blanco se usará el correo principal"
                   />
                 </div>
@@ -1329,7 +1460,6 @@ export default function UsersAdminClient({
                     value={editThemeMode}
                     onChange={(e) => setEditThemeMode(e.target.value)}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                    style={{ color: '#fff', backgroundColor: '#111' }}
                   >
                     <option value="black">Oscuro (Black)</option>
                     <option value="dark">Gris (Dark)</option>
@@ -1415,7 +1545,6 @@ export default function UsersAdminClient({
                               }
                             }}
                             className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
-                            style={{ color: '#fff', backgroundColor: '#111' }}
                           >
                             <option value="member">Miembro</option>
                             <option value="admin">Admin</option>
@@ -1457,7 +1586,6 @@ export default function UsersAdminClient({
                         id="add-to-league-select"
                         defaultValue=""
                         className="flex-1 w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                        style={{ color: '#fff', backgroundColor: '#111' }}
                       >
                         <option value="" disabled>Seleccionar competencia para unir...</option>
                         {leagues
@@ -1573,7 +1701,6 @@ export default function UsersAdminClient({
                                 }
                               }}
                               className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
-                              style={{ color: '#fff', backgroundColor: '#111' }}
                             >
                               <option value="" disabled>Cambiar Selección...</option>
                               {teams.map(t => (

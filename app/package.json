@@ -30,7 +30,6 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "@rolldown/binding-win32-x64-msvc": "^1.0.3",
     "better-auth": "^1.6.17",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",

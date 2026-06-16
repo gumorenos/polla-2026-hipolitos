@@ -98,6 +98,21 @@ export interface OddsMatchInfo {
   debugMatch?: boolean;
 }
 
+interface DiagnosticRecord {
+  league?: string;
+  eventHome: string;
+  eventAway: string;
+  eventHomeNorm: string;
+  eventAwayNorm: string;
+  eventTime: string;
+  matches: boolean;
+  isFuzzy?: boolean;
+  isReverse?: boolean;
+  scoreHome?: number;
+  scoreAway?: number;
+  reason: string;
+}
+
 // Map of team codes to common English/Spanish names for matching API data
 export const TEAM_NAMES_MAP: Record<string, string[]> = {
   ARG: ['Argentina'],
@@ -262,7 +277,7 @@ export function matchEventToFixture(
   homeCode: string,
   awayCode: string,
   matchKickoffUtc: Date | number,
-  debugMatch = false
+  _debugMatch = false
 ): { 
   matches: boolean; 
   reason?: string; 
@@ -486,7 +501,7 @@ async function fetchOddsApiIo(matchInfo: OddsMatchInfo, apiKey: string): Promise
 
   // Accumulate diagnostics across all queried leagues
   const allProviderEventsChecked: string[] = [];
-  const diagnostics: any[] = [];
+  const diagnostics: DiagnosticRecord[] = [];
   let foundMatchOdds: MatchOdds | null = null;
 
   for (const leagueSlug of leaguesToQuery) {
@@ -713,7 +728,7 @@ async function fetchTheOddsApi(matchInfo: OddsMatchInfo, apiKey: string): Promis
     const events = data as ProviderEvent[];
     let matchedEvent: ProviderEvent | null = null;
     let matchedIsReverse = false;
-    const diagnostics: any[] = [];
+    const diagnostics: DiagnosticRecord[] = [];
 
     for (const e of events) {
       const matchResult = matchEventToFixture(

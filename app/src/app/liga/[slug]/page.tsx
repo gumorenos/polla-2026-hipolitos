@@ -73,13 +73,10 @@ export default async function LigaDetallePage({
 
   const currentUserRole = membership ? membership.role : null;
 
-  // Query all members
+  // Query all members (both active/approved and inactive/disabled/blocked)
   const members = await prisma.leagueMember.findMany({
     where: {
       leagueId: league.id,
-      user: {
-        status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
-      }
     },
     include: {
       user: true,
@@ -161,7 +158,7 @@ export default async function LigaDetallePage({
     entryFee: league.entryFee,
     currency: league.currency,
     prizePoolOverride: league.prizePoolOverride ?? null,
-    memberCount: members.filter(m => m.user).length,
+    memberCount: members.filter(m => m.user.status === 'approved').length,
   };
 
   const canSeeContactInfo = isSuperadmin || currentUserRole === 'admin' || currentUserRole === 'owner';
@@ -182,6 +179,7 @@ export default async function LigaDetallePage({
             ? maskEmail(m.user.email)
             : null,
         displayName: m.user.displayName,
+        status: m.user.status,
         whatsapp: isSelf
           ? m.user.whatsapp
           : canSeeContactInfo
@@ -220,21 +218,23 @@ export default async function LigaDetallePage({
   const finalStandings =
     serializedStandings.length > 0
       ? serializedStandings
-      : serializedMembers.map((m, index) => ({
-          userId: m.userId,
-          displayName: m.user.displayName || m.user.name,
-          points: 0,
-          champPoints: 0,
-          matchPoints: 0,
-          exacts: 0,
-          tendencies: 0,
-          consolations: 0,
-          misses: 0,
-          rank: index + 1,
-          previousRank: index + 1,
-          predictionsSubmitted: 0,
-          lastUpdated: new Date().toISOString(),
-        }));
+      : serializedMembers
+          .filter(m => showDisabled ? ['approved', 'disabled'].includes(m.user.status || '') : m.user.status === 'approved')
+          .map((m, index) => ({
+              userId: m.userId,
+              displayName: m.user.displayName || m.user.name,
+              points: 0,
+              champPoints: 0,
+              matchPoints: 0,
+              exacts: 0,
+              tendencies: 0,
+              consolations: 0,
+              misses: 0,
+              rank: index + 1,
+              previousRank: index + 1,
+              predictionsSubmitted: 0,
+              lastUpdated: new Date().toISOString(),
+          }));
 
   const serializedWinnerPredictions = winnerPreds.map(wp => ({
     userId: wp.userId,

@@ -25,8 +25,12 @@ export default async function LigasPage() {
     include: {
       league: {
         include: {
-          _count: {
-            select: { members: true },
+          members: {
+            include: {
+              user: {
+                select: { status: true },
+              },
+            },
           },
         },
       },
@@ -37,25 +41,37 @@ export default async function LigasPage() {
   });
 
   // Serialize Date objects to plain strings for the client component
-  const serializedMemberships = memberships.map((m) => ({
-    id: m.id,
-    leagueId: m.leagueId,
-    userId: m.userId,
-    role: m.role,
-    joinedAt: m.joinedAt.toISOString(),
-    league: {
-      id: m.league.id,
-      name: m.league.name,
-      slug: m.league.slug,
-      inviteCode: m.league.inviteCode,
-      status: m.league.status,
-      createdAt: m.league.createdAt.toISOString(),
-      entryFee: m.league.entryFee,
-      currency: m.league.currency,
-      prizePoolOverride: m.league.prizePoolOverride ?? null,
-      _count: m.league._count,
-    },
-  }));
+  const serializedMemberships = memberships.map((m) => {
+    const leagueMembers = m.league.members || [];
+    const activeMembersCount = leagueMembers.filter(lm => lm.user?.status === 'approved').length;
+    const inactiveMembersCount = leagueMembers.filter(lm => lm.user?.status !== 'approved').length;
+    const totalMembersCount = leagueMembers.length;
+
+    return {
+      id: m.id,
+      leagueId: m.leagueId,
+      userId: m.userId,
+      role: m.role,
+      joinedAt: m.joinedAt.toISOString(),
+      league: {
+        id: m.league.id,
+        name: m.league.name,
+        slug: m.league.slug,
+        inviteCode: m.league.inviteCode,
+        status: m.league.status,
+        createdAt: m.league.createdAt.toISOString(),
+        entryFee: m.league.entryFee,
+        currency: m.league.currency,
+        prizePoolOverride: m.league.prizePoolOverride ?? null,
+        activeMembersCount,
+        inactiveMembersCount,
+        totalMembersCount,
+        _count: {
+          members: totalMembersCount,
+        },
+      },
+    };
+  });
 
   return <LigasClient memberships={serializedMemberships} />;
 }

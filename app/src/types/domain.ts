@@ -51,10 +51,11 @@ export interface Match {
   awayTeamCode: string; // references Team.code
   homeScore?: number | null;
   awayScore?: number | null;
-  kickoffUtc: string; // ISO 8601 string
+  kickoffUtc: Date | string | number;
   status: MatchStatus;
   venue: string;
   city: string;
+  resultStatus?: string | null;
 }
 
 export interface Prediction {

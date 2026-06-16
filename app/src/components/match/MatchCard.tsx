@@ -84,10 +84,36 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   refreshingOdds = false,
   manualRefreshEnabled = false,
 }) => {
-  const cardMode = mode ?? (
-    match.status === 'result' ? 'result' :
+  const getVisualState = (): MatchVisualState => {
+    if (match.resultStatus === 'cancelled') return 'cancelled';
+    if (match.resultStatus === 'postponed') return 'postponed';
+    if (match.resultStatus === 'final' || match.homeScore !== null && match.homeScore !== undefined) return 'finished';
+    if (match.status === 'live') return 'live';
+    
+    let kickoffMs = 0;
+    const kickoffVal = match.kickoffUtc;
+    if (kickoffVal instanceof Date) {
+      kickoffMs = kickoffVal.getTime();
+    } else if (typeof kickoffVal === 'number') {
+      kickoffMs = kickoffVal;
+    } else if (typeof kickoffVal === 'string' && /^\d+$/.test(kickoffVal)) {
+      kickoffMs = parseInt(kickoffVal, 10);
+    } else {
+      kickoffMs = new Date(kickoffVal).getTime();
+    }
+
     // eslint-disable-next-line react-hooks/purity
-    match.status === 'live' || new Date(match.kickoffUtc).getTime() <= Date.now() ? 'locked' :
+    const now = Date.now();
+    if (kickoffMs <= now) {
+      return 'pending_result';
+    }
+    return 'open';
+  };
+  const visualState = getVisualState();
+
+  const cardMode = mode ?? (
+    visualState === 'finished' ? 'result' :
+    visualState === 'cancelled' || visualState === 'postponed' || visualState === 'pending_result' || visualState === 'live' || visualState === 'locked' ? 'locked' :
     'predict'
   );
 
@@ -124,18 +150,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const homeTeam = TEAMS[match.homeTeamCode] ?? { code: match.homeTeamCode, name: match.homeTeamCode, hue: 200 };
   const awayTeam = TEAMS[match.awayTeamCode] ?? { code: match.awayTeamCode, name: match.awayTeamCode, hue: 200 };
   const phaseInfo = PHASES[match.phase] ?? { label: match.phase.toUpperCase(), color: 'border-border-default bg-bg-secondary text-text-secondary' };
-
-  const getVisualState = (): MatchVisualState => {
-    if (match.status === 'result') return 'finished';
-    if (match.status === 'live') return 'live';
-    const now = new Date();
-    const kickoff = new Date(match.kickoffUtc);
-    if (kickoff <= now) {
-      return 'pending_result';
-    }
-    return 'open';
-  };
-  const visualState = getVisualState();
 
   const handleHomeChange = (val: number) => {
     setHomePred(val);
@@ -419,13 +433,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
             <MatchStatusBadge status={visualState} className="flex-shrink-0" />
             {match.status === 'soon' ? (
               <div className="flex items-center gap-1 text-xs text-text-secondary font-mono">
-                <CountdownInline targetIso={match.kickoffUtc} />
+                <CountdownInline targetIso={typeof match.kickoffUtc === 'string' ? match.kickoffUtc : new Date(match.kickoffUtc).toISOString()} />
               </div>
             ) : (
               match.status !== 'live' && match.status !== 'result' && new Date(match.kickoffUtc) > new Date() && (
                 <span className="text-xs text-text-secondary font-mono flex items-center gap-1 whitespace-nowrap">
                   <Calendar className="w-3 h-3" />
-                  {fmtDate(match.kickoffUtc)} · {fmtTime(match.kickoffUtc)} (Hora Lima)
+                  {fmtDate(new Date(match.kickoffUtc))} · {fmtTime(new Date(match.kickoffUtc))} (Hora Lima)
                 </span>
               )
             )}

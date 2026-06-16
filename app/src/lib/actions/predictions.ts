@@ -69,7 +69,7 @@ export async function savePredictionAction(
     }
 
     // Server-side lock check
-    if (isMatchLocked(match.kickoffUtc, match.status)) {
+    if (isMatchLocked(match.kickoffUtc, match.status, match.resultStatus)) {
       return { error: 'Las predicciones para este partido están cerradas debido a que ya comenzó o finalizó.' };
     }
 

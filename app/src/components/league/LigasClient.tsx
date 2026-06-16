@@ -17,6 +17,9 @@ interface LeagueData {
   entryFee?: number;
   currency?: string;
   prizePoolOverride?: number | null;
+  activeMembersCount?: number;
+  inactiveMembersCount?: number;
+  totalMembersCount?: number;
   _count?: {
     members: number;
   };
@@ -128,12 +131,22 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                     <div className="flex items-center gap-4 text-xs text-text-secondary">
                       <span className="flex items-center gap-1">
                         <Users className="w-3.5 h-3.5 text-gold-400" />
-                        {league._count?.members ?? 1} miembros
+                        {league.activeMembersCount !== undefined ? (
+                          <span>
+                            <span className="text-green-400 font-semibold">{league.activeMembersCount} activo{league.activeMembersCount !== 1 ? 's' : ''}</span>
+                            {league.inactiveMembersCount !== undefined && league.inactiveMembersCount > 0 ? (
+                              <span className="text-text-muted"> · {league.inactiveMembersCount} inactivo{league.inactiveMembersCount !== 1 ? 's' : ''}/bloqueado{league.inactiveMembersCount !== 1 ? 's' : ''}</span>
+                            ) : null}
+                            <span className="text-text-muted"> ({league.totalMembersCount} total)</span>
+                          </span>
+                        ) : (
+                          `${league._count?.members ?? 1} miembros`
+                        )}
                       </span>
                       {(league.entryFee ?? 0) > 0 && (
                         <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
                           {(() => {
-                            const memberCount = league._count?.members ?? 1;
+                            const memberCount = league.activeMembersCount ?? league._count?.members ?? 1;
                             const prize = league.prizePoolOverride ?? (memberCount * (league.entryFee ?? 0));
                             return `Pozo: ${formatLeagueCurrency(prize, league.currency ?? 'PEN')}`;
                           })()}

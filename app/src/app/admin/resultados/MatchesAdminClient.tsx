@@ -255,7 +255,8 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
     setActionLoadingMatchId(matchId);
     setError(null);
     setSuccess(null);
-    const result = await fetchAndSaveMatchResultAction(matchId, false, 'auto');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await fetchAndSaveMatchResultAction(matchId, false, 'auto') as any;
     if (result.error) setError(`API: ${result.error}`);
     else setSuccess(`Resultado obtenido vía ${result.usedProvider ?? 'API'}${result.isFallback ? ' (fallback)' : ''}`);
     setActionLoadingMatchId(null);

@@ -47,15 +47,35 @@ export function parseLimaDateTimeToUtc(localStr: string): string {
   return new Date(parsedStr).toISOString();
 }
 
-export function isMatchLocked(kickoffUtc: Date | string, status: string): boolean {
+export function isMatchLocked(
+  kickoffUtc: Date | string | number,
+  status: string,
+  resultStatus?: string | null
+): boolean {
   if (!kickoffUtc) return true;
-  const kickoffDate = new Date(kickoffUtc);
+  if (resultStatus === 'cancelled' || resultStatus === 'postponed' || resultStatus === 'final') {
+    return true;
+  }
+  let kickoffDate: Date;
+  if (kickoffUtc instanceof Date) {
+    kickoffDate = kickoffUtc;
+  } else if (typeof kickoffUtc === 'number') {
+    kickoffDate = new Date(kickoffUtc);
+  } else if (typeof kickoffUtc === 'string' && /^\d+$/.test(kickoffUtc)) {
+    kickoffDate = new Date(parseInt(kickoffUtc, 10));
+  } else {
+    kickoffDate = new Date(kickoffUtc);
+  }
   const now = new Date();
   return kickoffDate <= now || status === 'live' || status === 'result';
 }
 
-export function isMatchOpen(kickoffUtc: Date | string, status: string): boolean {
-  return !isMatchLocked(kickoffUtc, status);
+export function isMatchOpen(
+  kickoffUtc: Date | string | number,
+  status: string,
+  resultStatus?: string | null
+): boolean {
+  return !isMatchLocked(kickoffUtc, status, resultStatus);
 }
 
 export function utcDateKey(isoString: string | Date): string {

@@ -555,7 +555,7 @@ export async function updateMatchDetailsAction(
   }
 }
 
-export async function toggleUserSuperadminAction(targetUserId: string, isSuperadmin: boolean) {
+export async function toggleUserSuperadminAction(targetUserId: string, isSuperadmin: boolean, reason?: string) {
   try {
     const session = await getCurrentSession();
     if (!session || !session.user) {
@@ -582,7 +582,7 @@ export async function toggleUserSuperadminAction(targetUserId: string, isSuperad
         userId: user.id,
         action: 'toggle_superadmin',
         target: `user:${targetUserId}`,
-        details: JSON.stringify({ isSuperadmin }),
+        details: JSON.stringify({ isSuperadmin, reason }),
       },
     });
 
@@ -594,7 +594,7 @@ export async function toggleUserSuperadminAction(targetUserId: string, isSuperad
   }
 }
 
-export async function updateUserStatusAction(targetUserId: string, status: string) {
+export async function updateUserStatusAction(targetUserId: string, status: string, reason?: string) {
   try {
     const session = await getCurrentSession();
     if (!session || !session.user) {
@@ -627,7 +627,7 @@ export async function updateUserStatusAction(targetUserId: string, status: strin
         userId: adminUser.id,
         action: auditAction,
         target: `user:${targetUserId}`,
-        details: JSON.stringify({ status }),
+        details: JSON.stringify({ status, reason }),
       },
     });
 
@@ -807,10 +807,13 @@ export async function adminUpdateUserAction(
     whatsapp?: string;
     status?: string;
     isSuperadmin?: boolean;
+    canCreateLeagues?: boolean;
     passwordText?: string;
     remindersEnabled?: boolean;
     emailRemindersEnabled?: boolean;
-  }
+    reminderEmail?: string;
+  },
+  reason?: string
 ) {
   try {
     const session = await getCurrentSession();
@@ -861,8 +864,10 @@ export async function adminUpdateUserAction(
     if (data.whatsapp !== undefined) updateData.whatsapp = data.whatsapp.trim() || null;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.isSuperadmin !== undefined) updateData.isSuperadmin = data.isSuperadmin;
+    if (data.canCreateLeagues !== undefined) updateData.canCreateLeagues = data.canCreateLeagues;
     if (data.remindersEnabled !== undefined) updateData.remindersEnabled = data.remindersEnabled;
     if (data.emailRemindersEnabled !== undefined) updateData.emailRemindersEnabled = data.emailRemindersEnabled;
+    if (data.reminderEmail !== undefined) updateData.reminderEmail = data.reminderEmail.trim() || null;
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -891,7 +896,7 @@ export async function adminUpdateUserAction(
         userId: adminUser.id,
         action: 'user_updated_by_admin',
         target: `user:${targetUserId}`,
-        details: JSON.stringify({ updatedFields: Object.keys(updateData), passwordChanged: !!data.passwordText }),
+        details: JSON.stringify({ updatedFields: Object.keys(updateData), passwordChanged: !!data.passwordText, reason }),
       },
     });
 
@@ -966,6 +971,181 @@ export async function adminResetUserChampionAction(targetUserId: string, leagueI
   } catch (error) {
     console.error('Error resetting champion prediction:', error);
     return { error: 'Ocurrió un error al restablecer la predicción de campeón' };
+  }
+}
+
+export async function adminUpdateLeagueMemberRoleAction(
+  targetUserId: string,
+  leagueId: string,
+  role: string,
+  reason: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser?.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo es obligatorio' };
+    }
+
+    await prisma.leagueMember.update({
+      where: { leagueId_userId: { leagueId, userId: targetUserId } },
+      data: { role },
+    });
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'admin_league_member_role_change',
+        target: `user:${targetUserId}:league:${leagueId}`,
+        details: JSON.stringify({ role, reason }),
+      },
+    });
+
+    revalidatePath('/admin/usuarios');
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating member role:', error);
+    return { error: 'Ocurrió un error al actualizar el rol de la membresía' };
+  }
+}
+
+export async function adminRemoveFromLeagueAction(
+  targetUserId: string,
+  leagueId: string,
+  reason: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser?.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo es obligatorio' };
+    }
+
+    await prisma.leagueMember.delete({
+      where: { leagueId_userId: { leagueId, userId: targetUserId } },
+    });
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'admin_league_member_remove',
+        target: `user:${targetUserId}:league:${leagueId}`,
+        details: JSON.stringify({ reason }),
+      },
+    });
+
+    revalidatePath('/admin/usuarios');
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing user from league:', error);
+    return { error: 'Ocurrió un error al remover al usuario de la competencia' };
+  }
+}
+
+export async function adminAddToLeagueAction(
+  targetUserId: string,
+  leagueId: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser?.isSuperadmin) {
+      return { error: 'No tienes permisos de superadministrador' };
+    }
+
+    // Check if target user is approved
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser || targetUser.status !== 'approved') {
+      return { error: 'Solo se pueden agregar usuarios aprobados.' };
+    }
+
+    // Verify user is not already a member
+    const existingMembership = await prisma.leagueMember.findUnique({
+      where: {
+        leagueId_userId: {
+          leagueId,
+          userId: targetUserId,
+        },
+      },
+    });
+
+    if (existingMembership) {
+      return { error: 'El usuario ya es miembro de esta competencia.' };
+    }
+
+    // Create membership
+    await prisma.leagueMember.create({
+      data: {
+        leagueId,
+        userId: targetUserId,
+        role: 'member',
+      },
+    });
+
+    // Create Standing rows for the user in this league for all blocks
+    const blocks = ['groups', 'knockout', 'global'];
+    for (const block of blocks) {
+      await prisma.standing.upsert({
+        where: {
+          leagueId_userId_block: {
+            leagueId,
+            userId: targetUserId,
+            block,
+          },
+        },
+        update: {},
+        create: {
+          leagueId,
+          userId: targetUserId,
+          block,
+          points: 0,
+          exacts: 0,
+          tendencies: 0,
+          consolations: 0,
+          misses: 0,
+          rank: 1,
+          previousRank: 1,
+        },
+      });
+    }
+
+    await prisma.adminActionLog.create({
+      data: {
+        userId: adminUser.id,
+        action: 'admin_league_member_add',
+        target: `user:${targetUserId}:league:${leagueId}`,
+        details: JSON.stringify({}),
+      },
+    });
+
+    revalidatePath('/admin/usuarios');
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding user to league:', error);
+    return { error: 'Ocurrió un error al agregar al usuario a la competencia' };
   }
 }
 

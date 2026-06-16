@@ -237,7 +237,8 @@ export async function regenerateInviteCodeAction(leagueId: string) {
 export async function manageMemberAction(
   leagueId: string,
   targetUserId: string,
-  action: 'remove' | 'promote' | 'demote'
+  action: 'remove' | 'promote' | 'demote',
+  reason?: string
 ) {
   const session = await getCurrentSession();
   if (!session || !session.user) {
@@ -301,7 +302,7 @@ export async function manageMemberAction(
           userId,
           action: 'member_removal',
           target: `user:${targetUserId}`,
-          details: JSON.stringify({ leagueId }),
+          details: JSON.stringify({ leagueId, reason }),
         },
       });
     } else if (action === 'promote') {
@@ -314,7 +315,7 @@ export async function manageMemberAction(
           userId,
           action: 'member_role_change',
           target: `user:${targetUserId}`,
-          details: JSON.stringify({ leagueId, newRole: 'admin' }),
+          details: JSON.stringify({ leagueId, newRole: 'admin', reason }),
         },
       });
     } else if (action === 'demote') {
@@ -327,7 +328,7 @@ export async function manageMemberAction(
           userId,
           action: 'member_role_change',
           target: `user:${targetUserId}`,
-          details: JSON.stringify({ leagueId, newRole: 'member' }),
+          details: JSON.stringify({ leagueId, newRole: 'member', reason }),
         },
       });
     }

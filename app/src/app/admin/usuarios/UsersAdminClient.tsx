@@ -6,10 +6,17 @@ import {
   updateUserStatusAction, 
   adminCreateUserAction,
   adminUpdateUserAction,
-  adminResetUserChampionAction
+  adminResetUserChampionAction,
+  adminUpdateLeagueMemberRoleAction,
+  adminRemoveFromLeagueAction,
+  adminAddToLeagueAction
 } from '../../../lib/actions/admin';
+import {
+  allowWinnerPredictionCorrectionAction,
+  directCorrectWinnerPredictionAction
+} from '../../../lib/actions/predictions';
 import { useRouter } from 'next/navigation';
-import { Plus, X, Search, UserCheck, Shield, AlertTriangle, Play, RefreshCw, Eye, EyeOff, Edit2, ShieldAlert } from 'lucide-react';
+import { Plus, X, Search, Eye, EyeOff } from 'lucide-react';
 
 interface UserFromDB {
   id: string;
@@ -20,18 +27,24 @@ interface UserFromDB {
   status: string;
   whatsapp: string | null;
   isSuperadmin: boolean;
+  canCreateLeagues?: boolean;
   createdAt: Date;
   remindersEnabled?: boolean;
   emailRemindersEnabled?: boolean;
+  reminderEmail?: string | null;
   memberships?: {
     league: {
       id: string;
       name: string;
     };
+    role: string;
   }[];
   winnerPredictions?: {
     leagueId: string;
     teamCode: string;
+    correctionAllowed: boolean;
+    correctionAllowedUntil: Date | string | null;
+    correctionReason: string | null;
     league: {
       id: string;
       name: string;
@@ -40,9 +53,32 @@ interface UserFromDB {
       name: string;
     };
   }[];
+  winnerPredictionHistories?: {
+    id: string;
+    leagueId: string;
+    userId: string;
+    oldTeamCode: string | null;
+    newTeamCode: string;
+    actionType: string;
+    authorizedById: string | null;
+    changedById: string | null;
+    reason: string | null;
+    createdAt: string | Date;
+    league: {
+      name: string;
+    };
+  }[];
 }
 
-export default function UsersAdminClient({ users, currentUserId }: { users: UserFromDB[], currentUserId: string }) {
+export default function UsersAdminClient({ 
+  users, 
+  leagues = [], 
+  currentUserId 
+}: { 
+  users: UserFromDB[];
+  leagues?: { id: string; name: string }[];
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('all');
@@ -59,21 +95,48 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserFromDB | null>(null);
+  
+  // Edit Form Fields
   const [editName, setEditName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [editIsSuperadmin, setEditIsSuperadmin] = useState(false);
+  const [editCanCreateLeagues, setEditCanCreateLeagues] = useState(false);
   const [editPassword, setEditPassword] = useState('');
   const [editReminders, setEditReminders] = useState(false);
   const [editEmailReminders, setEditEmailReminders] = useState(false);
+  const [editReminderEmail, setEditReminderEmail] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
 
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Teams list used for champion pick corrections
+  // Usually this is loaded dynamically or we can just fetch the static map keys
+  const teams = [
+    { code: 'ARG', name: 'Argentina' },
+    { code: 'BRA', name: 'Brasil' },
+    { code: 'FRA', name: 'Francia' },
+    { code: 'ESP', name: 'España' },
+    { code: 'GER', name: 'Alemania' },
+    { code: 'ENG', name: 'Inglaterra' },
+    { code: 'ITA', name: 'Italia' },
+    { code: 'POR', name: 'Portugal' },
+    { code: 'URU', name: 'Uruguay' },
+    { code: 'MEX', name: 'México' },
+    { code: 'USA', name: 'Estados Unidos' },
+    { code: 'COL', name: 'Colombia' },
+    { code: 'ECU', name: 'Ecuador' },
+    { code: 'MAR', name: 'Marruecos' },
+    { code: 'CRO', name: 'Croacia' },
+    { code: 'NED', name: 'Países Bajos' },
+    { code: 'JPN', name: 'Japón' },
+    { code: 'SEN', name: 'Senegal' },
+  ];
 
   const handleStartEditUser = (user: UserFromDB) => {
     setSelectedUser(user);
@@ -83,9 +146,11 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     setEditWhatsapp(user.whatsapp || '');
     setEditStatus(user.status || 'pending');
     setEditIsSuperadmin(user.isSuperadmin || false);
+    setEditCanCreateLeagues(user.canCreateLeagues || false);
     setEditPassword('');
     setEditReminders(user.remindersEnabled || false);
     setEditEmailReminders(user.emailRemindersEnabled || false);
+    setEditReminderEmail(user.reminderEmail || '');
     setShowEditModal(true);
   };
 
@@ -96,6 +161,28 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     setError(null);
     setSuccess(null);
 
+    // Detect sensitive edits
+    const isSensitiveEdit = 
+      editUsername !== selectedUser.username ||
+      editStatus !== selectedUser.status ||
+      editIsSuperadmin !== selectedUser.isSuperadmin ||
+      !!editPassword;
+
+    let reason: string | undefined;
+    if (isSensitiveEdit) {
+      const promptReason = prompt("Has modificado campos sensibles (usuario, estado, superadmin o contraseña). Por favor ingresa el motivo del cambio (obligatorio):");
+      if (promptReason === null) {
+        setActionLoading(false);
+        return; // Cancelled
+      }
+      if (!promptReason.trim()) {
+        alert("El motivo es obligatorio para realizar cambios sensibles.");
+        setActionLoading(false);
+        return;
+      }
+      reason = promptReason;
+    }
+
     const res = await adminUpdateUserAction(selectedUser.id, {
       name: editName,
       username: editUsername,
@@ -103,10 +190,12 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
       whatsapp: editWhatsapp,
       status: editStatus,
       isSuperadmin: editIsSuperadmin,
+      canCreateLeagues: editCanCreateLeagues,
       passwordText: editPassword || undefined,
       remindersEnabled: editReminders,
       emailRemindersEnabled: editEmailReminders,
-    });
+      reminderEmail: editReminderEmail,
+    }, reason);
 
     if (res.error) {
       setError(res.error);
@@ -123,6 +212,10 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     if (!selectedUser) return;
     const reason = prompt(`¿Estás seguro de restablecer la predicción de campeón de ${selectedUser.name} en la liga "${leagueName}"? Ingrese el motivo (se registrará en el historial):`);
     if (reason === null) return; // Cancelled
+    if (!reason.trim()) {
+      alert("El motivo es obligatorio.");
+      return;
+    }
     
     setActionLoading(true);
     setError(null);
@@ -143,7 +236,10 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
 
   const handleToggleSuperadmin = async (userId: string, currentVal: boolean) => {
     const actionLabel = currentVal ? 'quitar' : 'dar';
-    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} el rol de Superadmin a este usuario?`)) {
+    const reason = prompt(`¿Estás seguro de que deseas ${actionLabel} el rol de Superadmin a este usuario? Ingrese el motivo (se registrará en la auditoría):`);
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("El motivo es obligatorio.");
       return;
     }
 
@@ -151,7 +247,7 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     setError(null);
     setSuccess(null);
 
-    const res = await toggleUserSuperadminAction(userId, !currentVal);
+    const res = await toggleUserSuperadminAction(userId, !currentVal, reason);
 
     if (res.error) {
       setError(res.error);
@@ -168,7 +264,10 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     if (targetStatus === 'rejected') actionLabel = 'rechazar';
     if (targetStatus === 'disabled') actionLabel = 'deshabilitar';
 
-    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} a este usuario?`)) {
+    const reason = prompt(`¿Estás seguro de que deseas ${actionLabel} a este usuario? Ingrese el motivo (se registrará en la auditoría):`);
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("El motivo es obligatorio.");
       return;
     }
 
@@ -176,7 +275,7 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
     setError(null);
     setSuccess(null);
 
-    const res = await updateUserStatusAction(userId, targetStatus);
+    const res = await updateUserStatusAction(userId, targetStatus, reason);
 
     if (res.error) {
       setError(res.error);
@@ -212,7 +311,6 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
       setActionLoading(false);
     } else {
       setSuccess('Usuario creado exitosamente.');
-      // Clean form
       setNewUsername('');
       setNewName('');
       setNewPassword('');
@@ -683,6 +781,18 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                     </button>
                   </div>
                 </div>
+
+                {/* Reminder Email */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Email para Recordatorios</label>
+                  <input
+                    type="email"
+                    value={editReminderEmail}
+                    onChange={(e) => setEditReminderEmail(e.target.value)}
+                    className="field py-1.5 px-3 text-xs"
+                    placeholder="Opcional. Si se deja en blanco se usará el correo principal"
+                  />
+                </div>
               </div>
 
               {/* Toggles */}
@@ -697,6 +807,16 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                     className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
                   />
                   <span>Es Superadministrador Global</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={editCanCreateLeagues}
+                    onChange={(e) => setEditCanCreateLeagues(e.target.checked)}
+                    className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
+                  />
+                  <span>Puede Crear Competencias / Ligas</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
@@ -720,26 +840,236 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                 </label>
               </div>
 
+              {/* Competencia Memberships */}
+              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+                <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Membresías de Competencias</span>
+                <div className="space-y-2">
+                  {selectedUser.memberships && selectedUser.memberships.length > 0 ? (
+                    selectedUser.memberships.map((m) => (
+                      <div key={m.league.id} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
+                        <div className="text-left font-mono">
+                          <p className="font-semibold text-text-primary text-xs">{m.league.name}</p>
+                          <p className="text-[9px] text-text-muted">Rol: <span className="text-gold font-semibold uppercase">{m.role === 'owner' ? 'Dueño' : m.role === 'admin' ? 'Admin' : 'Miembro'}</span></p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={m.role}
+                            onChange={async (e) => {
+                              const newRole = e.target.value;
+                              const reason = prompt(`¿Por qué deseas cambiar el rol a "${newRole}" en la competencia "${m.league.name}"? (Motivo obligatorio):`);
+                              if (!reason || !reason.trim()) {
+                                alert("El motivo es obligatorio.");
+                                return;
+                              }
+                              setActionLoading(true);
+                              const res = await adminUpdateLeagueMemberRoleAction(selectedUser.id, m.league.id, newRole, reason);
+                              setActionLoading(false);
+                              if (res.error) alert(res.error);
+                              else {
+                                alert("Rol de membresía actualizado.");
+                                router.refresh();
+                                setShowEditModal(false);
+                              }
+                            }}
+                            className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
+                          >
+                            <option value="member">Miembro</option>
+                            <option value="admin">Admin</option>
+                            <option value="owner">Dueño</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const reason = prompt(`¿Por qué deseas remover a este usuario de la competencia "${m.league.name}"? (Motivo obligatorio):`);
+                              if (!reason || !reason.trim()) {
+                                alert("El motivo es obligatorio.");
+                                return;
+                              }
+                              setActionLoading(true);
+                              const res = await adminRemoveFromLeagueAction(selectedUser.id, m.league.id, reason);
+                              setActionLoading(false);
+                              if (res.error) alert(res.error);
+                              else {
+                                alert("Membresía eliminada.");
+                                router.refresh();
+                                setShowEditModal(false);
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-[10px] rounded font-bold font-mono uppercase"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-text-muted italic text-[11px]">No pertenece a ninguna competencia.</p>
+                  )}
+
+                  {/* Add user to league dropdown */}
+                  {leagues && leagues.length > 0 && (
+                    <div className="flex gap-2 pt-2 border-t border-border/50">
+                      <select
+                        id="add-to-league-select"
+                        defaultValue=""
+                        className="flex-1 field py-1 px-2 text-xs bg-bg-secondary text-text-primary border border-border"
+                      >
+                        <option value="" disabled>Seleccionar competencia para unir...</option>
+                        {leagues
+                          .filter(l => !selectedUser.memberships?.some(m => m.league.id === l.id))
+                          .map(l => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const selectEl = document.getElementById('add-to-league-select') as HTMLSelectElement;
+                          const selectedLeagueId = selectEl?.value;
+                          if (!selectedLeagueId) {
+                            alert("Por favor selecciona una competencia.");
+                            return;
+                          }
+                          setActionLoading(true);
+                          const res = await adminAddToLeagueAction(selectedUser.id, selectedLeagueId);
+                          setActionLoading(false);
+                          if (res.error) alert(res.error);
+                          else {
+                            alert("Usuario agregado con éxito.");
+                            router.refresh();
+                            setShowEditModal(false);
+                          }
+                        }}
+                        className="px-3 py-1 bg-gold-400/10 border border-gold-500/30 hover:bg-gold-400/20 text-gold-400 text-xs rounded font-bold font-mono uppercase"
+                      >
+                        Unir
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Winner Predictions / Champion Selection Reset */}
               {selectedUser.winnerPredictions && selectedUser.winnerPredictions.length > 0 && (
                 <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
                   <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Predicción de Campeón</span>
-                  <div className="space-y-2">
-                    {selectedUser.winnerPredictions.map((wp) => (
-                      <div key={wp.leagueId} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
-                        <div className="text-left">
-                          <p className="font-semibold text-text-primary">{wp.league.name}</p>
-                          <p className="text-[10px] text-text-muted">Seleccionado: <strong className="text-gold">{wp.team.name} ({wp.teamCode})</strong></p>
+                  <div className="space-y-3">
+                    {selectedUser.winnerPredictions.map((wp) => {
+                      // Get status
+                      const hasCorrectionAllowed = wp.correctionAllowed && (!wp.correctionAllowedUntil || new Date(wp.correctionAllowedUntil) > new Date());
+                      const statusLabel = hasCorrectionAllowed ? "Corrección permitida" : "Bloqueado";
+                      
+                      // Get history
+                      const historyList = selectedUser.winnerPredictionHistories?.filter(h => h.leagueId === wp.leagueId) || [];
+
+                      return (
+                        <div key={wp.leagueId} className="bg-bg-secondary p-3 rounded border border-border-default/60 space-y-3">
+                          <div className="flex justify-between items-start font-mono">
+                            <div className="text-left space-y-0.5">
+                              <p className="font-semibold text-text-primary text-xs">{wp.league.name}</p>
+                              <p className="text-[10px] text-text-muted">Selección actual: <strong className="text-gold">{wp.team.name} ({wp.teamCode})</strong></p>
+                              <p className="text-[10px] text-text-muted">Estado: <span className={`font-semibold ${hasCorrectionAllowed ? 'text-green-400' : 'text-amber-400'}`}>{statusLabel}</span></p>
+                            </div>
+                          </div>
+
+                          {/* Prediction actions grid */}
+                          <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/30">
+                            {/* Habilitar correccion */}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const durationStr = prompt("¿Por cuántos minutos deseas habilitar la corrección? (ej. 30):", "30");
+                                if (!durationStr) return;
+                                const duration = parseInt(durationStr, 10);
+                                if (isNaN(duration) || duration <= 0) {
+                                  alert("Duración inválida.");
+                                  return;
+                                }
+                                const reason = prompt("Ingresa el motivo obligatorio para la corrección (se registrará en el historial):");
+                                if (!reason || !reason.trim()) {
+                                  alert("El motivo es obligatorio.");
+                                  return;
+                                }
+                                setActionLoading(true);
+                                const res = await allowWinnerPredictionCorrectionAction(wp.leagueId, selectedUser.id, duration, reason);
+                                setActionLoading(false);
+                                if (res.error) alert(res.error);
+                                else {
+                                  alert("Corrección habilitada.");
+                                  router.refresh();
+                                  setShowEditModal(false);
+                                }
+                              }}
+                              className="px-2 py-1 text-[9px] font-mono uppercase font-bold text-green-400 hover:text-green-300 border border-green-500/25 bg-green-500/10 hover:bg-green-500/20 rounded transition-all"
+                            >
+                              Permitir Corrección
+                            </button>
+
+                            {/* Cambiar Seleccion */}
+                            <select
+                              defaultValue=""
+                              onChange={async (e) => {
+                                const newCode = e.target.value;
+                                if (!newCode) return;
+                                const reason = prompt(`¿Por qué deseas cambiar el campeón a ${newCode} directamente? (motivo obligatorio):`);
+                                if (!reason || !reason.trim()) {
+                                  alert("El motivo es obligatorio.");
+                                  e.target.value = "";
+                                  return;
+                                }
+                                setActionLoading(true);
+                                const res = await directCorrectWinnerPredictionAction(wp.leagueId, selectedUser.id, newCode, reason);
+                                setActionLoading(false);
+                                if (res.error) alert(res.error);
+                                else {
+                                  alert("Campeón modificado directamente.");
+                                  router.refresh();
+                                  setShowEditModal(false);
+                                }
+                              }}
+                              className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
+                            >
+                              <option value="" disabled>Cambiar Selección...</option>
+                              {teams.map(t => (
+                                <option key={t.code} value={t.code}>{t.name} ({t.code})</option>
+                              ))}
+                            </select>
+
+                            {/* Resetear Campeón */}
+                            <button
+                              type="button"
+                              onClick={() => handleResetChampion(wp.leagueId, wp.league.name)}
+                              className="px-2 py-1 text-[9px] font-mono uppercase font-bold text-red-400 hover:text-red-300 border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 rounded transition-all"
+                            >
+                              Resetear
+                            </button>
+                          </div>
+
+                          {/* History of changes */}
+                          {historyList.length > 0 && (
+                            <div className="pt-2 border-t border-border/30">
+                              <details className="group">
+                                <summary className="text-[10px] text-text-muted hover:text-text-primary cursor-pointer select-none font-bold uppercase tracking-wider flex items-center justify-between">
+                                  <span>Historial de cambios ({historyList.length})</span>
+                                  <span className="transition-transform group-open:rotate-180">▼</span>
+                                </summary>
+                                <div className="mt-1 space-y-1.5 pl-2 border-l border-border/50 max-h-32 overflow-y-auto">
+                                  {historyList.map(h => (
+                                    <div key={h.id} className="text-[9px] text-text-muted py-0.5 border-b border-border/10 pb-1">
+                                      <p className="font-semibold text-text-secondary font-mono">
+                                        {new Date(h.createdAt).toLocaleDateString('es-ES')} {new Date(h.createdAt).toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'})}
+                                      </p>
+                                      <p>Cambio: <strong className="text-text-primary">{h.oldTeamCode || 'Ninguno'} &rarr; {h.newTeamCode}</strong></p>
+                                      <p>Acción: {h.actionType === 'correction_authorized' ? 'Autorización' : h.actionType === 'changed_by_admin' ? 'Reset/Cambio Admin' : h.actionType} | Motivo: <span className="italic text-text-primary">{h.reason}</span></p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            </div>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleResetChampion(wp.leagueId, wp.league.name)}
-                          className="px-2 py-1 text-[9px] font-mono uppercase font-bold text-red-400 hover:text-red-300 border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 rounded transition-all"
-                        >
-                          Restablecer
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

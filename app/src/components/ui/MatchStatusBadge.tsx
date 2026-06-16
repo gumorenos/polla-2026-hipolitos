@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type MatchVisualState = 'scheduled' | 'open' | 'locked' | 'live' | 'finished' | 'pending_result';
+export type MatchVisualState = 'scheduled' | 'open' | 'locked' | 'live' | 'finished' | 'pending_result' | 'postponed' | 'cancelled';
 
 interface MatchStatusBadgeProps {
   status: MatchVisualState;
@@ -33,8 +33,16 @@ export const MatchStatusBadge: React.FC<MatchStatusBadgeProps> = ({
       style: 'border-gold-500/30 bg-gold-500/10 text-gold-400',
     },
     pending_result: {
-      label: 'Resultado Pendiente',
+      label: 'Cerrado - resultado pendiente',
       style: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400 font-semibold',
+    },
+    postponed: {
+      label: 'Postergado',
+      style: 'border-orange-400/30 bg-orange-400/10 text-orange-400 font-semibold',
+    },
+    cancelled: {
+      label: 'Cancelado',
+      style: 'border-red-400/30 bg-red-400/10 text-red-400 font-semibold',
     },
   };
 

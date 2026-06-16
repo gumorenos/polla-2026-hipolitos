@@ -36,6 +36,7 @@ interface MemberUser {
   email: string | null;
   displayName: string | null;
   whatsapp: string | null;
+  status: string | null;
 }
 
 interface MemberData {
@@ -262,12 +263,16 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
               <div className="flex items-center gap-4 text-xs text-text-secondary mt-1 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-gold-400" />
-                  {members.length} miembros
+                  <span className="text-green-400 font-semibold">{members.filter(m => m.user.status === 'approved').length} activos</span>
+                  {members.filter(m => m.user.status !== 'approved').length > 0 && (
+                    <span className="text-text-muted"> · {members.filter(m => m.user.status !== 'approved').length} inactivos/bloqueados</span>
+                  )}
+                  <span className="text-text-muted"> ({members.length} total)</span>
                 </span>
                 {(league.entryFee ?? 0) > 0 && (
                   <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
                     {(() => {
-                      const memberCount = league.memberCount ?? members.length;
+                      const memberCount = league.memberCount ?? members.filter(m => m.user.status === 'approved').length;
                       const prize = league.prizePoolOverride ?? (memberCount * (league.entryFee ?? 0));
                       return `Premio total: ${formatLeagueCurrency(prize, league.currency ?? 'PEN')}`;
                     })()}
@@ -380,51 +385,142 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
         )}
 
         {/* 2. MEMBERS LIST */}
-        {activeTab === 'members' && (
-          <div className="space-y-4">
-            <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Miembros de la Liga</h3>
-            <div className="card-base overflow-hidden">
-              <div className="grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold">
-                <span className="col-span-5">Usuario</span>
-                <span className="col-span-4 text-center">Unión</span>
-                <span className="col-span-3 text-right">Rol</span>
+        {activeTab === 'members' && (() => {
+          const activeMembers = members.filter(m => m.user.status === 'approved');
+          const inactiveMembers = members.filter(m => m.user.status !== 'approved');
+
+          const renderUserStatusBadge = (status: string) => {
+            switch (status) {
+              case 'approved':
+                return null;
+              case 'pending':
+                return (
+                  <span className="text-[9px] font-mono font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full uppercase">
+                    Pendiente
+                  </span>
+                );
+              case 'disabled':
+                return (
+                  <span className="text-[9px] font-mono font-semibold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-0.5 rounded-full uppercase">
+                    Inactivo/Deshabilitado
+                  </span>
+                );
+              case 'rejected':
+                return (
+                  <span className="text-[9px] font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full uppercase">
+                    Rechazado
+                  </span>
+                );
+              case 'blocked':
+                return (
+                  <span className="text-[9px] font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full uppercase">
+                    Bloqueado
+                  </span>
+                );
+              default:
+                return (
+                  <span className="text-[9px] font-mono font-semibold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-0.5 rounded-full uppercase">
+                    {status}
+                  </span>
+                );
+            }
+          };
+
+          return (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Participantes Activos ({activeMembers.length})</h3>
+                <div className="card-base overflow-hidden">
+                  <div className="grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold">
+                    <span className="col-span-5">Usuario</span>
+                    <span className="col-span-4 text-center">Unión</span>
+                    <span className="col-span-3 text-right">Rol</span>
+                  </div>
+                  <div className="divide-y divide-border-subtle">
+                    {activeMembers.map((member) => {
+                      const isTargetYou = member.userId === currentUserId;
+                      return (
+                        <div key={member.id} className="grid grid-cols-12 px-4 py-3 items-center">
+                          <div className="col-span-5 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center text-gold-400 font-mono font-bold text-xs uppercase">
+                              {member.user.name.slice(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-text-primary truncate">
+                                {member.user.displayName || member.user.name}
+                                {isTargetYou && <span className="text-[9px] text-gold-400 font-mono font-semibold ml-1.5 uppercase">TÚ</span>}
+                              </p>
+                              {member.user.email && <p className="text-xs text-text-secondary truncate">{member.user.email}</p>}
+                            </div>
+                          </div>
+                          <span className="col-span-4 text-center text-xs text-text-secondary">
+                            {new Date(member.joinedAt).toLocaleDateString('es-ES')}
+                          </span>
+                          <div className="col-span-3 flex justify-end items-center gap-1.5">
+                            <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
+                              member.role === 'owner' ? 'bg-gold-400/10 text-gold-400 border-gold-400/30' :
+                              member.role === 'admin' ? 'bg-blue-400/10 text-blue-300 border-blue-400/30' :
+                              'bg-bg-primary text-text-secondary border-border-default'
+                            }`}>
+                              {member.role === 'owner' ? 'Dueño' : member.role === 'admin' ? 'Admin' : 'Miembro'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="divide-y divide-border-subtle">
-                {members.map((member) => {
-                  const isTargetYou = member.userId === currentUserId;
-                  return (
-                    <div key={member.id} className="grid grid-cols-12 px-4 py-3 items-center">
-                      <div className="col-span-5 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center text-gold-400 font-mono font-bold text-xs uppercase">
-                          {member.user.name.slice(0, 2)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-text-primary truncate">
-                            {member.user.displayName || member.user.name}
-                            {isTargetYou && <span className="text-[9px] text-gold-400 font-mono font-semibold ml-1.5 uppercase">TÚ</span>}
-                          </p>
-                          {member.user.email && <p className="text-xs text-text-secondary truncate">{member.user.email}</p>}
-                        </div>
+
+              {inactiveMembers.length > 0 && (
+                <div className="space-y-4">
+                  <details className="group border border-border-default rounded-xl overflow-hidden bg-bg-secondary/20" open={false}>
+                    <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface transition-colors select-none font-display text-md tracking-wide uppercase text-text-muted">
+                      <span>Miembros Inactivos / Bloqueados ({inactiveMembers.length})</span>
+                      <span className="transition-transform group-open:rotate-180">▼</span>
+                    </summary>
+                    <div className="border-t border-border-default">
+                      <div className="grid grid-cols-12 px-4 py-2 bg-black/20 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold">
+                        <span className="col-span-5">Usuario</span>
+                        <span className="col-span-4 text-center">Unión</span>
+                        <span className="col-span-3 text-right">Estado / Rol</span>
                       </div>
-                      <span className="col-span-4 text-center text-xs text-text-secondary">
-                        {new Date(member.joinedAt).toLocaleDateString('es-ES')}
-                      </span>
-                      <div className="col-span-3 flex justify-end items-center gap-1.5">
-                        <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
-                          member.role === 'owner' ? 'bg-gold-400/10 text-gold-400 border-gold-400/30' :
-                          member.role === 'admin' ? 'bg-blue-400/10 text-blue-300 border-blue-400/30' :
-                          'bg-bg-primary text-text-secondary border-border-default'
-                        }`}>
-                          {member.role === 'owner' ? 'Dueño' : member.role === 'admin' ? 'Admin' : 'Miembro'}
-                        </span>
+                      <div className="divide-y divide-border-subtle">
+                        {inactiveMembers.map((member) => {
+                          const isTargetYou = member.userId === currentUserId;
+                          return (
+                            <div key={member.id} className="grid grid-cols-12 px-4 py-3 items-center">
+                              <div className="col-span-5 flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-zinc-500/10 border border-zinc-500/30 flex items-center justify-center text-zinc-400 font-mono font-bold text-xs uppercase">
+                                  {member.user.name.slice(0, 2)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-text-muted truncate">
+                                    {member.user.displayName || member.user.name}
+                                    {isTargetYou && <span className="text-[9px] text-gold-400 font-mono font-semibold ml-1.5 uppercase">TÚ</span>}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="col-span-4 text-center text-xs text-text-muted">
+                                {new Date(member.joinedAt).toLocaleDateString('es-ES')}
+                              </span>
+                              <div className="col-span-3 flex justify-end items-center gap-1.5 flex-wrap">
+                                {renderUserStatusBadge(member.user.status || 'pending')}
+                                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border border-border-default bg-bg-primary text-text-muted uppercase">
+                                  {member.role === 'owner' ? 'Dueño' : member.role === 'admin' ? 'Admin' : 'Miembro'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </details>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 3. MANAGER SETTINGS */}
         {activeTab === 'settings' && canManage && (

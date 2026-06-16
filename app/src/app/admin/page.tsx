@@ -4,6 +4,7 @@ import { getCurrentSession } from '../../lib/auth-helpers';
 import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award } from 'lucide-react';
 import Link from 'next/link';
 import { RecalculateButton } from './RecalculateButton';
+import { formatLeagueCurrency } from '../../lib/utils/currency';
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -195,7 +196,7 @@ export default async function AdminDashboardPage() {
               <div className="space-y-1">
                 <span className="text-xs text-text-muted">Cuota de Entrada:</span>
                 <p className="font-mono font-bold text-text-primary">
-                  {defaultLeagueCurrency} {defaultLeagueFee.toFixed(2)}
+                  {formatLeagueCurrency(defaultLeagueFee, defaultLeagueCurrency)}
                 </p>
               </div>
               <div className="space-y-1">
@@ -203,7 +204,7 @@ export default async function AdminDashboardPage() {
                   <Award className="w-4 h-4" /> Pozo Estimado:
                 </span>
                 <p className="font-mono font-bold text-gold-400 text-base">
-                  {defaultLeagueCurrency} {defaultLeaguePrize.toFixed(2)}
+                  {formatLeagueCurrency(defaultLeaguePrize, defaultLeagueCurrency)}
                 </p>
               </div>
             </div>

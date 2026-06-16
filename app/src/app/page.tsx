@@ -176,8 +176,33 @@ export default async function Home() {
     },
   });
 
-  const totalMatchesCount = await prisma.match.count();
-  const pendingPredictionsCount = totalMatchesCount - predictionCount;
+  // Next upcoming match and all matches (with predictions) to calculate pending predictions count
+  const allMatches = await prisma.match.findMany({
+    include: {
+      predictions: {
+        where: {
+          userId: dbUser.id,
+          leagueId: league.id,
+        }
+      }
+    },
+    orderBy: { kickoffUtc: 'asc' },
+  });
+
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
+  const nextMatch = allMatches.find(m => {
+    const kickoffMs = typeof m.kickoffUtc === 'number' ? m.kickoffUtc : new Date(m.kickoffUtc).getTime();
+    return kickoffMs > nowMs;
+  }) || null;
+
+  const pendingPredictionsCount = allMatches.filter(m => {
+    const kickoffMs = typeof m.kickoffUtc === 'number' ? m.kickoffUtc : new Date(m.kickoffUtc).getTime();
+    const isFuture = kickoffMs > nowMs;
+    const isNotCancelledOrPostponed = m.resultStatus !== 'cancelled' && m.resultStatus !== 'postponed';
+    const hasNoPrediction = m.predictions.length === 0;
+    return isFuture && isNotCancelledOrPostponed && hasNoPrediction;
+  }).length;
 
   // Count approved members in this league
   const approvedMembersCount = await prisma.leagueMember.count({
@@ -187,15 +212,18 @@ export default async function Home() {
     },
   });
 
+  // Count inactive members in this league
+  const inactiveMembersCount = await prisma.leagueMember.count({
+    where: {
+      leagueId: league.id,
+      user: { status: { not: 'approved' } },
+    },
+  });
+
+  const totalMembersCount = approvedMembersCount + inactiveMembersCount;
+
   // Calculate prize pool (Pozo)
   const estimatedPrizePool = league.prizePoolOverride ?? (approvedMembersCount * league.entryFee);
-
-  // Next upcoming match (chronologically after current time)
-  const allMatches = await prisma.match.findMany({
-    orderBy: { kickoffUtc: 'asc' },
-  });
-  const now = new Date();
-  const nextMatch = allMatches.find(m => new Date(m.kickoffUtc) > now) || null;
 
   const formattedName = dbUser.name.toUpperCase();
 
@@ -309,9 +337,25 @@ export default async function Home() {
                 </div>
 
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-text-secondary">Participantes:</span>
+                  <span className="text-text-secondary">Participantes Activos:</span>
+                  <span className="font-bold text-green-400 flex items-center gap-1">
+                    <Users className="w-4 h-4" /> {approvedMembersCount}
+                  </span>
+                </div>
+
+                {inactiveMembersCount > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-text-secondary">Miembros Inactivos:</span>
+                    <span className="font-bold text-text-muted flex items-center gap-1">
+                      {inactiveMembersCount}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-text-secondary">Miembros Totales:</span>
                   <span className="font-bold text-text-primary flex items-center gap-1">
-                    <Users className="w-4 h-4 text-gold-400" /> {approvedMembersCount}
+                    {totalMembersCount}
                   </span>
                 </div>
 

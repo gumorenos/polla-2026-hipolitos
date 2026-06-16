@@ -32,6 +32,21 @@ export default async function AdminUsuariosPage() {
           },
         },
       },
+      winnerPredictions: {
+        include: {
+          league: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          team: {
+            select: {
+              name: true,
+            }
+          }
+        }
+      }
     },
     orderBy: { createdAt: 'desc' },
   });

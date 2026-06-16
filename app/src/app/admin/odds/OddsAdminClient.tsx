@@ -19,6 +19,8 @@ interface MatchAdminInfo {
   awayTeamName: string;
   kickoffUtc: string;
   status: string;
+  group?: string | null;
+  phase?: string;
   globalOdds: {
     homeOdds: number;
     drawOdds: number;
@@ -93,9 +95,40 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   lastFallbackSuccessTime,
 }) => {
   const [now] = useState(() => Date.now());
+  const [filter, setFilter] = useState<'all' | 'today' | 'future' | 'noOdds' | 'noH2H' | 'groups' | 'knockouts' | 'error'>('all');
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
   const [globalLoading, setGlobalLoading] = useState<'odds' | 'h2h' | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const filteredMatches = matches.filter((m) => {
+    if (filter === 'all') return true;
+    if (filter === 'today') {
+      const matchDateStr = new Date(m.kickoffUtc).toDateString();
+      const todayStr = new Date(now).toDateString();
+      return matchDateStr === todayStr;
+    }
+    if (filter === 'future') {
+      return new Date(m.kickoffUtc).getTime() > now;
+    }
+    if (filter === 'noOdds') {
+      const hasOdds = m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator';
+      return !hasOdds;
+    }
+    if (filter === 'noH2H') {
+      return !m.h2h;
+    }
+    if (filter === 'groups') {
+      return m.phase === 'groups';
+    }
+    if (filter === 'knockouts') {
+      return m.phase !== 'groups';
+    }
+    if (filter === 'error') {
+      const hasOdds = m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator';
+      return !hasOdds || !m.h2h;
+    }
+    return true;
+  });
 
   const handleRefreshSingleOdds = async (matchId: string) => {
     setLoadingMap(prev => ({ ...prev, [matchId]: 'odds' }));
@@ -203,7 +236,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
 
     return (
       <div className="card-base p-4 flex flex-col justify-between border-border-default/60 space-y-2">
-        <div className="flex justify-between items-start">
+        <div className="flex justify-between items-start flex-wrap gap-1">
           <span className="text-[10px] text-text-secondary uppercase font-mono">{name}</span>
           <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
             {badgeText}
@@ -219,9 +252,13 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             <p>Status: {cooldownInfo.lastStatus}</p>
           )}
           {cooldownInfo && cooldownInfo.lastErrorMessage && (
-            <p className="truncate text-red-400/80 text-[9px] font-sans" title={cooldownInfo.lastErrorMessage}>
-              Err: {cooldownInfo.lastErrorMessage}
-            </p>
+            <details className="mt-1 text-[10px] cursor-pointer">
+              <summary className="hover:text-text-primary text-[9px] text-red-400/90 font-mono font-semibold">Ver error</summary>
+              <div className="mt-1 p-1 bg-black/35 rounded border border-border-default/45 font-mono text-[9px] break-words whitespace-pre-wrap max-h-20 overflow-y-auto">
+                <p><strong>Msg:</strong> {cooldownInfo.lastErrorMessage}</p>
+                <p><strong>Hora:</strong> {new Date(cooldownInfo.updatedAt).toLocaleTimeString('es-PE')}</p>
+              </div>
+            </details>
           )}
         </div>
       </div>
@@ -237,19 +274,19 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         {renderProviderStatus('API-Football (H2H)', apiStatus.apiFootball, 'api-football')}
 
         <div className="card-base p-4 flex flex-col justify-between border-border-default/60 space-y-2">
-          <div className="flex justify-between items-start">
-            <span className="text-[10px] text-text-secondary uppercase font-mono">Simulaciones / Visualización</span>
+          <div className="flex justify-between items-start flex-wrap gap-1">
+            <span className="text-[10px] text-text-secondary uppercase font-mono">Datos simulados en Prod</span>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-              oddsDisplayEnabled 
+              apiStatus.simulatedAllowed 
                 ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-                : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                : 'bg-red-500/10 text-red-400 border-red-500/30'
             }`}>
-              {oddsDisplayEnabled ? 'VISUALIZANDO' : 'OCULTAS'}
+              {apiStatus.simulatedAllowed ? 'HABILITADO' : 'BLOQUEADO'}
             </span>
           </div>
           <div className="text-[10px] text-text-secondary font-mono space-y-0.5">
-            <p>Fallback local: {apiStatus.simulatedAllowed ? 'PERMITIDO' : 'BLOQUEADO'}</p>
-            <p>Ref. manual: {oddsManualUserRefreshEnabled ? 'SI' : 'NO'}</p>
+            <p>Simulación: {apiStatus.simulatedAllowed ? 'Permitida (Desarrollo)' : 'Desactivada en producción'}</p>
+            <p>Ref. manual: {oddsManualUserRefreshEnabled ? 'Permitida' : 'Bloqueada'}</p>
           </div>
         </div>
       </div>
@@ -302,13 +339,27 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
       </div>
 
       {(lastOddsError || lastH2hError) && (
-        <div className="card-base p-4 border-red-500/20 bg-red-500/5 space-y-2 text-sm">
-          <h4 className="font-semibold text-red-400 text-xs uppercase tracking-wider font-mono">Últimos Errores de Proveedores</h4>
-          <div className="space-y-1 text-xs text-red-400/90 font-mono">
-            {lastOddsError && <p>Cuotas: {lastOddsError}</p>}
-            {lastH2hError && <p>H2H: {lastH2hError}</p>}
+        <details className="card-base p-4 border-red-500/20 bg-red-500/5 text-sm cursor-pointer group">
+          <summary className="font-semibold text-red-400 text-xs uppercase tracking-wider font-mono flex items-center justify-between">
+            <span>Últimos Errores de Sincronización</span>
+            <span className="text-[10px] text-text-muted group-open:hidden">Expandir para ver</span>
+            <span className="text-[10px] text-text-muted hidden group-open:inline">Colapsar</span>
+          </summary>
+          <div className="mt-2 space-y-2 text-xs text-red-400/90 font-mono border-t border-red-500/10 pt-2 break-all">
+            {lastOddsError && (
+              <div>
+                <span className="font-bold block text-red-300">Error de Cuotas:</span>
+                <p className="pl-2 bg-black/20 p-1.5 rounded">{lastOddsError}</p>
+              </div>
+            )}
+            {lastH2hError && (
+              <div>
+                <span className="font-bold block text-red-300">Error de H2H:</span>
+                <p className="pl-2 bg-black/20 p-1.5 rounded">{lastH2hError}</p>
+              </div>
+            )}
           </div>
-        </div>
+        </details>
       )}
 
       {hasNoRealData && (
@@ -430,120 +481,191 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
 
       {/* Matches Grid */}
       <div className="space-y-4">
-        <h3 className="font-display text-2xl tracking-wide text-text-primary">Estado por Partido</h3>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border-subtle pb-3">
+          <h3 className="font-display text-2xl tracking-wide text-text-primary">Estado por Partido</h3>
+          
+          {/* Client-side Filters */}
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'all', label: 'Todos' },
+              { id: 'today', label: 'Hoy' },
+              { id: 'future', label: 'Futuros' },
+              { id: 'noOdds', label: 'Sin Cuota' },
+              { id: 'noH2H', label: 'Sin H2H' },
+              { id: 'groups', label: 'Grupos' },
+              { id: 'knockouts', label: 'Eliminatorias' },
+              { id: 'error', label: 'Faltantes' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id as 'all' | 'today' | 'future' | 'noOdds' | 'noH2H' | 'groups' | 'knockouts' | 'error')}
+                className={`px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider transition-all border ${
+                  filter === f.id
+                    ? 'bg-gold-500/10 text-gold-400 border-gold-500/40 font-bold'
+                    : 'bg-bg-secondary hover:bg-bg-hover text-text-secondary border-border-default/60 hover:border-gold-500/20'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {matches.map((m) => {
-            const isLoadingOdds = loadingMap[m.id] === 'odds';
-            const isLoadingH2H = loadingMap[m.id] === 'h2h';
-            
-            return (
-              <div key={m.id} className="card-base p-4 flex flex-col justify-between border-border-default/80 hover:border-border-active transition-all">
-                {/* Header */}
-                <div className="flex justify-between items-center text-[10px] font-mono text-text-secondary border-b border-border-subtle pb-2 mb-3">
-                  <span>ID: {m.id} · status: {m.status}</span>
-                  <span>{fmtDate(m.kickoffUtc)} · {fmtTime(m.kickoffUtc)}</span>
-                </div>
+        {filteredMatches.length === 0 ? (
+          <div className="card-base p-8 text-center text-text-muted text-xs italic border-dashed border-border-default/60">
+            No se encontraron partidos para el filtro seleccionado.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredMatches.map((m) => {
+              const isLoadingOdds = loadingMap[m.id] === 'odds';
+              const isLoadingH2H = loadingMap[m.id] === 'h2h';
+              const hasOdds = m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator';
 
-                {/* Team Info Row */}
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <FlagDisc code={m.homeTeamCode} size={24} />
-                    <span className="font-bold text-sm text-text-primary">{m.homeTeamCode}</span>
+              // Calculate implied probabilities if odds exist
+              let homeProb = 0, drawProb = 0, awayProb = 0;
+              if (hasOdds && m.globalOdds) {
+                const homeImplied = 1 / m.globalOdds.homeOdds;
+                const drawImplied = 1 / m.globalOdds.drawOdds;
+                const awayImplied = 1 / m.globalOdds.awayOdds;
+                const sumImplied = homeImplied + drawImplied + awayImplied;
+                if (sumImplied > 0) {
+                  homeProb = (homeImplied / sumImplied) * 100;
+                  drawProb = (drawImplied / sumImplied) * 100;
+                  awayProb = (awayImplied / sumImplied) * 100;
+                }
+              }
+
+              return (
+                <div key={m.id} className="card-base p-4 flex flex-col justify-between border-border-default/80 hover:border-border-active transition-all">
+                  {/* Header */}
+                  <div className="flex justify-between items-center text-[10px] font-mono text-text-secondary border-b border-border-subtle pb-2 mb-3">
+                    <span>ID: {m.id} · status: {m.status}</span>
+                    <span>{fmtDate(m.kickoffUtc)} · {fmtTime(m.kickoffUtc)}</span>
                   </div>
-                  <span className="text-xs text-text-muted font-bold font-mono">VS</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-text-primary">{m.awayTeamCode}</span>
-                    <FlagDisc code={m.awayTeamCode} size={24} />
+
+                  {/* Team Info Row */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <FlagDisc code={m.homeTeamCode} size={24} />
+                      <span className="font-bold text-sm text-text-primary">{m.homeTeamCode}</span>
+                    </div>
+                    <span className="text-xs text-text-muted font-bold font-mono">VS</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-text-primary">{m.awayTeamCode}</span>
+                      <FlagDisc code={m.awayTeamCode} size={24} />
+                    </div>
                   </div>
-                </div>
 
-                {/* Diagnostics Block */}
-                <div className="mt-3 bg-black/25 p-2 rounded-lg border border-border-default/60 text-[10px] font-mono text-text-secondary space-y-1">
-                  <span className="font-semibold text-text-primary text-[11px] block border-b border-border-subtle pb-0.5">Diagnóstico de Tiempo (Admin)</span>
-                  <p>Raw: <span className="text-text-primary">{new Date(m.kickoffUtc).getTime()} (ms)</span></p>
-                  <p>UTC: <span className="text-text-primary">{new Date(m.kickoffUtc).toUTCString()}</span></p>
-                  <p>Lima: <span className="text-text-primary">{new Date(m.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span></p>
-                  <p>Estado: <span className={new Date(m.kickoffUtc).getTime() > now ? "text-green-400 font-bold" : "text-red-400"}>{new Date(m.kickoffUtc).getTime() > now ? "Futuro (Abierto)" : "Pasado (Cerrado)"}</span></p>
-                </div>
+                  {/* Diagnostics Block */}
+                  <div className="mt-3 bg-black/25 p-2 rounded-lg border border-border-default/60 text-[10px] font-mono text-text-secondary space-y-1">
+                    <span className="font-semibold text-text-primary text-[11px] block border-b border-border-subtle pb-0.5">Diagnóstico de Tiempo (Admin)</span>
+                    <p>Raw: <span className="text-text-primary">{new Date(m.kickoffUtc).getTime()} (ms)</span></p>
+                    <p>UTC: <span className="text-text-primary">{new Date(m.kickoffUtc).toUTCString()}</span></p>
+                    <p>Lima: <span className="text-text-primary">{new Date(m.kickoffUtc).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span></p>
+                    <p>Estado: <span className={new Date(m.kickoffUtc).getTime() > now ? "text-green-400 font-bold" : "text-red-400"}>{new Date(m.kickoffUtc).getTime() > now ? "Futuro (Abierto)" : "Pasado (Cerrado)"}</span></p>
+                  </div>
 
-                {/* Odds Status Area */}
-                {(() => {
-                  const hasOdds = m.globalOdds && m.globalOdds.bookmaker !== 'LaPolla 2026 Simulator';
-                  return (
-                    <div className="mt-3 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-text-secondary flex items-center gap-1">
-                          <BarChart2 className="w-3.5 h-3.5 text-gold-400" />
-                          Cuotas Globales:
+                  {/* Odds Status Area */}
+                  <div className="mt-3 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-text-secondary flex items-center gap-1">
+                        <BarChart2 className="w-3.5 h-3.5 text-gold-400" />
+                        Cuotas Globales:
+                      </span>
+                      {hasOdds && m.globalOdds ? (
+                        <span className="text-[9px] text-text-muted font-mono">
+                          Hace {Math.max(1, Math.round((now - new Date(m.globalOdds.capturedAt).getTime()) / 60000))}m ({m.globalOdds.bookmaker})
                         </span>
-                        {hasOdds ? (
-                          <span className="text-[9px] text-text-muted font-mono">
-                            Hace {Math.max(1, Math.round((now - new Date(m.globalOdds!.capturedAt).getTime()) / 60000))}m ({m.globalOdds!.bookmaker})
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
-                        )}
-                      </div>
-                      {hasOdds ? (
-                        <div className="font-mono flex gap-4 text-text-primary">
-                          <span>L: <strong className="text-gold-400">{m.globalOdds!.homeOdds.toFixed(2)}</strong></span>
-                          <span>E: <strong className="text-gold-400">{m.globalOdds!.drawOdds.toFixed(2)}</strong></span>
-                          <span>V: <strong className="text-gold-400">{m.globalOdds!.awayOdds.toFixed(2)}</strong></span>
-                        </div>
                       ) : (
-                        <p className="text-text-muted text-[10px] italic">No hay registros globales para este partido.</p>
+                        <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
                       )}
                     </div>
-                  );
-                })()}
-
-                {/* H2H Status Area */}
-                <div className="mt-2 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-text-secondary flex items-center gap-1">
-                      <History className="w-3.5 h-3.5 text-gold-400" />
-                      Estadísticas Históricas:
-                    </span>
-                    {!m.h2h && (
-                      <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
+                    {hasOdds && m.globalOdds ? (
+                      <div className="space-y-2">
+                        <div className="font-mono flex gap-4 text-text-primary">
+                          <span>L: <strong className="text-gold-400">{m.globalOdds.homeOdds.toFixed(2)}</strong></span>
+                          <span>E: <strong className="text-gold-400">{m.globalOdds.drawOdds.toFixed(2)}</strong></span>
+                          <span>V: <strong className="text-gold-400">{m.globalOdds.awayOdds.toFixed(2)}</strong></span>
+                        </div>
+                        {/* Implied Probability Stacked Bar */}
+                        <div className="space-y-1 pt-1 border-t border-border-subtle/30">
+                          <div className="flex justify-between text-[9px] text-text-muted font-mono">
+                            <span>Probabilidad:</span>
+                            <span>{homeProb.toFixed(0)}% / {drawProb.toFixed(0)}% / {awayProb.toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40">
+                            <div 
+                              className="h-full bg-blue-500" 
+                              style={{ width: `${homeProb}%` }} 
+                              title={`Local: ${homeProb.toFixed(1)}%`} 
+                            />
+                            <div 
+                              className="h-full bg-yellow-500" 
+                              style={{ width: `${drawProb}%` }} 
+                              title={`Empate: ${drawProb.toFixed(1)}%`} 
+                            />
+                            <div 
+                              className="h-full bg-red-500" 
+                              style={{ width: `${awayProb}%` }} 
+                              title={`Visitante: ${awayProb.toFixed(1)}%`} 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-text-muted text-[10px] italic">No hay registros globales para este partido.</p>
                     )}
                   </div>
-                  {m.h2h ? (
-                    <p className="font-mono text-text-primary">
-                      Jugados: <strong className="text-text-primary">{m.h2h.totalMatches}</strong> (L: {m.h2h.homeWins} - E: {m.h2h.draws} - V: {m.h2h.awayWins})
-                    </p>
-                  ) : (
-                    <p className="text-text-muted text-[10px] italic">No hay registros H2H para este partido.</p>
-                  )}
-                </div>
 
-                {/* Single Match Actions */}
-                <div className="mt-4 pt-3 border-t border-border-subtle/40 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleRefreshSingleOdds(m.id)}
-                    disabled={isLoadingOdds || globalLoading !== null}
-                    className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isLoadingOdds ? 'animate-spin' : ''}`} />
-                    {m.globalOdds ? 'Refrescar cuotas' : 'Buscar cuotas'}
-                  </button>
+                  {/* H2H Status Area */}
+                  <div className="mt-2 bg-black/15 p-2 rounded-lg border border-border-subtle/50 text-[11px] space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-text-secondary flex items-center gap-1">
+                        <History className="w-3.5 h-3.5 text-gold-400" />
+                        Estadísticas Históricas:
+                      </span>
+                      {!m.h2h && (
+                        <span className="text-[9px] text-red-400 font-mono">Falta Snapshot</span>
+                      )}
+                    </div>
+                    {m.h2h ? (
+                      <p className="font-mono text-text-primary">
+                        Jugados: <strong className="text-text-primary">{m.h2h.totalMatches}</strong> (L: {m.h2h.homeWins} - E: {m.h2h.draws} - V: {m.h2h.awayWins})
+                      </p>
+                    ) : (
+                      <p className="text-text-muted text-[10px] italic">No hay registros H2H para este partido.</p>
+                    )}
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleRefreshSingleH2H(m.id)}
-                    disabled={isLoadingH2H || globalLoading !== null}
-                    className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
-                  >
-                    <History className={`w-3 h-3 ${isLoadingH2H ? 'animate-spin' : ''}`} />
-                    {m.h2h ? 'Refrescar H2H' : 'Buscar H2H'}
-                  </button>
+                  {/* Single Match Actions */}
+                  <div className="mt-4 pt-3 border-t border-border-subtle/40 flex justify-end gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshSingleOdds(m.id)}
+                      disabled={isLoadingOdds || globalLoading !== null}
+                      className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isLoadingOdds ? 'animate-spin' : ''}`} />
+                      {m.globalOdds ? 'Refrescar cuotas' : 'Buscar cuotas'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshSingleH2H(m.id)}
+                      disabled={isLoadingH2H || globalLoading !== null}
+                      className="px-2.5 py-1 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-[10px] font-mono rounded transition-colors flex items-center gap-1 text-text-primary disabled:opacity-50"
+                    >
+                      <History className={`w-3 h-3 ${isLoadingH2H ? 'animate-spin' : ''}`} />
+                      {m.h2h ? 'Refrescar H2H' : 'Buscar H2H'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

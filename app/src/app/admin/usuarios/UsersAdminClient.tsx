@@ -1,9 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { toggleUserSuperadminAction, updateUserStatusAction, adminCreateUserAction } from '../../../lib/actions/admin';
+import { 
+  toggleUserSuperadminAction, 
+  updateUserStatusAction, 
+  adminCreateUserAction,
+  adminUpdateUserAction,
+  adminResetUserChampionAction
+} from '../../../lib/actions/admin';
 import { useRouter } from 'next/navigation';
-import { Plus, X, Search, UserCheck, Shield, AlertTriangle, Play, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Plus, X, Search, UserCheck, Shield, AlertTriangle, Play, RefreshCw, Eye, EyeOff, Edit2, ShieldAlert } from 'lucide-react';
 
 interface UserFromDB {
   id: string;
@@ -15,9 +21,22 @@ interface UserFromDB {
   whatsapp: string | null;
   isSuperadmin: boolean;
   createdAt: Date;
+  remindersEnabled?: boolean;
+  emailRemindersEnabled?: boolean;
   memberships?: {
     league: {
       id: string;
+      name: string;
+    };
+  }[];
+  winnerPredictions?: {
+    leagueId: string;
+    teamCode: string;
+    league: {
+      id: string;
+      name: string;
+    };
+    team: {
       name: string;
     };
   }[];
@@ -38,10 +57,89 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
   const [newStatus, setNewStatus] = useState('approved');
   const [showPassword, setShowPassword] = useState(false);
 
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserFromDB | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [editIsSuperadmin, setEditIsSuperadmin] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [editReminders, setEditReminders] = useState(false);
+  const [editEmailReminders, setEditEmailReminders] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const handleStartEditUser = (user: UserFromDB) => {
+    setSelectedUser(user);
+    setEditName(user.name || '');
+    setEditUsername(user.username || '');
+    setEditEmail(user.email || '');
+    setEditWhatsapp(user.whatsapp || '');
+    setEditStatus(user.status || 'pending');
+    setEditIsSuperadmin(user.isSuperadmin || false);
+    setEditPassword('');
+    setEditReminders(user.remindersEnabled || false);
+    setEditEmailReminders(user.emailRemindersEnabled || false);
+    setShowEditModal(true);
+  };
+
+  const handleEditUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    setActionLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const res = await adminUpdateUserAction(selectedUser.id, {
+      name: editName,
+      username: editUsername,
+      email: editEmail,
+      whatsapp: editWhatsapp,
+      status: editStatus,
+      isSuperadmin: editIsSuperadmin,
+      passwordText: editPassword || undefined,
+      remindersEnabled: editReminders,
+      emailRemindersEnabled: editEmailReminders,
+    });
+
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      setSuccess('Usuario actualizado con éxito.');
+      setShowEditModal(false);
+      setActionLoading(false);
+      router.refresh();
+    }
+  };
+
+  const handleResetChampion = async (leagueId: string, leagueName: string) => {
+    if (!selectedUser) return;
+    const reason = prompt(`¿Estás seguro de restablecer la predicción de campeón de ${selectedUser.name} en la liga "${leagueName}"? Ingrese el motivo (se registrará en el historial):`);
+    if (reason === null) return; // Cancelled
+    
+    setActionLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const res = await adminResetUserChampionAction(selectedUser.id, leagueId, reason);
+
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      setSuccess('Predicción de campeón restablecida con éxito.');
+      setShowEditModal(false);
+      setActionLoading(false);
+      router.refresh();
+    }
+  };
 
   const handleToggleSuperadmin = async (userId: string, currentVal: boolean) => {
     const actionLabel = currentVal ? 'quitar' : 'dar';
@@ -288,6 +386,14 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                       </span>
                     </td>
                     <td className="p-3 text-right space-x-1.5">
+                      <button
+                        onClick={() => handleStartEditUser(user)}
+                        disabled={isLoading}
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-bg-secondary border-border-default text-text-primary hover:bg-bg-hover transition-colors"
+                      >
+                        Editar
+                      </button>
+
                       {!isYou && (
                         <>
                           {/* Approval / Rejection controls */}
@@ -469,6 +575,189 @@ export default function UsersAdminClient({ users, currentUserId }: { users: User
                   className="btn-gold py-2 px-5 text-xs uppercase font-mono"
                 >
                   {actionLoading ? 'Registrando...' : 'Registrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="card-base p-6 max-w-xl w-full border-border-active space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setShowEditModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Editar Usuario</h3>
+              <p className="text-xs text-text-secondary">Modifica los datos del usuario y gestiona su participación.</p>
+            </div>
+
+            <form onSubmit={handleEditUserSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Full Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="field py-1.5 px-3 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* Username */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
+                  <input
+                    type="text"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    className="field py-1.5 px-3 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Correo</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="field py-1.5 px-3 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* WhatsApp */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={editWhatsapp}
+                    onChange={(e) => setEditWhatsapp(e.target.value)}
+                    className="field py-1.5 px-3 text-xs"
+                  />
+                </div>
+
+                {/* Status select */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Estado</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border"
+                  >
+                    <option value="approved">Aprobado</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="rejected">Rechazado</option>
+                    <option value="disabled">Desactivado</option>
+                  </select>
+                </div>
+
+                {/* Password Reset */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Restablecer Contraseña (Opcional)</label>
+                  <div className="relative">
+                    <input
+                      type={showEditPassword ? 'text' : 'password'}
+                      placeholder="Nueva contraseña"
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      className="field py-1.5 pl-3 pr-10 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPassword(!showEditPassword)}
+                      className="absolute right-3 top-2 text-text-muted hover:text-text-primary"
+                    >
+                      {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggles */}
+              <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+                <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Permisos y Recordatorios</span>
+                
+                <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={editIsSuperadmin}
+                    onChange={(e) => setEditIsSuperadmin(e.target.checked)}
+                    className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
+                  />
+                  <span>Es Superadministrador Global</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={editReminders}
+                    onChange={(e) => setEditReminders(e.target.checked)}
+                    className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
+                  />
+                  <span>Habilitar Recordatorios en su perfil</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={editEmailReminders}
+                    onChange={(e) => setEditEmailReminders(e.target.checked)}
+                    className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
+                  />
+                  <span>Habilitar Alertas por Email</span>
+                </label>
+              </div>
+
+              {/* Winner Predictions / Champion Selection Reset */}
+              {selectedUser.winnerPredictions && selectedUser.winnerPredictions.length > 0 && (
+                <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs">
+                  <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Predicción de Campeón</span>
+                  <div className="space-y-2">
+                    {selectedUser.winnerPredictions.map((wp) => (
+                      <div key={wp.leagueId} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
+                        <div className="text-left">
+                          <p className="font-semibold text-text-primary">{wp.league.name}</p>
+                          <p className="text-[10px] text-text-muted">Seleccionado: <strong className="text-gold">{wp.team.name} ({wp.teamCode})</strong></p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleResetChampion(wp.leagueId, wp.league.name)}
+                          className="px-2 py-1 text-[9px] font-mono uppercase font-bold text-red-400 hover:text-red-300 border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 rounded transition-all"
+                        >
+                          Restablecer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="btn-gold py-2 px-5 text-xs uppercase font-mono"
+                >
+                  {actionLoading ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
               </div>
             </form>

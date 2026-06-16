@@ -92,6 +92,8 @@ export default async function AdminOddsPage() {
     awayTeamName: m.awayTeam.name,
     kickoffUtc: m.kickoffUtc.toISOString(),
     status: m.status,
+    group: m.group,
+    phase: m.phase,
     globalOdds: globalOddsMap[m.id] || null,
     h2h: m.h2hSnapshot
       ? {

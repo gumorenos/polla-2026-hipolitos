@@ -54,7 +54,7 @@ interface ApiFootballFixture {
 }
 
 // Static dictionary mapping FIFA 3-letter codes to API-Football team IDs
-const FIFA_TO_APIFOOTBALL_IDS: Record<string, number> = {
+export const FIFA_TO_APIFOOTBALL_IDS: Record<string, number> = {
   ARG: 26,   // Argentina
   BRA: 6,    // Brazil
   FRA: 2,    // France
@@ -147,7 +147,7 @@ export function generateSimulatedH2H(homeCode: string, awayCode: string): HeadTo
 }
 
 // Dynamically look up an API-Football team ID using team code
-async function lookupTeamId(code: string, apiKey: string): Promise<number | null> {
+export async function lookupTeamId(code: string, apiKey: string): Promise<number | null> {
   try {
     const url = `https://v3.football.api-sports.io/teams?code=${code}`;
     const res = await fetchWithTimeout(url, {
@@ -296,53 +296,67 @@ export async function getHeadToHeadStats(matchId: string, bypassCooldown = false
     }
 
     const fixtures = data.response as ApiFootballFixture[];
-    const totalMatches = fixtures.length;
+    
+    // Parse fixtures relative to homeId
+    const parsedFixtures = fixtures.map((f) => {
+      const isHomeTeamFixture = f.teams.home.id === homeId;
+      const goalsHome = f.goals.home ?? 0;
+      const goalsAway = f.goals.away ?? 0;
+      const relativeHomeGoals = isHomeTeamFixture ? goalsHome : goalsAway;
+      const relativeAwayGoals = isHomeTeamFixture ? goalsAway : goalsHome;
+      
+      const dateObj = new Date(f.fixture.date);
+      const year = dateObj.getFullYear();
+
+      return {
+        date: f.fixture.date.split('T')[0],
+        timestamp: dateObj.getTime(),
+        year,
+        competition: f.league.name || 'International',
+        homeScore: relativeHomeGoals,
+        awayScore: relativeAwayGoals,
+        homeTeam: match.homeTeamCode,
+        awayTeam: match.awayTeamCode,
+      };
+    });
+
+    // Sort descending by date (latest first)
+    parsedFixtures.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Apply H2H rules: prefer direct match history from 2010 onward (up to 5)
+    // If fewer than 5 exist from 2010 onward, display latest 5 regardless of age.
+    const matchesFrom2010 = parsedFixtures.filter((f) => f.year >= 2010);
+    
+    let selectedFixtures: typeof parsedFixtures = [];
+    if (matchesFrom2010.length >= 5) {
+      selectedFixtures = matchesFrom2010.slice(0, 5);
+    } else {
+      selectedFixtures = parsedFixtures.slice(0, 5);
+    }
+
+    const totalMatches = selectedFixtures.length;
     let homeWins = 0;
     let awayWins = 0;
     let draws = 0;
     let homeGoals = 0;
     let awayGoals = 0;
 
-    const lastMatches: HeadToHeadStats['lastMatches'] = [];
-
-    // Analyze the historical match response
-    fixtures.forEach((f) => {
-      const isHomeTeamFixture = f.teams.home.id === homeId;
-      const isAwayTeamFixture = f.teams.away.id === homeId;
-
-      const goalsHome = f.goals.home ?? 0;
-      const goalsAway = f.goals.away ?? 0;
-
-      // Calculate goals for our relative "Home Team" (match.homeTeamCode)
-      const relativeHomeGoals = isHomeTeamFixture ? goalsHome : goalsAway;
-      const relativeAwayGoals = isHomeTeamFixture ? goalsAway : goalsHome;
-
-      homeGoals += relativeHomeGoals;
-      awayGoals += relativeAwayGoals;
-
-      // Calculate wins
-      if (f.teams.home.winner === true) {
-        if (isHomeTeamFixture) homeWins++;
-        else awayWins++;
-      } else if (f.teams.away.winner === true) {
-        if (isAwayTeamFixture) homeWins++;
-        else awayWins++;
-      } else {
-        draws++;
-      }
-
-      // Add to lastMatches (limited to 5 for UI performance)
-      if (lastMatches.length < 5) {
-        lastMatches.push({
-          date: f.fixture.date.split('T')[0],
-          competition: f.league.name || 'International',
-          homeScore: relativeHomeGoals,
-          awayScore: relativeAwayGoals,
-          homeTeam: match.homeTeamCode,
-          awayTeam: match.awayTeamCode,
-        });
-      }
+    selectedFixtures.forEach((f) => {
+      homeGoals += f.homeScore;
+      awayGoals += f.awayScore;
+      if (f.homeScore > f.awayScore) homeWins++;
+      else if (f.awayScore > f.homeScore) awayWins++;
+      else draws++;
     });
+
+    const lastMatches = selectedFixtures.map(f => ({
+      date: f.date,
+      competition: f.competition,
+      homeScore: f.homeScore,
+      awayScore: f.awayScore,
+      homeTeam: f.homeTeam,
+      awayTeam: f.awayTeam,
+    }));
 
     setLastH2hError(null);
     await setProviderCooldown('api-football', 0, 200, null); // Clear cooldown

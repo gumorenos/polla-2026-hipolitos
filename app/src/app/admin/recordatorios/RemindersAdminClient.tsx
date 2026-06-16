@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Mail, Settings, AlertCircle, CheckCircle2, XCircle, ArrowLeft, RefreshCw, ShieldAlert, Award } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { updateAppSettingAction } from '../../../lib/actions/admin';
 
 interface LogData {
   id: string;
@@ -35,6 +36,8 @@ interface RemindersAdminClientProps {
   config: {
     remindersEnabled: boolean;
     emailRemindersEnabled: boolean;
+    dbRemindersEnabled: boolean;
+    dbEmailRemindersEnabled: boolean;
     hasResendKey: boolean;
     fromEmail: string;
   };
@@ -63,6 +66,31 @@ function maskEmail(email: string): string {
 export const RemindersAdminClient: React.FC<RemindersAdminClientProps> = ({ config, stats, logs }) => {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [remindersGlobally, setRemindersGlobally] = useState(config.dbRemindersEnabled);
+  const [emailRemindersGlobally, setEmailRemindersGlobally] = useState(config.dbEmailRemindersEnabled);
+  const [toggling, setToggling] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const handleToggleSetting = async (key: 'remindersGloballyEnabled' | 'emailRemindersGloballyEnabled', checked: boolean) => {
+    setToggling(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    const value = checked ? 'true' : 'false';
+    const res = await updateAppSettingAction(key, value);
+    if (res.error) {
+      setErrorMsg(res.error);
+    } else {
+      if (key === 'remindersGloballyEnabled') {
+        setRemindersGlobally(checked);
+      } else {
+        setEmailRemindersGlobally(checked);
+      }
+      setSuccessMsg('Configuración operativa actualizada en la base de datos');
+      router.refresh();
+    }
+    setToggling(false);
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -176,6 +204,70 @@ export const RemindersAdminClient: React.FC<RemindersAdminClientProps> = ({ conf
           ) : (
             <ShieldAlert className="w-6 h-6 text-red-500 shrink-0" />
           )}
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="text-xs text-red-400 bg-red-400/15 border border-red-500/30 p-3 rounded-lg flex items-start gap-2 animate-[slideUp_0.2s_ease-out]">
+          <AlertCircle className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="text-xs text-green-400 bg-green-400/15 border border-green-500/30 p-3 rounded-lg flex items-start gap-2 animate-[slideUp_0.2s_ease-out]">
+          <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {/* Settings Switches */}
+      <div className="card-base p-5 border-border-default/60 space-y-4">
+        <h4 className="font-semibold text-sm text-gold-400 uppercase tracking-wider font-mono">
+          Interruptores Operativos (Base de Datos)
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex items-center justify-between p-4 bg-bg-secondary rounded-xl border border-border-default/80">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-text-primary block">
+                Recordatorios Globales
+              </span>
+              <span className="text-[10px] text-text-secondary">
+                Activa o desactiva de forma absoluta todo el sistema de recordatorios.
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remindersGlobally}
+                disabled={toggling}
+                onChange={(e) => handleToggleSetting('remindersGloballyEnabled', e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-border-default rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-text-secondary after:border-border-default after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold peer-checked:after:bg-background"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-bg-secondary rounded-xl border border-border-default/80">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-text-primary block">
+                Recordatorios por Email
+              </span>
+              <span className="text-[10px] text-text-secondary">
+                Permite o bloquea el envío de correos recordatorios salientes.
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={emailRemindersGlobally}
+                disabled={toggling}
+                onChange={(e) => handleToggleSetting('emailRemindersGloballyEnabled', e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-border-default rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-text-secondary after:border-border-default after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold peer-checked:after:bg-background"></div>
+            </label>
+          </div>
         </div>
       </div>
 

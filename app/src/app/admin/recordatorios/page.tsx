@@ -131,9 +131,20 @@ export default async function AdminRemindersPage() {
   }));
 
   // 3. Configurations
+  const settings = await prisma.appSettings.findMany();
+  const settingsMap = settings.reduce((acc, s) => {
+    acc[s.key] = s.value;
+    return acc;
+  }, {} as Record<string, string>);
+
+  const dbRemindersEnabled = settingsMap['remindersGloballyEnabled'] !== 'false';
+  const dbEmailRemindersEnabled = settingsMap['emailRemindersGloballyEnabled'] !== 'false';
+
   const config = {
-    remindersEnabled: process.env.REMINDERS_ENABLED === 'true',
-    emailRemindersEnabled: process.env.EMAIL_REMINDERS_ENABLED === 'true',
+    remindersEnabled: process.env.REMINDERS_ENABLED === 'true' && dbRemindersEnabled,
+    emailRemindersEnabled: process.env.EMAIL_REMINDERS_ENABLED === 'true' && dbEmailRemindersEnabled,
+    dbRemindersEnabled,
+    dbEmailRemindersEnabled,
     hasResendKey: !!process.env.RESEND_API_KEY,
     fromEmail: process.env.EMAIL_FROM || 'La Polla Hipólitos <no-reply@todoestaaca.com>',
   };

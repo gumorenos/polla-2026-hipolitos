@@ -127,6 +127,19 @@ model Match {
   venue        String
   city         String
 
+  // Knockout & Results details
+  resultStatus            String?   // "scheduled" | "closed_pending_result" | "final" | "postponed" | "cancelled"
+  winnerTeamCode          String?
+  wentToExtraTime         Boolean   @default(false)
+  wentToPenalties         Boolean   @default(false)
+  homePenaltyScore        Int?
+  awayPenaltyScore        Int?
+  resultSource            String?   // e.g. "api-football"
+  resultFetchedAt         DateTime?
+  resultUpdatedAt         DateTime?
+  resultVerifiedById      String?
+  resultNotes             String?
+
   homeTeam Team @relation("HomeTeamMatches", fields: [homeTeamCode], references: [code])
   awayTeam Team @relation("AwayTeamMatches", fields: [awayTeamCode], references: [code])
 
@@ -165,6 +178,7 @@ model League {
   pointsConsolation Int                @default(1)
   showOdds          Boolean            @default(true)
   championTeamCode  String?
+  knockoutOutcomeBasis String            @default("qualified_team") // "qualified_team" | "score_result"
 
   owner             User               @relation("OwnedLeagues", fields: [createdBy], references: [id])
   members           LeagueMember[]
@@ -390,6 +404,15 @@ model ProviderStatus {
   updatedAt        DateTime @updatedAt
 
   @@map("provider_status")
+}
+
+model AppSettings {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@map("app_settings")
 }
 
 

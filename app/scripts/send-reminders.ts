@@ -75,6 +75,26 @@ async function main() {
     process.exit(0);
   }
 
+  // Check database operational settings
+  const dbSettings = await prisma.appSettings.findMany();
+  const settingsMap = dbSettings.reduce((acc, s) => {
+    acc[s.key] = s.value;
+    return acc;
+  }, {} as Record<string, string>);
+
+  const dbRemindersEnabled = settingsMap['remindersGloballyEnabled'] !== 'false';
+  const dbEmailRemindersEnabled = settingsMap['emailRemindersGloballyEnabled'] !== 'false';
+
+  if (!dbRemindersEnabled) {
+    console.log('Reminders system is globally disabled in database settings (remindersGloballyEnabled = false). Exiting safely.');
+    process.exit(0);
+  }
+
+  if (!dbEmailRemindersEnabled) {
+    console.log('Email reminders are globally disabled in database settings (emailRemindersGloballyEnabled = false). Exiting safely.');
+    process.exit(0);
+  }
+
   const reminderMinutes = parseInt(process.env.REMINDER_MINUTES_BEFORE_DEADLINE || '30');
   const appUrl = process.env.APP_URL || 'https://pollahipolitos.todoestaaca.com';
   const batchLimit = parseInt(process.env.REMINDERS_BATCH_LIMIT || '50');

@@ -17,6 +17,8 @@
     "odds:refresh-match": "tsx scripts/refresh-odds.ts",
     "h2h:fetch-missing": "tsx scripts/fetch-h2h.ts",
     "h2h:fetch-match": "tsx scripts/fetch-h2h.ts",
+    "results:fetch-due": "tsx scripts/fetch-results.ts",
+    "results:fetch-match": "tsx scripts/fetch-results.ts",
     "odds:cleanup-simulated": "tsx scripts/cleanup-simulated.ts",
     "odds:diagnose": "tsx scripts/diagnose-odds.ts",
     "reminders:send-due": "tsx scripts/send-reminders.ts",

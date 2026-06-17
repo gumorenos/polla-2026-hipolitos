@@ -91,6 +91,18 @@ interface PronosticosClientProps {
 type PhaseFilter = 'all' | 'groups' | 'knockout';
 type StateFilter = 'all' | 'pending' | 'predicted' | 'locked';
 
+function getActionError(result: unknown): string | null {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'error' in result &&
+    typeof (result as { error?: unknown }).error === 'string'
+  ) {
+    return (result as { error: string }).error;
+  }
+  return null;
+}
+
 export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   matches,
   predictions,
@@ -203,8 +215,9 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     const res = isChampionSurvivor
       ? await submitChampionPick(activeLeagueId, teamCode)
       : await saveWinnerPredictionAction(activeLeagueId, teamCode);
-    if (res.error) {
-      setWinnerError(res.error);
+    const actionError = getActionError(res);
+    if (actionError) {
+      setWinnerError(actionError);
     } else {
       setWinnerSuccess(isCorrectionActive ? 'Corrección de campeón guardada exitosamente.' : 'Campeón guardado exitosamente.');
       setLocalWinners(prev => ({

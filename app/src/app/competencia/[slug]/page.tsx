@@ -1,1 +1,3 @@
-export { default, dynamic } from '../../liga/[slug]/page';
+export const dynamic = 'force-dynamic';
+
+export { default } from '../../liga/[slug]/page';

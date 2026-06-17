@@ -261,7 +261,7 @@ export default function UsersAdminClient({
     }, reason);
 
     if ('error' in res) {
-      setError(res.error);
+      setError(res.error ?? 'No se pudo guardar el usuario.');
       setActionLoading(false);
     } else {
       setSuccess('Usuario actualizado con éxito.');
@@ -293,7 +293,7 @@ export default function UsersAdminClient({
     const res = await adminResetUserChampionAction(selectedUser.id, leagueId, reason);
 
     if ('error' in res) {
-      setError(res.error);
+      setError(res.error ?? 'No se pudo restablecer la predicción de campeón.');
       setActionLoading(false);
     } else {
       setSuccess('Predicción de campeón restablecida con éxito.');
@@ -323,7 +323,7 @@ export default function UsersAdminClient({
     const res = await updateUserStatusAction(userId, targetStatus, reason);
 
     if (res.error) {
-      setError(res.error);
+      setError(res.error ?? 'No se pudo actualizar el estado del usuario.');
     } else {
       setSuccess(`Usuario ${actionLabel}do correctamente`);
       setUserList((currentUsers) =>
@@ -357,7 +357,7 @@ export default function UsersAdminClient({
     });
 
     if ('error' in res) {
-      setError(res.error);
+      setError(res.error ?? 'No se pudo crear el usuario.');
       setActionLoading(false);
     } else {
       setSuccess('Usuario creado exitosamente.');

@@ -238,7 +238,7 @@ export async function recalculateAllStandings() {
 
   for (const league of leagues) {
     const members = await prisma.leagueMember.findMany({
-      where: { leagueId: league.id },
+      where: { leagueId: league.id, isParticipant: true },
       include: {
         user: true,
       }

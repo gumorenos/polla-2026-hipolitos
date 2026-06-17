@@ -68,7 +68,7 @@ export default async function LigaDetallePage({
 
   if (!membership && !isSuperadmin) {
     // Redirect unauthorized users to the main leagues dashboard
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   const currentUserRole = membership ? membership.role : null;
@@ -155,10 +155,11 @@ export default async function LigaDetallePage({
     inviteCode: league.inviteCode,
     status: league.status,
     createdBy: league.createdBy,
+    competitionType: league.competitionType,
     entryFee: league.entryFee,
     currency: league.currency,
     prizePoolOverride: league.prizePoolOverride ?? null,
-    memberCount: members.filter(m => m.user.status === 'approved').length,
+    memberCount: members.filter(m => m.isParticipant && m.user.status === 'approved').length,
   };
 
   const canSeeContactInfo = isSuperadmin || currentUserRole === 'admin' || currentUserRole === 'owner';
@@ -169,6 +170,7 @@ export default async function LigaDetallePage({
       id: m.id,
       userId: m.userId,
       role: m.role,
+      isParticipant: m.isParticipant,
       joinedAt: m.joinedAt.toISOString(),
       user: {
         id: m.user.id,

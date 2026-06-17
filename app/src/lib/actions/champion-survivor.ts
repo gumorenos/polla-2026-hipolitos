@@ -110,7 +110,7 @@ async function buildChampionSurvivorEntries(leagueId: string) {
   const [leagueResult, members, picks, teamStatuses] = await Promise.all([
     prisma.league.findUnique({ where: { id: leagueId } }),
     prisma.leagueMember.findMany({
-      where: { leagueId, user: { status: 'approved' } },
+      where: { leagueId, isParticipant: true, user: { status: 'approved' } },
       include: { user: true },
       orderBy: { joinedAt: 'asc' },
     }),
@@ -219,8 +219,8 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
     where: { leagueId_userId: { leagueId, userId } },
   });
 
-  if (!membership) {
-    return { error: 'No eres miembro registrado en esta polla.' };
+  if (!membership || !membership.isParticipant) {
+    return { error: 'Debes estar inscrito como participante para elegir campeón.' };
   }
 
   const [pick, teams, teamStatuses, approvedMembersCount] = await Promise.all([
@@ -230,7 +230,7 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
     }),
     prisma.team.findMany({ orderBy: { name: 'asc' } }),
     prisma.teamTournamentStatus.findMany({ where: { leagueId } }),
-    prisma.leagueMember.count({ where: { leagueId, user: { status: 'approved' } } }),
+    prisma.leagueMember.count({ where: { leagueId, isParticipant: true, user: { status: 'approved' } } }),
   ]);
 
   const prizePool = calculatePrizePool(leagueResult.league, approvedMembersCount);
@@ -328,6 +328,7 @@ export async function submitChampionPick(leagueId: string, teamCode: string): Ac
 
   revalidatePath('/pronosticos');
   revalidatePath('/liga');
+  revalidatePath('/competencia');
   revalidatePath('/ranking');
 
   return {
@@ -401,7 +402,7 @@ export async function adminChangeChampionPick(
     }),
   ]);
 
-  if (!targetMembership || targetUser?.status !== 'approved') {
+  if (!targetMembership || !targetMembership.isParticipant || targetUser?.status !== 'approved') {
     return { error: 'El usuario objetivo debe ser participante aprobado de esta polla.' };
   }
   if (!team) return { error: 'La selección elegida no existe.' };
@@ -448,6 +449,7 @@ export async function adminChangeChampionPick(
 
   revalidatePath('/admin');
   revalidatePath('/liga');
+  revalidatePath('/competencia');
   revalidatePath('/ranking');
 
   return { success: true, data: pick };
@@ -500,6 +502,7 @@ export async function adminResetChampionPick(
 
   revalidatePath('/admin');
   revalidatePath('/liga');
+  revalidatePath('/competencia');
   revalidatePath('/ranking');
 
   return { success: true, data: { reset: true } };
@@ -566,6 +569,7 @@ export async function adminSetTeamTournamentStatus(
 
   revalidatePath('/admin');
   revalidatePath('/liga');
+  revalidatePath('/competencia');
   revalidatePath('/ranking');
 
   return { success: true, data: updated };
@@ -621,6 +625,7 @@ export async function adminCreateChampionOddsSnapshot(
 
   revalidatePath('/admin');
   revalidatePath('/liga');
+  revalidatePath('/competencia');
   revalidatePath('/ranking');
 
   return { success: true, data: snapshot };

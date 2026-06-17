@@ -43,6 +43,7 @@ interface MemberData {
   id: string;
   userId: string;
   role: string;
+  isParticipant: boolean;
   joinedAt: string;
   user: MemberUser;
 }
@@ -71,6 +72,7 @@ interface LigaDetalleClientProps {
     inviteCode: string;
     status: string;
     createdBy: string;
+    competitionType: string;
     entryFee?: number;
     currency?: string;
     prizePoolOverride?: number | null;
@@ -208,7 +210,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
   const handleArchiveLeague = async () => {
     const isArchived = league.status === 'archived';
     const actionLabel = isArchived ? 'activar' : 'archivar';
-    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} esta liga?`)) {
+    if (!confirm(`¿Estás seguro de que deseas ${actionLabel} esta competencia?`)) {
       return;
     }
 
@@ -224,7 +226,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
   };
 
   const handleDeleteLeague = async () => {
-    if (!confirm('¡ADVERTENCIA! Esta acción eliminará permanentemente la liga y todos sus miembros/predicciones. ¿Estás seguro?')) {
+    if (!confirm('¡ADVERTENCIA! Esta acción eliminará permanentemente la competencia y todos sus miembros/predicciones. ¿Estás seguro?')) {
       return;
     }
 
@@ -235,7 +237,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
     if (res.error) {
       alert(res.error);
     } else {
-      router.push('/liga');
+      router.push('/competencia');
     }
   };
 
@@ -244,8 +246,8 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
       <div className="space-y-6">
         {/* Back Link and Header */}
         <div className="space-y-4 pt-2">
-          <Link href="/liga" className="text-xs text-text-secondary hover:text-gold-400 flex items-center gap-1.5 w-fit">
-            <ArrowLeft className="w-4 h-4" /> Volver a ligas
+          <Link href="/competencia" className="text-xs text-text-secondary hover:text-gold-400 flex items-center gap-1.5 w-fit">
+            <ArrowLeft className="w-4 h-4" /> Volver a competencias
           </Link>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -263,11 +265,11 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
               <div className="flex items-center gap-4 text-xs text-text-secondary mt-1 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-gold-400" />
-                  <span className="text-green-400 font-semibold">{members.filter(m => m.user.status === 'approved').length} activos</span>
+                  <span className="text-green-400 font-semibold">{members.filter(m => m.isParticipant && m.user.status === 'approved').length} participantes activos</span>
                   {members.filter(m => m.user.status !== 'approved').length > 0 && (
                     <span className="text-text-muted"> · {members.filter(m => m.user.status !== 'approved').length} inactivos/bloqueados</span>
                   )}
-                  <span className="text-text-muted"> ({members.length} total)</span>
+                  <span className="text-text-muted"> ({members.filter(m => m.isParticipant).length} participantes)</span>
                 </span>
                 {(league.entryFee ?? 0) > 0 && (
                   <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
@@ -331,7 +333,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <Users className="w-4 h-4" /> Miembros ({members.length})
+              <Users className="w-4 h-4" /> Miembros de la competencia ({members.length})
             </span>
           </button>
           <button
@@ -386,8 +388,8 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
 
         {/* 2. MEMBERS LIST */}
         {activeTab === 'members' && (() => {
-          const activeMembers = members.filter(m => m.user.status === 'approved');
-          const inactiveMembers = members.filter(m => m.user.status !== 'approved');
+          const activeMembers = members.filter(m => m.isParticipant && m.user.status === 'approved');
+          const inactiveMembers = members.filter(m => m.isParticipant && m.user.status !== 'approved');
 
           const renderUserStatusBadge = (status: string) => {
             switch (status) {
@@ -429,7 +431,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
           return (
             <div className="space-y-6">
               <div className="space-y-4">
-                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Participantes Activos ({activeMembers.length})</h3>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Participantes activos ({activeMembers.length})</h3>
                 <div className="card-base overflow-hidden">
                   <div className="grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold">
                     <span className="col-span-5">Usuario</span>
@@ -527,7 +529,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-[fadeIn_0.15s_ease-out]">
             {/* Members Management (Left 8 cols) */}
             <div className="lg:col-span-8 space-y-4">
-              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Administrar Miembros</h3>
+              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Miembros de la competencia</h3>
               <div className="card-base overflow-hidden">
                 <div className="divide-y divide-border-subtle">
                   {members.map((member) => {
@@ -723,8 +725,19 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
 
             {/* League General Settings (Right 4 cols) */}
             <div className="lg:col-span-4 space-y-4">
-              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Administración General</h3>
+              <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Configuración de competencia</h3>
               <div className="card-base p-5 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Tipo de competencia</p>
+                  <div className="bg-bg-secondary border border-border-default rounded-xl p-3">
+                    <p className="text-sm font-semibold text-text-primary">
+                      {league.competitionType === 'champion_survivor' ? 'Solo campeón' : 'Polla completa'}
+                    </p>
+                    <p className="text-[10px] text-text-muted mt-1">
+                      El tipo de competencia no se puede cambiar después de crear la competencia.
+                    </p>
+                  </div>
+                </div>
                 {/* Invite code tools */}
                 {league.status === 'active' && (
                   <div className="space-y-2">
@@ -751,7 +764,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                     className="w-full px-4 py-2 bg-amber-500/10 hover:bg-amber-500/15 text-amber-500 rounded-xl text-xs font-semibold border border-amber-500/20 transition-all flex items-center justify-center gap-1.5"
                   >
                     <Archive className="w-3.5 h-3.5" />
-                    {league.status === 'archived' ? 'Reactivar Liga' : 'Archivar Liga'}
+                    {league.status === 'archived' ? 'Reactivar competencia' : 'Archivar competencia'}
                   </button>
 
                   {isOwner && (
@@ -762,7 +775,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                       className="w-full px-4 py-2 bg-red-500/10 hover:bg-red-500/15 text-red-400 rounded-xl text-xs font-semibold border border-red-500/20 transition-all flex items-center justify-center gap-1.5"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Eliminar Liga
+                      Eliminar competencia
                     </button>
                   )}
                 </div>

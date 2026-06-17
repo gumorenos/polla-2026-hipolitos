@@ -213,11 +213,12 @@ model League {
 }
 
 model LeagueMember {
-  id       String   @id @default(cuid())
-  leagueId String
-  userId   String
-  role     String   @default("member") // "admin" | "member"
-  joinedAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  leagueId      String
+  userId        String
+  role          String   @default("member") // "owner" | "admin" | "member"
+  isParticipant Boolean  @default(true)
+  joinedAt      DateTime @default(now())
 
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

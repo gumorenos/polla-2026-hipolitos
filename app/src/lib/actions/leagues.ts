@@ -6,15 +6,31 @@ import { revalidatePath } from 'next/cache';
 import { recalculateAllStandings } from './admin';
 
 /**
- * Creates a new private league. The creator automatically becomes the 'owner' member.
+ * Creates a new private competition. The creator always becomes owner, but participant status is explicit.
  */
-export async function createLeagueAction(name: string) {
+type CompetitionTypeInput = 'full_prediction' | 'champion_survivor';
+
+interface CreateLeagueInput {
+  name: string;
+  competitionType?: string | null;
+  championDeadline?: string | null;
+  joinAsParticipant?: boolean;
+}
+
+function resolveCompetitionTypeInput(value?: string | null): CompetitionTypeInput | null {
+  if (!value) return 'full_prediction';
+  if (value === 'full_prediction' || value === 'champion_survivor') return value;
+  return null;
+}
+
+export async function createLeagueAction(input: string | CreateLeagueInput) {
   const session = await getCurrentSession();
   if (!session || !session.user) {
     return { error: 'No autorizado. Inicia sesión primero.' };
   }
 
   const userId = session.user.id;
+  const payload = typeof input === 'string' ? { name: input } : input;
   
   try {
     const user = await prisma.user.findUnique({
@@ -23,12 +39,29 @@ export async function createLeagueAction(name: string) {
     });
 
     if (!user?.isSuperadmin && !user?.canCreateLeagues) {
-      return { error: 'No tienes permiso para crear pollas.' };
+      return { error: 'No tienes permiso para crear competencias.' };
     }
 
-    const trimmedName = name.trim();
+    if (typeof payload.name !== 'string') {
+      return { error: 'El nombre de la competencia es obligatorio.' };
+    }
+
+    const trimmedName = payload.name.trim();
     if (!trimmedName || trimmedName.length < 3) {
-      return { error: 'El nombre de la polla debe tener al menos 3 caracteres.' };
+      return { error: 'El nombre de la competencia debe tener al menos 3 caracteres.' };
+    }
+
+    const competitionType = resolveCompetitionTypeInput(payload.competitionType);
+    if (!competitionType) {
+      return { error: 'Tipo de competencia inválido.' };
+    }
+
+    let championDeadline: Date | null = null;
+    if (payload.championDeadline) {
+      championDeadline = new Date(payload.championDeadline);
+      if (Number.isNaN(championDeadline.getTime())) {
+        return { error: 'La fecha límite para elegir campeón no es válida.' };
+      }
     }
 
     // Generate a unique URL slug
@@ -65,6 +98,8 @@ export async function createLeagueAction(name: string) {
           inviteCode,
           createdBy: userId,
           status: 'active',
+          competitionType,
+          championDeadline,
         },
       });
 
@@ -73,8 +108,28 @@ export async function createLeagueAction(name: string) {
           leagueId: newLeague.id,
           userId,
           role: 'owner',
+          isParticipant: payload.joinAsParticipant === true,
         },
       });
+
+      if (payload.joinAsParticipant === true) {
+        for (const block of ['groups', 'knockout', 'global']) {
+          await tx.standing.create({
+            data: {
+              leagueId: newLeague.id,
+              userId,
+              block,
+              points: 0,
+              exacts: 0,
+              tendencies: 0,
+              consolations: 0,
+              misses: 0,
+              rank: 0,
+              previousRank: 0,
+            },
+          });
+        }
+      }
 
       return newLeague;
     });
@@ -84,16 +139,21 @@ export async function createLeagueAction(name: string) {
         userId,
         action: 'league_creation',
         target: `league:${league.id}`,
-        details: JSON.stringify({ name: league.name }),
+        details: JSON.stringify({
+          name: league.name,
+          competitionType,
+          ownerJoinedAsParticipant: payload.joinAsParticipant === true,
+        }),
       },
     });
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     await recalculateAllStandings();
     return { data: league };
   } catch (error) {
     console.error('Error in createLeagueAction:', error);
-    return { error: 'Ocurrió un error al crear la polla.' };
+    return { error: 'Ocurrió un error al crear la competencia.' };
   }
 }
 
@@ -156,7 +216,9 @@ export async function joinLeagueAction(inviteCode: string) {
     });
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     revalidatePath(`/liga/${league.slug}`);
+    revalidatePath(`/competencia/${league.slug}`);
     await recalculateAllStandings();
     return { data: membership, slug: league.slug };
   } catch (error) {
@@ -224,6 +286,7 @@ export async function regenerateInviteCodeAction(leagueId: string) {
     });
 
     revalidatePath(`/liga/${updatedLeague.slug}`);
+    revalidatePath(`/competencia/${updatedLeague.slug}`);
     return { data: updatedLeague };
   } catch (error) {
     console.error('Error in regenerateInviteCodeAction:', error);
@@ -379,7 +442,9 @@ export async function archiveLeagueAction(leagueId: string, archive: boolean) {
     });
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     revalidatePath(`/liga/${updatedLeague.slug}`);
+    revalidatePath(`/competencia/${updatedLeague.slug}`);
     revalidatePath('/admin/ligas');
     return { data: updatedLeague };
   } catch (error) {
@@ -425,6 +490,7 @@ export async function deleteLeagueAction(leagueId: string) {
     });
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     revalidatePath('/admin/ligas');
     return { success: true };
   } catch (error) {
@@ -520,7 +586,9 @@ export async function updateLeagueSettingsAction(
     await recalculateAllStandings();
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     revalidatePath(`/liga/${updated.slug}`);
+    revalidatePath(`/competencia/${updated.slug}`);
     revalidatePath('/admin/ligas');
     revalidatePath('/admin');
 
@@ -626,7 +694,9 @@ export async function addMemberAction(leagueId: string, targetUserId: string) {
     }
 
     revalidatePath('/liga');
+    revalidatePath('/competencia');
     revalidatePath(`/liga/${league.slug}`);
+    revalidatePath(`/competencia/${league.slug}`);
     revalidatePath('/admin/ligas');
     await recalculateAllStandings();
 

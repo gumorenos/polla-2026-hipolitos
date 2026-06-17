@@ -45,11 +45,11 @@ export default async function RankingPage({
         <div className="max-w-md mx-auto text-center space-y-4 py-12">
           <h2 className="font-display text-2xl text-gold">Sin Clasificación</h2>
           <p className="text-text-secondary text-sm">
-            Aún no eres miembro de ninguna liga. Crea una nueva liga o únete a una existente con un código de invitación para competir.
+            Aún no eres miembro de ninguna competencia. Crea una nueva competencia o únete a una existente con un código de invitación para competir.
           </p>
           <div className="pt-2">
-            <Link href="/liga" className="px-6 py-2 bg-gold text-background rounded-lg font-medium hover:bg-gold-light transition-colors">
-              Ir a Ligas
+            <Link href="/competencia" className="px-6 py-2 bg-gold text-background rounded-lg font-medium hover:bg-gold-light transition-colors">
+              Ir a Competencias
             </Link>
           </div>
         </div>
@@ -153,7 +153,7 @@ export default async function RankingPage({
         <div className="space-y-1.5 pt-2">
           <h2 className="font-display text-3xl tracking-wide text-text-primary">TABLA DE CLASIFICACIÓN</h2>
           <p className="text-text-secondary text-sm">
-            Compara tus puntos con los demás miembros de tus ligas.
+            Compara tus puntos con los demás participantes de tus competencias.
           </p>
         </div>
 

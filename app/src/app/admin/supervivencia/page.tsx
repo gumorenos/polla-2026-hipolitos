@@ -25,7 +25,7 @@ export default async function AdminChampionSurvivorPage() {
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user?.isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   const leagues = await prisma.league.findMany({

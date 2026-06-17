@@ -5,6 +5,7 @@ import { Match, Prediction } from '../../types/domain';
 import { MatchPredictionCard } from './MatchPredictionCard';
 import { CheckSquare, AlertCircle, Trophy, Sparkles } from 'lucide-react';
 import { saveWinnerPredictionAction } from '../../lib/actions/predictions';
+import { submitChampionPick } from '../../lib/actions/champion-survivor';
 import { FLAG_MAP } from '../ui/FlagDisc';
 
 interface PronosticosClientProps {
@@ -18,6 +19,8 @@ interface PronosticosClientProps {
     championDeadline: string | null;
     championPoints: number;
     showOdds: boolean;
+    competitionType: string;
+    isParticipant: boolean;
   }[];
   teams: {
     code: string;
@@ -174,6 +177,10 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
 
   const handleSaveWinnerSubmit = async () => {
     const teamCode = selectedWinners[activeLeagueId];
+    if (!activeLeague?.isParticipant) {
+      setWinnerError('Debes estar inscrito como participante para guardar una elección.');
+      return;
+    }
     if (!teamCode) {
       setWinnerError('Por favor selecciona un país.');
       return;
@@ -192,7 +199,10 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     setSavingWinner(true);
     setWinnerError(null);
     setWinnerSuccess(null);
-    const res = await saveWinnerPredictionAction(activeLeagueId, teamCode);
+    const isChampionSurvivor = activeLeague?.competitionType === 'champion_survivor';
+    const res = isChampionSurvivor
+      ? await submitChampionPick(activeLeagueId, teamCode)
+      : await saveWinnerPredictionAction(activeLeagueId, teamCode);
     if (res.error) {
       setWinnerError(res.error);
     } else {
@@ -252,11 +262,18 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       {/* Header Panel */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
         <div>
-          <h2 className="font-display text-3xl tracking-wide text-text-primary">PRONÓSTICOS</h2>
-          <p className="text-text-secondary text-sm">Pronostica los marcadores. Se bloquean automáticamente al inicio de cada partido.</p>
+          <h2 className="font-display text-3xl tracking-wide text-text-primary">
+            {activeLeague?.competitionType === 'champion_survivor' ? 'ELIGE TU CAMPEÓN' : 'PRONÓSTICOS'}
+          </h2>
+          <p className="text-text-secondary text-sm">
+            {activeLeague?.competitionType === 'champion_survivor'
+              ? 'Selecciona una sola selección campeona para esta competencia.'
+              : 'Pronostica los marcadores. Se bloquean automáticamente al inicio de cada partido.'}
+          </p>
         </div>
 
         {/* Live Progress Card */}
+        {activeLeague?.competitionType !== 'champion_survivor' && (
         <div className="card-base px-4 py-2 bg-bg-secondary/40 flex items-center gap-3 border border-border-default/60">
           <CheckSquare className="w-5 h-5 text-gold-400" />
           <div className="min-w-[140px]">
@@ -272,12 +289,13 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Pool Selector (only visible if user has multiple memberships) */}
       {leagues.length > 1 && (
         <div className="flex items-center gap-2.5 bg-surface/50 border border-border/80 p-3 rounded-xl w-fit">
-          <label className="text-[10px] font-mono uppercase text-text-secondary font-bold">Polla Activa:</label>
+          <label className="text-[10px] font-mono uppercase text-text-secondary font-bold">Competencia activa:</label>
           <select
             value={activeLeagueId}
             onChange={(e) => {
@@ -321,15 +339,17 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
           }
         }
         const isDeadlinePassed = effectiveDeadline ? new Date() > effectiveDeadline : false;
-        const canEdit = (!hasSubmitted && !isDeadlinePassed) || isCorrectionActive;
+        const canEdit = activeLeague.isParticipant && ((!hasSubmitted && !isDeadlinePassed) || isCorrectionActive);
 
         return (
           <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-4">
             <div className="flex justify-between items-center border-b border-border-subtle pb-2">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-text-muted">Predicción principal</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-text-muted">
+                  {activeLeague.competitionType === 'champion_survivor' ? 'Solo campeón' : 'Predicción principal'}
+                </span>
                 <h3 className="font-display text-lg tracking-wide uppercase text-gold-400 flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-gold-400" /> Campeón del Mundial
+                  <Trophy className="w-5 h-5 text-gold-400" /> {activeLeague.competitionType === 'champion_survivor' ? 'Elige tu campeón' : 'Campeón del Mundial'}
                 </h3>
               </div>
               {isCorrectionActive ? (
@@ -354,7 +374,9 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1.5 max-w-xl">
                 <p className="text-xs text-text-secondary">
-                  Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta polla si aciertas.
+                  {activeLeague.competitionType === 'champion_survivor'
+                    ? 'Elige la selección nacional que se coronará campeona del mundo. En esta competencia no hay pronósticos de partidos.'
+                    : <>Elige la selección nacional que se coronará campeona del mundo. Te otorgará <strong className="text-gold-400">{activeLeague.championPoints} puntos</strong> adicionales en la clasificación final de esta competencia si aciertas.</>}
                 </p>
                 {isCorrectionActive && wpRecord && (
                   <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs space-y-1 text-yellow-400">
@@ -370,6 +392,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 {!hasSubmitted && !isDeadlinePassed && (
                   <p className="text-xs text-yellow-400 font-semibold">
                     Elige con cuidado. Una vez guardado, no podrás cambiar tu campeón.
+                  </p>
+                )}
+                {!activeLeague.isParticipant && (
+                  <p className="text-xs text-yellow-400 font-semibold">
+                    Estás administrando esta competencia, pero no estás inscrito como participante.
                   </p>
                 )}
                 {effectiveDeadline && (
@@ -505,6 +532,8 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
       })()}
 
 
+      {activeLeague?.competitionType === 'champion_survivor' ? null : (
+      <>
       {/* Filter Options */}
       <div className="space-y-4">
         {/* Phase Filter Chips */}
@@ -626,6 +655,8 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );

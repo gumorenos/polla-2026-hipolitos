@@ -17,7 +17,7 @@ export default async function AdminUsuariosPage() {
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user?.isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   const users = await prisma.user.findMany({
@@ -88,7 +88,7 @@ export default async function AdminUsuariosPage() {
       
       <div className="bg-surface border border-border rounded-lg p-6">
         <p className="text-text-muted mb-6">
-          Promueve usuarios a Superadmin globales o retira permisos de administración global. Los Superadmins pueden gestionar partidos, ingresar marcadores y administrar ligas de manera global.
+          Promueve usuarios a Superadmin globales o retira permisos de administración global. Los Superadmins pueden gestionar partidos, ingresar marcadores y administrar competencias de manera global.
         </p>
 
         <UsersAdminClient users={users} leagues={activeLeagues} currentUserId={user.id} />

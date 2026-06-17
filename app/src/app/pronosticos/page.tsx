@@ -73,6 +73,10 @@ export default async function PronosticosPage() {
     where: { userId },
   });
 
+  const championPicks = await prisma.championPick.findMany({
+    where: { userId },
+  });
+
   // Fetch winner prediction histories for user's leagues
   const histories = await prisma.winnerPredictionHistory.findMany({
     where: {
@@ -257,6 +261,8 @@ export default async function PronosticosPage() {
     championDeadline: m.league.championDeadline ? m.league.championDeadline.toISOString() : null,
     championPoints: m.league.championPoints,
     showOdds: m.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true',
+    competitionType: m.league.competitionType,
+    isParticipant: m.isParticipant,
   }));
 
   const serializedWinnerPredictions = winnerPredictions.map(wp => ({
@@ -266,6 +272,15 @@ export default async function PronosticosPage() {
     correctionAllowed: wp.correctionAllowed,
     correctionAllowedUntil: wp.correctionAllowedUntil ? wp.correctionAllowedUntil.toISOString() : null,
     correctionReason: wp.correctionReason,
+  }));
+
+  const serializedChampionPicks = championPicks.map((pick) => ({
+    leagueId: pick.leagueId,
+    teamCode: pick.teamCode,
+    createdAt: pick.submittedAt.toISOString(),
+    correctionAllowed: false,
+    correctionAllowedUntil: null,
+    correctionReason: null,
   }));
 
   const serializedHistories = histories.map(h => ({
@@ -289,7 +304,7 @@ export default async function PronosticosPage() {
         predictions={serializedPredictions}
         leagues={serializedLeagues}
         teams={teams}
-        winnerPredictions={serializedWinnerPredictions}
+        winnerPredictions={[...serializedWinnerPredictions, ...serializedChampionPicks]}
         winnerPredictionHistories={serializedHistories}
         globalOdds={globalOddsMap}
         userOdds={userOddsMap}

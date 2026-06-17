@@ -6,7 +6,12 @@ import { LigasClient } from '../../components/league/LigasClient';
 
 export const dynamic = "force-dynamic";
 
-export default async function LigasPage() {
+export default async function LigasPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tipo?: string }>;
+}) {
+  const sParams = searchParams ? await searchParams : {};
   const session = await getCurrentSession();
   if (!session || !session.user) {
     redirect('/login');
@@ -43,9 +48,10 @@ export default async function LigasPage() {
   // Serialize Date objects to plain strings for the client component
   const serializedMemberships = memberships.map((m) => {
     const leagueMembers = m.league.members || [];
-    const activeMembersCount = leagueMembers.filter(lm => lm.user?.status === 'approved').length;
-    const inactiveMembersCount = leagueMembers.filter(lm => lm.user?.status !== 'approved').length;
-    const totalMembersCount = leagueMembers.length;
+    const participantMembers = leagueMembers.filter(lm => lm.isParticipant);
+    const activeMembersCount = participantMembers.filter(lm => lm.user?.status === 'approved').length;
+    const inactiveMembersCount = participantMembers.filter(lm => lm.user?.status !== 'approved').length;
+    const totalMembersCount = participantMembers.length;
 
     return {
       id: m.id,
@@ -73,6 +79,14 @@ export default async function LigasPage() {
     };
   });
 
-  return <LigasClient memberships={serializedMemberships} />;
+  const initialCompetitionType = sParams.tipo === 'champion_survivor' ? 'champion_survivor' : 'full_prediction';
+
+  return (
+    <LigasClient
+      memberships={serializedMemberships}
+      initialCompetitionType={initialCompetitionType}
+      openCreateModal={sParams.tipo === 'champion_survivor'}
+    />
+  );
 }
 

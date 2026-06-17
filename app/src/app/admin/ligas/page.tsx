@@ -63,6 +63,7 @@ export default async function AdminLigasPage() {
     name: l.name,
     slug: l.slug,
     inviteCode: l.inviteCode,
+    competitionType: l.competitionType,
     status: l.status,
     createdAt: l.createdAt.toISOString(),
     owner: l.owner,
@@ -81,6 +82,7 @@ export default async function AdminLigasPage() {
     members: l.members.map((m) => ({
       userId: m.userId,
       role: m.role,
+      isParticipant: m.isParticipant,
       user: {
         id: m.user.id,
         name: m.user.name,

@@ -35,6 +35,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/liga/:path*',
+    '/competencia/:path*',
     '/pronosticos/:path*',
     '/ranking/:path*',
     '/perfil/:path*',

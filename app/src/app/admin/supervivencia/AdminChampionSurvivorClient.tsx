@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
@@ -326,6 +327,12 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
         <p className="text-sm text-text-secondary">
           Crea o configura una competencia Champion Survivor desde los flujos de administración existentes.
         </p>
+        <Link
+          href="/competencia?tipo=champion_survivor"
+          className="btn-gold px-4 py-2 text-xs font-mono uppercase tracking-wider inline-flex items-center justify-center"
+        >
+          Crear competencia Solo campeón
+        </Link>
       </div>
     );
   }

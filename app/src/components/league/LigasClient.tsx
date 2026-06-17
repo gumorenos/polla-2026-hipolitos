@@ -6,6 +6,7 @@ import { formatLeagueCurrency } from '../../lib/utils/currency';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createLeagueAction } from '../../lib/actions/leagues';
+import { parseLimaDateTimeToUtc } from '../../lib/utils/dates';
 
 interface LeagueData {
   id: string;
@@ -36,13 +37,22 @@ interface LeagueMembership {
 
 interface LigasClientProps {
   memberships: LeagueMembership[];
+  initialCompetitionType?: 'full_prediction' | 'champion_survivor';
+  openCreateModal?: boolean;
 }
 
-export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
+export const LigasClient: React.FC<LigasClientProps> = ({
+  memberships,
+  initialCompetitionType = 'full_prediction',
+  openCreateModal = false,
+}) => {
   const router = useRouter();
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [newLeagueName, setNewLeagueName] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [competitionType, setCompetitionType] = useState<'full_prediction' | 'champion_survivor'>(initialCompetitionType);
+  const [championDeadline, setChampionDeadline] = useState('');
+  const [joinAsParticipant, setJoinAsParticipant] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(openCreateModal);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -61,17 +71,25 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
     setLoading(true);
     setErrorMsg(null);
 
-    const result = await createLeagueAction(newLeagueName);
+    const result = await createLeagueAction({
+      name: newLeagueName,
+      competitionType,
+      championDeadline: championDeadline ? parseLimaDateTimeToUtc(championDeadline) : null,
+      joinAsParticipant,
+    });
 
     if (result.error) {
       setErrorMsg(result.error);
       setLoading(false);
     } else {
       setNewLeagueName('');
+      setCompetitionType('full_prediction');
+      setChampionDeadline('');
+      setJoinAsParticipant(false);
       setShowCreateModal(false);
       setLoading(false);
       if (result.data) {
-        router.push(`/liga/${result.data.slug}`);
+        router.push(`/competencia/${result.data.slug}`);
       }
     }
   };
@@ -174,7 +192,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                       </button>
                     </div>
 
-                    <Link href={`/liga/${league.slug}`} className="btn-ghost flex items-center gap-1 text-sm py-1.5 px-3">
+                    <Link href={`/competencia/${league.slug}`} className="btn-ghost flex items-center gap-1 text-sm py-1.5 px-3">
                       Ingresar <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
@@ -247,6 +265,75 @@ export const LigasClient: React.FC<LigasClientProps> = ({ memberships }) => {
                   autoFocus
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                  Tipo de competencia
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  <label className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    competitionType === 'full_prediction'
+                      ? 'border-gold-400 bg-gold-400/10'
+                      : 'border-border-default bg-bg-secondary/40 hover:bg-bg-hover'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="competitionType"
+                      value="full_prediction"
+                      checked={competitionType === 'full_prediction'}
+                      onChange={() => setCompetitionType('full_prediction')}
+                      className="sr-only"
+                      disabled={loading}
+                    />
+                    <span className="block text-sm font-semibold text-text-primary">Polla completa</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">Pronóstico de partidos + campeón</span>
+                  </label>
+                  <label className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    competitionType === 'champion_survivor'
+                      ? 'border-gold-400 bg-gold-400/10'
+                      : 'border-border-default bg-bg-secondary/40 hover:bg-bg-hover'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="competitionType"
+                      value="champion_survivor"
+                      checked={competitionType === 'champion_survivor'}
+                      onChange={() => setCompetitionType('champion_survivor')}
+                      className="sr-only"
+                      disabled={loading}
+                    />
+                    <span className="block text-sm font-semibold text-text-primary">Solo campeón</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">Los participantes eligen solo al campeón</span>
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                  Fecha límite para elegir campeón (Hora Lima)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={championDeadline}
+                  onChange={(e) => setChampionDeadline(e.target.value)}
+                  className="field"
+                  disabled={loading}
+                />
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  Puedes configurarla después, pero recomendamos definir una fecha límite antes de invitar participantes.
+                </p>
+              </div>
+              <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={joinAsParticipant}
+                  onChange={(e) => setJoinAsParticipant(e.target.checked)}
+                  className="mt-0.5"
+                  disabled={loading}
+                />
+                <span className="text-xs text-text-secondary leading-relaxed">
+                  <span className="block font-semibold text-text-primary">Inscribirme también como participante</span>
+                  Si no marcas esta opción, crearás y administrarás la competencia como dueño sin contar como jugador activo.
+                </span>
+              </label>
               <p className="text-[10px] text-text-muted leading-relaxed">
                 Una vez creada, generaremos un código de invitación único. Podrás compartir este código para que otros se unan.
               </p>

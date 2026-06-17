@@ -296,5 +296,22 @@ We implement the following 6 tie-breakers sequentially:
 - Visual dashboard or navigation changes.
 - Raspberry Pi deployment execution.
 
+---
+
+## ADR-017 — Competition Route and Explicit Creator Participation
+
+**Date:** 2026-06-17
+**Status:** Accepted
+
+**Decision:** `/competencia` is the canonical visible route for competition creation and detail pages. `/liga` remains as a compatibility alias. New competitions validate `competitionType` server-side, default missing values to `full_prediction`, and allow `champion_survivor`. The creator is always stored as owner, while participant status is explicit through `LeagueMember.isParticipant`.
+
+**Rationale:**
+- User-facing terminology should be competition-first instead of league-first.
+- Champion Survivor must be selectable at creation time without converting existing full prediction competitions.
+- Creators need management access by default, but should not silently count as active players.
+
+**Consequences:**
+- Existing memberships keep `isParticipant = true` through the migration default.
+- The public Champion Survivor dashboard remains pending; `/pronosticos` only includes the minimal champion-pick flow for Champion Survivor competitions.
 
 

@@ -99,6 +99,7 @@ export async function savePredictionAction(
     // Revalidate paths to update standings or predictions count
     revalidatePath('/pronosticos');
     revalidatePath('/liga');
+    revalidatePath('/competencia');
 
     return { success: true, data: prediction };
   } catch (error) {
@@ -274,6 +275,7 @@ export async function saveWinnerPredictionAction(leagueId: string, teamCode: str
 
     revalidatePath('/pronosticos');
     revalidatePath('/liga');
+    revalidatePath('/competencia');
 
     return { success: true, data: winnerPrediction };
   } catch (error) {
@@ -346,6 +348,7 @@ export async function allowWinnerPredictionCorrectionAction(
 
     revalidatePath('/pronosticos');
     revalidatePath('/liga');
+    revalidatePath('/competencia');
 
     return { success: true };
   } catch (error) {
@@ -427,6 +430,7 @@ export async function directCorrectWinnerPredictionAction(
 
     revalidatePath('/pronosticos');
     revalidatePath('/liga');
+    revalidatePath('/competencia');
 
     return { success: true, data: winnerPrediction };
   } catch (error) {

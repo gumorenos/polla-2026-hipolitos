@@ -22,7 +22,7 @@ export default async function AdminChampionPage() {
   });
 
   if (!user?.isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   // Fetch all winner predictions

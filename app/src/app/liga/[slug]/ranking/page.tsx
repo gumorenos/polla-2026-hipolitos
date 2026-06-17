@@ -7,7 +7,7 @@ import { RankingTable } from '../../../../components/league/RankingTable';
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Ranking de Liga | La Polla 2026',
+  title: 'Ranking de Competencia | La Polla 2026',
 };
 
 interface Params {
@@ -57,7 +57,7 @@ export default async function LigaRankingPage({
   });
 
   if (!membership && !isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   // Query standings including user predictions for metadata
@@ -127,19 +127,19 @@ export default async function LigaRankingPage({
               Clasificación de {league.name}
             </h2>
             <p className="text-text-secondary text-sm">
-              Tabla de posiciones global de la liga privada.
+              Tabla de posiciones global de la competencia privada.
             </p>
           </div>
           <div className="flex items-center gap-4">
             {isSuperadmin && (
               <Link
-                href={`/liga/${league.slug}/ranking?showDisabled=${!showDisabled}`}
+                href={`/competencia/${league.slug}/ranking?showDisabled=${!showDisabled}`}
                 className="text-[10px] font-mono border border-border-default bg-bg-secondary px-3 py-1.5 rounded-lg text-text-secondary hover:text-gold-400 transition-all uppercase"
               >
                 {showDisabled ? 'Ocultar Desactivados' : 'Mostrar Desactivados'}
               </Link>
             )}
-            <Link href={`/liga/${league.slug}`} className="text-sm text-gold hover:underline">
+            <Link href={`/competencia/${league.slug}`} className="text-sm text-gold hover:underline">
               &larr; Volver al detalle
             </Link>
           </div>

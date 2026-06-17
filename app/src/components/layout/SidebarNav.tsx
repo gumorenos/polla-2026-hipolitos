@@ -13,7 +13,7 @@ export const SidebarNav: React.FC = () => {
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
-    { label: 'Competencias', path: '/liga', icon: Users },
+    { label: 'Competencias', path: '/competencia', icon: Users },
     { label: 'Predicciones', path: '/pronosticos', icon: CalendarCheck },
     { label: 'Ranking', path: '/ranking', icon: Award },
     { label: 'Perfil', path: '/perfil', icon: User },

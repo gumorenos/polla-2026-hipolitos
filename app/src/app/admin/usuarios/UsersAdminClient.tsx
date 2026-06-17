@@ -239,7 +239,7 @@ export default function UsersAdminClient({
 
   const handleResetChampion = async (leagueId: string, leagueName: string) => {
     if (!selectedUser) return;
-    const reason = prompt(`¿Estás seguro de restablecer la predicción de campeón de ${selectedUser.name} en la liga "${leagueName}"? Ingrese el motivo (se registrará en el historial):`);
+    const reason = prompt(`¿Estás seguro de restablecer la predicción de campeón de ${selectedUser.name} en la competencia "${leagueName}"? Ingrese el motivo (se registrará en el historial):`);
     if (reason === null) return; // Cancelled
     if (!reason.trim()) {
       alert("El motivo es obligatorio.");
@@ -1151,7 +1151,7 @@ export default function UsersAdminClient({
                 <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-xs text-red-200 space-y-2">
                   <p className="font-bold uppercase text-red-400">Acción Bloqueada</p>
                   <p>Este usuario tiene historial de competencia en la base de datos ({hardDeleteUser._count?.predictions} pronósticos o predicción de campeón).</p>
-                  <p className="font-semibold text-text-primary">Usa desactivar/archivar para conservar la auditoría de la liga.</p>
+                  <p className="font-semibold text-text-primary">Usa desactivar/archivar para conservar la auditoría de la competencia.</p>
                 </div>
                 <div className="flex justify-end">
                   <button
@@ -1489,7 +1489,7 @@ export default function UsersAdminClient({
                     onChange={(e) => setEditCanCreateLeagues(e.target.checked)}
                     className="rounded border-border text-gold bg-background accent-gold w-3.5 h-3.5"
                   />
-                  <span>Puede Crear Competencias / Ligas</span>
+                  <span>Puede crear competencias</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer select-none text-text-secondary">

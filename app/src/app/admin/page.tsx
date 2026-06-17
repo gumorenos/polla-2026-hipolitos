@@ -19,7 +19,7 @@ export default async function AdminDashboardPage() {
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user?.isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   // 1. User stats

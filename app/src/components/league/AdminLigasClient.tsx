@@ -10,6 +10,7 @@ import { parseLimaDateTimeToUtc, getLimaDateTimeLocalString } from '../../lib/ut
 interface LeagueMemberData {
   userId: string;
   role: string;
+  isParticipant: boolean;
   user: {
     id: string;
     name: string;
@@ -24,6 +25,7 @@ interface LeagueAdminData {
   name: string;
   slug: string;
   inviteCode: string;
+  competitionType: string;
   status: string;
   createdAt: string;
   owner: {
@@ -590,6 +592,20 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     <option value="true">Activa</option>
                     <option value="false">Inactiva (Oculta)</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                  Tipo de competencia
+                </label>
+                <div className="bg-bg-secondary border border-border-default rounded-lg p-3">
+                  <p className="text-sm font-semibold text-text-primary">
+                    {settingsLeague.competitionType === 'champion_survivor' ? 'Solo campeón' : 'Polla completa'}
+                  </p>
+                  <p className="text-[10px] text-text-muted mt-1">
+                    El tipo de competencia no se puede cambiar después de crear la competencia.
+                  </p>
                 </div>
               </div>
 

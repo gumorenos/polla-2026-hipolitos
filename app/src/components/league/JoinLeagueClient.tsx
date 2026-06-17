@@ -37,7 +37,7 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
       setErrorMsg(result.error);
       setJoining(false);
     } else {
-      router.push(`/liga/${result.slug}`);
+      router.push(`/competencia/${result.slug}`);
       router.refresh();
     }
   };
@@ -57,14 +57,14 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
             <div className="card-base p-6 border-border-active space-y-4 text-center">
               <h2 className="font-display text-2xl text-gold-400 uppercase">Ya eres miembro</h2>
               <p className="text-xs text-text-secondary">
-                Ya perteneces a la liga privada <strong className="text-text-primary">{league.name}</strong>. Puedes ingresar directamente para ver las clasificaciones y registrar predicciones.
+                Ya perteneces a la competencia privada <strong className="text-text-primary">{league.name}</strong>. Puedes ingresar directamente para ver las clasificaciones y registrar predicciones.
               </p>
               <div className="pt-2">
                 <Link
-                  href={`/liga/${league.slug}`}
+                  href={`/competencia/${league.slug}`}
                   className="btn-gold text-xs py-2.5 px-5 inline-flex items-center gap-1.5"
                 >
-                  Ir a la Liga <ArrowRight className="w-3.5 h-3.5" />
+                  Ir a la competencia <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </div>
@@ -108,7 +108,7 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
               </div>
 
               <p className="text-xs text-text-secondary text-center leading-relaxed">
-                Al unirte a esta liga podrás registrar tus predicciones para todos los partidos y competir en la tabla de clasificación.
+                Al unirte a esta competencia podrás registrar tus predicciones y competir en la tabla de clasificación.
               </p>
 
               <div className="flex flex-col gap-2 pt-2">
@@ -120,7 +120,7 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
                 >
                   {joining ? 'Uniéndose...' : 'Aceptar Invitación'}
                 </button>
-                <Link href="/liga" className="w-full btn-ghost py-2.5 text-center text-xs">
+                <Link href="/competencia" className="w-full btn-ghost py-2.5 text-center text-xs">
                   Rechazar y salir
                 </Link>
               </div>
@@ -130,15 +130,15 @@ export const JoinLeagueClient: React.FC<JoinLeagueClientProps> = ({
           <div className="card-base p-6 border-border-active space-y-4 text-center">
             <h2 className="font-display text-2xl text-rank-down uppercase">Código Inválido</h2>
             <p className="text-xs text-text-secondary">
-              No pudimos encontrar ninguna liga privada activa asociada al código de invitación{' '}
+              No pudimos encontrar ninguna competencia privada activa asociada al código de invitación{' '}
               <code className="font-mono text-gold-400 font-bold bg-bg-secondary px-2 py-0.5 rounded border border-border-default">
                 {inviteCode}
               </code>
               .
             </p>
             <div className="pt-2">
-              <Link href="/liga" className="btn-gold text-xs py-2 px-4 inline-flex items-center gap-1.5">
-                Volver a ligas <ArrowRight className="w-3.5 h-3.5" />
+              <Link href="/competencia" className="btn-gold text-xs py-2 px-4 inline-flex items-center gap-1.5">
+                Volver a competencias <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
           </div>

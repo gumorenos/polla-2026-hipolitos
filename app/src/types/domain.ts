@@ -27,7 +27,8 @@ export interface LeagueMember {
   id: string;
   userId: string;
   leagueId: string;
-  role: 'admin' | 'member';
+  role: 'owner' | 'admin' | 'member';
+  isParticipant: boolean;
   points: number;
   exacts: number;
   tendencies: number;

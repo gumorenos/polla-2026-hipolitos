@@ -24,7 +24,7 @@ export default async function AdminOddsPage() {
   });
 
   if (!user?.isSuperadmin) {
-    redirect('/liga');
+    redirect('/competencia');
   }
 
   // Fetch all matches ordered by kickoff time

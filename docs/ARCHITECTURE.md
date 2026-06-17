@@ -48,7 +48,8 @@ lapolla2026/
 │   │   │   ├── (app)/            # Protected app pages
 │   │   │   │   ├── pronosticos/
 │   │   │   │   ├── ranking/
-│   │   │   │   ├── liga/
+│   │   │   │   ├── competencia/        # Canonical competition route
+│   │   │   │   ├── liga/               # Legacy compatibility alias
 │   │   │   │   ├── perfil/
 │   │   │   │   └── calendario/
 │   │   │   ├── admin/            # Admin panel (superadmin only)
@@ -216,6 +217,8 @@ User selects Champion Team Code in /pronosticos Champion Widget
 ### Champion Survivor Backend Flow
 
 Champion Survivor is a separate competition type from full prediction mode. It uses `ChampionPick`, `TeamTournamentStatus`, and `ChampionOddsSnapshot`; it does not replace `WinnerPrediction` or use match prediction points.
+
+`/competencia` is the canonical user-facing route for competition creation and detail pages. `/liga` remains as a legacy compatibility alias for existing links. Competition type is selected during creation and is read-only afterward. Creators are always owners/admins, while counting as a participant is explicit through `LeagueMember.isParticipant`.
 
 ```
 User requests Champion Survivor state

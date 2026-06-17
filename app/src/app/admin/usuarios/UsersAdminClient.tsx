@@ -6,9 +6,6 @@ import {
   adminCreateUserAction,
   adminUpdateUserAction,
   adminResetUserChampionAction,
-  adminUpdateLeagueMemberRoleAction,
-  adminRemoveFromLeagueAction,
-  adminAddToLeagueAction,
   adminResetUserPasswordAction,
   adminSoftDeleteUserAction,
   adminHardDeleteUserAction
@@ -97,6 +94,7 @@ export default function UsersAdminClient({
   const [newEmail, setNewEmail] = useState('');
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newStatus, setNewStatus] = useState('approved');
+  const [newLeagueIds, setNewLeagueIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
@@ -116,6 +114,8 @@ export default function UsersAdminClient({
   const [editReminderEmail, setEditReminderEmail] = useState('');
   const [editThemeMode, setEditThemeMode] = useState('black');
   const [showEditPassword, setShowEditPassword] = useState(false);
+  const [editLeagueIds, setEditLeagueIds] = useState<string[]>([]);
+  const [editAddLeagueId, setEditAddLeagueId] = useState('');
 
   // New Modals
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -165,6 +165,19 @@ export default function UsersAdminClient({
     { code: 'SEN', name: 'Senegal' },
   ];
 
+  const getSelectedUserLeagueOptions = () => {
+    const options = new Map<string, string>();
+    leagues.forEach((league) => options.set(league.id, league.name));
+    selectedUser?.memberships?.forEach((membership) => options.set(membership.league.id, membership.league.name));
+    return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const hasLeagueSelectionChanged = (currentIds: string[], nextIds: string[]) => {
+    const currentSorted = [...currentIds].sort().join('|');
+    const nextSorted = [...nextIds].sort().join('|');
+    return currentSorted !== nextSorted;
+  };
+
   const handleStartEditUser = (user: UserFromDB) => {
     setSelectedUser(user);
     setEditName(user.name || '');
@@ -179,6 +192,8 @@ export default function UsersAdminClient({
     setEditEmailReminders(user.emailRemindersEnabled || false);
     setEditReminderEmail(user.reminderEmail || '');
     setEditThemeMode(user.themeMode || 'black');
+    setEditLeagueIds(user.memberships?.map((membership) => membership.league.id) ?? []);
+    setEditAddLeagueId('');
     setShowEditModal(true);
   };
 
@@ -194,11 +209,12 @@ export default function UsersAdminClient({
       editUsername !== selectedUser.username ||
       editStatus !== selectedUser.status ||
       editIsSuperadmin !== selectedUser.isSuperadmin ||
+      hasLeagueSelectionChanged(selectedUser.memberships?.map((membership) => membership.league.id) ?? [], editLeagueIds) ||
       !!editPassword;
 
     let reason: string | undefined;
     if (isSensitiveEdit) {
-      const promptReason = prompt("Has modificado campos sensibles (usuario, estado, superadmin o contraseña). Por favor ingresa el motivo del cambio (obligatorio):");
+      const promptReason = prompt("Has modificado campos sensibles (usuario, estado, superadmin, contraseña o competencias). Por favor ingresa el motivo del cambio (obligatorio):");
       if (promptReason === null) {
         setActionLoading(false);
         return; // Cancelled
@@ -224,6 +240,7 @@ export default function UsersAdminClient({
       emailRemindersEnabled: editEmailReminders,
       reminderEmail: editReminderEmail,
       themeMode: editThemeMode,
+      leagueIds: editLeagueIds,
     }, reason);
 
     if (res.error) {
@@ -309,6 +326,7 @@ export default function UsersAdminClient({
       email: newEmail || undefined,
       whatsapp: newWhatsapp || undefined,
       status: newStatus,
+      leagueIds: newLeagueIds,
     });
 
     if (res.error) {
@@ -321,6 +339,7 @@ export default function UsersAdminClient({
       setNewPassword('');
       setNewEmail('');
       setNewWhatsapp('');
+      setNewLeagueIds([]);
       setShowCreateModal(false);
       setActionLoading(false);
       router.refresh();
@@ -1318,6 +1337,36 @@ export default function UsersAdminClient({
                 </select>
               </div>
 
+              <div className="space-y-2 text-left">
+                <div>
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Competencias vigentes</label>
+                  <p className="text-[10px] text-text-muted mt-0.5">Selecciona las competencias a las que quieres agregar este usuario.</p>
+                </div>
+                {leagues.length > 0 ? (
+                  <div className="space-y-1.5 bg-bg-secondary border border-border rounded-lg p-2">
+                    {leagues.map((league) => (
+                      <label key={league.id} className="flex items-center gap-2 text-xs text-text-primary">
+                        <input
+                          type="checkbox"
+                          checked={newLeagueIds.includes(league.id)}
+                          onChange={(e) => {
+                            setNewLeagueIds((current) =>
+                              e.target.checked
+                                ? [...current, league.id]
+                                : current.filter((leagueId) => leagueId !== league.id)
+                            );
+                          }}
+                          className="w-4 h-4 rounded border-border-default bg-bg-primary text-gold-500 focus:ring-gold-500"
+                        />
+                        <span>{league.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-text-muted italic">No hay competencias vigentes disponibles.</p>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-3">
                 <button
                   type="button"
@@ -1515,109 +1564,66 @@ export default function UsersAdminClient({
 
               {/* Competencia Memberships */}
               <div className="bg-black/20 p-3 rounded-lg border border-border/80 space-y-2 text-xs text-left">
-                <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Membresías de Competencias</span>
+                <span className="font-bold text-gold font-mono uppercase tracking-wider block text-[10px] mb-1">Competencias del Participante</span>
                 <div className="space-y-2">
-                  {selectedUser.memberships && selectedUser.memberships.length > 0 ? (
-                    selectedUser.memberships.map((m) => (
-                      <div key={m.league.id} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
-                        <div className="text-left font-mono">
-                          <p className="font-semibold text-text-primary text-xs">{m.league.name}</p>
-                          <p className="text-[9px] text-text-muted">Rol: <span className="text-gold font-semibold uppercase">{m.role === 'owner' ? 'Dueño' : m.role === 'admin' ? 'Admin' : 'Miembro'}</span></p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={m.role}
-                            onChange={async (e) => {
-                              const newRole = e.target.value;
-                              const reason = prompt(`¿Por qué deseas cambiar el rol a "${newRole}" en la competencia "${m.league.name}"? (Motivo obligatorio):`);
-                              if (!reason || !reason.trim()) {
-                                alert("El motivo es obligatorio.");
-                                return;
-                              }
-                              setActionLoading(true);
-                              const res = await adminUpdateLeagueMemberRoleAction(selectedUser.id, m.league.id, newRole, reason);
-                              setActionLoading(false);
-                              if (res.error) alert(res.error);
-                              else {
-                                alert("Rol de membresía actualizado.");
-                                router.refresh();
-                                setShowEditModal(false);
-                              }
-                            }}
-                            className="bg-bg-primary text-text-primary text-[10px] border border-border rounded px-1 py-0.5"
-                          >
-                            <option value="member">Miembro</option>
-                            <option value="admin">Admin</option>
-                            <option value="owner">Dueño</option>
-                          </select>
+                  {editLeagueIds.length > 0 ? (
+                    editLeagueIds.map((leagueId) => {
+                      const league = getSelectedUserLeagueOptions().find((option) => option.id === leagueId);
+                      const membership = selectedUser.memberships?.find((m) => m.league.id === leagueId);
+                      return (
+                        <div key={leagueId} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
+                          <div className="text-left font-mono">
+                            <p className="font-semibold text-text-primary text-xs">{league?.name ?? 'Competencia'}</p>
+                            {membership && (
+                              <p className="text-[9px] text-text-muted">Rol actual: <span className="text-gold font-semibold uppercase">{membership.role === 'owner' ? 'Dueño' : membership.role === 'admin' ? 'Admin' : 'Miembro'}</span></p>
+                            )}
+                          </div>
                           <button
                             type="button"
-                            onClick={async () => {
-                              const reason = prompt(`¿Por qué deseas remover a este usuario de la competencia "${m.league.name}"? (Motivo obligatorio):`);
-                              if (!reason || !reason.trim()) {
-                                alert("El motivo es obligatorio.");
-                                return;
-                              }
-                              setActionLoading(true);
-                              const res = await adminRemoveFromLeagueAction(selectedUser.id, m.league.id, reason);
-                              setActionLoading(false);
-                              if (res.error) alert(res.error);
-                              else {
-                                alert("Membresía eliminada.");
-                                router.refresh();
-                                setShowEditModal(false);
-                              }
-                            }}
+                            onClick={() => setEditLeagueIds((current) => current.filter((currentLeagueId) => currentLeagueId !== leagueId))}
                             className="px-2 py-0.5 bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-[10px] rounded font-bold font-mono uppercase"
                           >
                             Remover
                           </button>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-text-muted italic text-[11px]">No pertenece a ninguna competencia.</p>
                   )}
 
-                  {/* Add user to league dropdown */}
-                  {leagues && leagues.length > 0 && (
+                  {leagues.length > 0 && (
                     <div className="flex gap-2 pt-2 border-t border-border/50">
                       <select
-                        id="add-to-league-select"
-                        defaultValue=""
+                        value={editAddLeagueId}
+                        onChange={(e) => setEditAddLeagueId(e.target.value)}
                         className="flex-1 w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                       >
-                        <option value="" disabled>Seleccionar competencia para unir...</option>
+                        <option value="">Seleccionar competencia para unir...</option>
                         {leagues
-                          .filter(l => !selectedUser.memberships?.some(m => m.league.id === l.id))
-                          .map(l => (
-                            <option key={l.id} value={l.id}>{l.name}</option>
+                          .filter((league) => !editLeagueIds.includes(league.id))
+                          .map((league) => (
+                            <option key={league.id} value={league.id}>{league.name}</option>
                           ))}
                       </select>
                       <button
                         type="button"
-                        onClick={async () => {
-                          const selectEl = document.getElementById('add-to-league-select') as HTMLSelectElement;
-                          const selectedLeagueId = selectEl?.value;
-                          if (!selectedLeagueId) {
+                        onClick={() => {
+                          if (!editAddLeagueId) {
                             alert("Por favor selecciona una competencia.");
                             return;
                           }
-                          setActionLoading(true);
-                          const res = await adminAddToLeagueAction(selectedUser.id, selectedLeagueId);
-                          setActionLoading(false);
-                          if (res.error) alert(res.error);
-                          else {
-                            alert("Usuario agregado con éxito.");
-                            router.refresh();
-                            setShowEditModal(false);
-                          }
+                          setEditLeagueIds((current) => [...current, editAddLeagueId]);
+                          setEditAddLeagueId('');
                         }}
                         className="px-3 py-1 bg-gold text-black text-xs rounded-lg font-bold font-mono uppercase whitespace-nowrap hover:bg-gold-600 transition-colors"
                       >
                         Unir
                       </button>
                     </div>
+                  )}
+                  {hasLeagueSelectionChanged(selectedUser.memberships?.map((membership) => membership.league.id) ?? [], editLeagueIds) && (
+                    <p className="text-[10px] text-yellow-300">Cambios pendientes. Se aplicarán al guardar.</p>
                   )}
                 </div>
               </div>

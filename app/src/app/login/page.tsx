@@ -5,6 +5,31 @@ import { AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '../../lib/auth-client';
 
+function getAuthErrorMessage(message?: string | null) {
+  const normalized = (message || '').toLowerCase();
+
+  if (
+    normalized.includes('invalid username or password') ||
+    normalized.includes('invalid email or password') ||
+    normalized.includes('invalid password') ||
+    normalized.includes('user not found') ||
+    normalized.includes('invalid credentials')
+  ) {
+    return 'Usuario o contraseña inválidos.';
+  }
+  if (normalized.includes('pending')) {
+    return 'Tu cuenta aún está pendiente de aprobación.';
+  }
+  if (normalized.includes('disabled')) {
+    return 'Tu cuenta ha sido deshabilitada.';
+  }
+  if (normalized.includes('rejected')) {
+    return 'Tu cuenta fue rechazada.';
+  }
+
+  return message || 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [isRegister, setIsRegister] = useState(false);
@@ -72,7 +97,7 @@ export default function LoginPage() {
         });
 
         if (error) {
-          setErrorMsg(error.message || 'Credenciales incorrectas o cuenta no aprobada. Inténtalo de nuevo.');
+          setErrorMsg(getAuthErrorMessage(error.message));
           setLoading(false);
         } else {
           // After login, go to Inicio/Home page

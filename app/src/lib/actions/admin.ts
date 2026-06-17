@@ -698,6 +698,7 @@ export async function adminCreateUserAction(data: {
   email?: string;
   whatsapp?: string;
   status: string;
+  leagueIds?: string[];
 }) {
   try {
     const session = await getCurrentSession();
@@ -714,6 +715,19 @@ export async function adminCreateUserAction(data: {
     if (!usernameLower) {
       return { error: 'El nombre de usuario es obligatorio' };
     }
+    if (!/^[a-z0-9_.-]+$/.test(usernameLower)) {
+      return { error: 'El nombre de usuario solo puede contener letras, números, guiones, puntos y guiones bajos' };
+    }
+    if (!data.name.trim()) {
+      return { error: 'El nombre completo es obligatorio' };
+    }
+    if (!data.passwordText || data.passwordText.length < 6) {
+      return { error: 'La contraseña temporal debe tener al menos 6 caracteres.' };
+    }
+    const validStatuses = ['pending', 'approved', 'rejected', 'disabled'];
+    if (!validStatuses.includes(data.status)) {
+      return { error: 'Estado inválido' };
+    }
 
     const existingUser = await prisma.user.findUnique({
       where: { username: usernameLower },
@@ -724,7 +738,7 @@ export async function adminCreateUserAction(data: {
 
     const ctx = await auth.$context;
     const hashedPassword = await ctx.password.hash(data.passwordText);
-    const email = data.email?.trim() || `${usernameLower}@polla.local`;
+    const email = (data.email?.trim() || `${usernameLower}@polla.local`).toLowerCase();
 
     const existingEmail = await prisma.user.findUnique({
       where: { email },
@@ -733,12 +747,24 @@ export async function adminCreateUserAction(data: {
       return { error: 'El correo electrónico ya está registrado' };
     }
 
+    const selectedLeagueIds = Array.from(new Set(data.leagueIds ?? []));
+    if (selectedLeagueIds.length > 0) {
+      const activeLeagues = await prisma.league.findMany({
+        where: { id: { in: selectedLeagueIds }, isActive: true },
+        select: { id: true },
+      });
+      if (activeLeagues.length !== selectedLeagueIds.length) {
+        return { error: 'Una o más competencias seleccionadas no están disponibles.' };
+      }
+    }
+
     const newUser = await prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
         data: {
           name: data.name.trim(),
           username: usernameLower,
-          displayUsername: data.name.trim(),
+          displayUsername: usernameLower,
+          displayName: data.name.trim(),
           email: email,
           emailVerified: true,
           whatsapp: data.whatsapp?.trim() || null,
@@ -759,34 +785,51 @@ export async function adminCreateUserAction(data: {
           updatedAt: new Date(),
         },
       });
-      return u;
-    });
 
-    // Auto-join to pools if approved
-    if (data.status === 'approved') {
-      const autoJoinLeagues = await prisma.league.findMany({
-        where: { autoJoin: true, isActive: true },
-      });
-      for (const lg of autoJoinLeagues) {
-        await prisma.leagueMember.create({
+      for (const leagueId of selectedLeagueIds) {
+        await tx.leagueMember.create({
           data: {
-            leagueId: lg.id,
-            userId: newUser.id,
+            leagueId,
+            userId: u.id,
             role: 'member',
+            isParticipant: true,
           }
         });
+
+        for (const block of ['groups', 'knockout', 'global']) {
+          await tx.standing.upsert({
+            where: {
+              leagueId_userId_block: {
+                leagueId,
+                userId: u.id,
+                block,
+              },
+            },
+            update: {},
+            create: {
+              leagueId,
+              userId: u.id,
+              block,
+              points: 0,
+              exacts: 0,
+              tendencies: 0,
+              consolations: 0,
+              misses: 0,
+              rank: 1,
+              previousRank: 1,
+            },
+          });
+        }
       }
-      if (autoJoinLeagues.length > 0) {
-        await recalculateAllStandings();
-      }
-    }
+      return u;
+    });
 
     await prisma.adminActionLog.create({
       data: {
         userId: adminUser.id,
         action: 'user_created_by_admin',
         target: `user:${newUser.id}`,
-        details: JSON.stringify({ username: usernameLower, status: data.status }),
+        details: JSON.stringify({ username: usernameLower, status: data.status, leagueIds: selectedLeagueIds }),
       },
     });
 
@@ -839,6 +882,7 @@ export async function adminUpdateUserAction(
     emailRemindersEnabled?: boolean;
     reminderEmail?: string;
     themeMode?: string;
+    leagueIds?: string[];
   },
   reason?: string
 ) {
@@ -887,9 +931,11 @@ export async function adminUpdateUserAction(
 
     const updateData: Prisma.UserUpdateInput = {};
     const changes: Record<string, { old: unknown; new: unknown }> = {};
+    let selectedLeagueIds: string[] | undefined;
 
     if (data.name !== undefined && data.name.trim() !== oldUser.name) {
       updateData.name = data.name.trim();
+      updateData.displayName = data.name.trim();
       changes.name = { old: oldUser.name, new: data.name.trim() };
     }
     if (data.username !== undefined) {
@@ -905,7 +951,7 @@ export async function adminUpdateUserAction(
           return { error: 'El nombre de usuario ya está registrado por otro usuario' };
         }
         updateData.username = usernameLower;
-        updateData.displayUsername = data.name || oldUser.name;
+        updateData.displayUsername = usernameLower;
         changes.username = { old: oldUser.username, new: usernameLower };
       }
     }
@@ -954,6 +1000,33 @@ export async function adminUpdateUserAction(
       updateData.reminderEmail = val;
       changes.reminderEmail = { old: oldUser.reminderEmail, new: val };
     }
+    if (data.passwordText !== undefined && data.passwordText.length < 6) {
+      return { error: 'La contraseña temporal debe tener al menos 6 caracteres.' };
+    }
+    if (data.leagueIds !== undefined) {
+      selectedLeagueIds = Array.from(new Set(data.leagueIds));
+      const currentMemberships = await prisma.leagueMember.findMany({
+        where: { userId: targetUserId },
+        select: { leagueId: true },
+      });
+      const currentLeagueIds = currentMemberships.map((m) => m.leagueId);
+      const activeLeagues = await prisma.league.findMany({
+        where: { id: { in: selectedLeagueIds }, isActive: true },
+        select: { id: true },
+      });
+      const allowedLeagueIds = new Set([
+        ...currentLeagueIds,
+        ...activeLeagues.map((league) => league.id),
+      ]);
+      if (selectedLeagueIds.some((leagueId) => !allowedLeagueIds.has(leagueId))) {
+        return { error: 'Una o más competencias seleccionadas no están disponibles.' };
+      }
+      const currentSorted = [...currentLeagueIds].sort();
+      const selectedSorted = [...selectedLeagueIds].sort();
+      if (currentSorted.join('|') !== selectedSorted.join('|')) {
+        changes.competencias = { old: currentSorted, new: selectedSorted };
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       if (Object.keys(updateData).length > 0) {
@@ -973,8 +1046,76 @@ export async function adminUpdateUserAction(
         if (account) {
           await tx.account.update({
             where: { id: account.id },
-            data: { password: hashedPassword }
+            data: {
+              password: hashedPassword,
+              accountId: typeof updateData.email === 'string' ? updateData.email : oldUser.email,
+              updatedAt: new Date(),
+            }
           });
+        } else {
+          await tx.account.create({
+            data: {
+              id: `acc-admin-update-${Math.random().toString(36).substring(2, 11)}`,
+              accountId: typeof updateData.email === 'string' ? updateData.email : oldUser.email,
+              providerId: 'email',
+              userId: targetUserId,
+              password: hashedPassword,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }
+          });
+        }
+      } else if (typeof updateData.email === 'string') {
+        await tx.account.updateMany({
+          where: { userId: targetUserId, providerId: 'email' },
+          data: { accountId: updateData.email, updatedAt: new Date() },
+        });
+      }
+
+      if (selectedLeagueIds !== undefined) {
+        await tx.leagueMember.deleteMany({
+          where: {
+            userId: targetUserId,
+            leagueId: { notIn: selectedLeagueIds },
+          },
+        });
+
+        for (const leagueId of selectedLeagueIds) {
+          await tx.leagueMember.upsert({
+            where: { leagueId_userId: { leagueId, userId: targetUserId } },
+            update: {},
+            create: {
+              leagueId,
+              userId: targetUserId,
+              role: 'member',
+              isParticipant: true,
+            },
+          });
+
+          for (const block of ['groups', 'knockout', 'global']) {
+            await tx.standing.upsert({
+              where: {
+                leagueId_userId_block: {
+                  leagueId,
+                  userId: targetUserId,
+                  block,
+                },
+              },
+              update: {},
+              create: {
+                leagueId,
+                userId: targetUserId,
+                block,
+                points: 0,
+                exacts: 0,
+                tendencies: 0,
+                consolations: 0,
+                misses: 0,
+                rank: 1,
+                previousRank: 1,
+              },
+            });
+          }
         }
       }
     });
@@ -1202,7 +1343,7 @@ export async function adminHardDeleteUserAction(
 
     if (predictionCount > 0 || winnerPredictionCount > 0) {
       return {
-        error: 'Este usuario tiene historial de competencia (pronósticos o predicción de campeón). Usa desactivar/archivar para conservar la integridad y auditoría de la liga.'
+        error: 'Este usuario tiene historial de competencia (pronósticos o predicción de campeón). Usa desactivar/archivar para conservar la integridad y auditoría de la competencia.'
       };
     }
 
@@ -1251,7 +1392,7 @@ export async function adminResetUserChampionAction(targetUserId: string, leagueI
     });
 
     if (!winnerPred) {
-      return { error: 'El usuario no tiene una predicción de campeón registrada en esta liga' };
+      return { error: 'El usuario no tiene una predicción de campeón registrada en esta competencia' };
     }
 
     await prisma.$transaction(async (tx) => {

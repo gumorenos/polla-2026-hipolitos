@@ -28,6 +28,7 @@ export default async function AdminUsuariosPage() {
             select: {
               id: true,
               name: true,
+              competitionType: true,
             },
           },
         },
@@ -38,6 +39,7 @@ export default async function AdminUsuariosPage() {
             select: {
               id: true,
               name: true,
+              competitionType: true,
             }
           },
           team: {
@@ -52,6 +54,7 @@ export default async function AdminUsuariosPage() {
           league: {
             select: {
               name: true,
+              competitionType: true,
             }
           }
         },
@@ -73,6 +76,7 @@ export default async function AdminUsuariosPage() {
     select: {
       id: true,
       name: true,
+      competitionType: true,
     },
     orderBy: { name: 'asc' },
   });

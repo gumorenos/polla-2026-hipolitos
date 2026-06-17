@@ -17,6 +17,7 @@ const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
         select: {
           id: true,
           name: true,
+          competitionType: true,
         },
       },
     },
@@ -27,6 +28,7 @@ const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
         select: {
           id: true,
           name: true,
+          competitionType: true,
         },
       },
       team: {
@@ -1488,7 +1490,7 @@ export async function adminHardDeleteUserAction(
     }
 
     if (targetUserId === adminUser.id) {
-      return { error: 'No puedes eliminarte a ti mismo de la base de datos.' };
+      return { error: 'No puedes eliminar tu propio usuario.' };
     }
 
     if (!reason.trim()) {
@@ -1504,13 +1506,31 @@ export async function adminHardDeleteUserAction(
       return { error: 'El nombre de usuario ingresado no coincide con el del usuario a eliminar.' };
     }
 
+    if (targetUser.isSuperadmin && targetUser.status === 'approved') {
+      const activeSuperadminCount = await prisma.user.count({
+        where: {
+          isSuperadmin: true,
+          status: 'approved',
+        },
+      });
+      if (activeSuperadminCount <= 1) {
+        return { error: 'No puedes eliminar el último superadministrador.' };
+      }
+    }
+
+    const ownedLeagueCount = await prisma.league.count({ where: { createdBy: targetUserId } });
+    if (ownedLeagueCount > 0) {
+      return { error: 'No puedes eliminar este usuario porque es propietario de una competencia.' };
+    }
+
     // Check related records
     const predictionCount = await prisma.prediction.count({ where: { userId: targetUserId } });
     const winnerPredictionCount = await prisma.winnerPrediction.count({ where: { userId: targetUserId } });
+    const championPickCount = await prisma.championPick.count({ where: { userId: targetUserId } });
 
-    if (predictionCount > 0 || winnerPredictionCount > 0) {
+    if (predictionCount > 0 || winnerPredictionCount > 0 || championPickCount > 0) {
       return {
-        error: 'Este usuario tiene historial de competencia (pronósticos o predicción de campeón). Usa desactivar/archivar para conservar la integridad y auditoría de la competencia.'
+        error: 'Este usuario tiene registros históricos y no puede eliminarse. Puedes desactivarlo.'
       };
     }
 

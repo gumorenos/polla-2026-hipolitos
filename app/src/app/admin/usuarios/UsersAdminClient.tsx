@@ -36,6 +36,7 @@ interface UserFromDB {
     league: {
       id: string;
       name: string;
+      competitionType?: string | null;
     };
     role: string;
   }[];
@@ -48,6 +49,7 @@ interface UserFromDB {
     league: {
       id: string;
       name: string;
+      competitionType?: string | null;
     };
     team: {
       name: string;
@@ -66,6 +68,7 @@ interface UserFromDB {
     createdAt: string | Date;
     league: {
       name: string;
+      competitionType?: string | null;
     };
   }[];
   _count?: {
@@ -79,7 +82,7 @@ export default function UsersAdminClient({
   currentUserId 
 }: { 
   users: UserFromDB[];
-  leagues?: { id: string; name: string }[];
+  leagues?: { id: string; name: string; competitionType?: string | null }[];
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -167,11 +170,17 @@ export default function UsersAdminClient({
     { code: 'SEN', name: 'Senegal' },
   ];
 
+  const getCompetitionTypeLabel = (competitionType?: string | null) => {
+    if (competitionType === 'full_prediction') return 'Polla completa';
+    if (competitionType === 'champion_survivor') return 'Solo campeón';
+    return 'Tipo no definido';
+  };
+
   const getSelectedUserLeagueOptions = () => {
-    const options = new Map<string, string>();
-    leagues.forEach((league) => options.set(league.id, league.name));
-    selectedUser?.memberships?.forEach((membership) => options.set(membership.league.id, membership.league.name));
-    return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    const options = new Map<string, { id: string; name: string; competitionType?: string | null }>();
+    leagues.forEach((league) => options.set(league.id, league));
+    selectedUser?.memberships?.forEach((membership) => options.set(membership.league.id, membership.league));
+    return Array.from(options.values()).sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const hasLeagueSelectionChanged = (currentIds: string[], nextIds: string[]) => {
@@ -475,9 +484,10 @@ export default function UsersAdminClient({
     setActionLoading(false);
 
     if (res.error) {
-      alert(res.error);
+      alert(res.error ?? "No se pudo eliminar el usuario.");
     } else {
-      setSuccess("Usuario eliminado definitivamente del sistema.");
+      setSuccess("Usuario eliminado con éxito.");
+      setUserList((currentUsers) => currentUsers.filter((user) => user.id !== hardDeleteUser.id));
       setShowHardDeleteModal(false);
       router.refresh();
     }
@@ -1283,7 +1293,7 @@ export default function UsersAdminClient({
               <p className="text-xs text-text-secondary">El usuario se registrará directamente con las credenciales especificadas.</p>
             </div>
 
-            <form onSubmit={handleCreateUser} className="space-y-3">
+            <form onSubmit={handleCreateUser} className="space-y-3" autoComplete="off">
               {/* Full Name */}
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
@@ -1305,12 +1315,15 @@ export default function UsersAdminClient({
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
                 <input
                   id="admin-create-username"
-                  name="admin-create-username"
+                  name="admin-create-login-handle"
                   type="text"
                   placeholder="Ej. carlosf"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
-                  autoComplete="off"
+                  autoComplete="new-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                   required
                 />
@@ -1322,12 +1335,15 @@ export default function UsersAdminClient({
                 <div className="relative">
                   <input
                     id="admin-create-password"
-                    name="admin-create-password"
+                    name="admin-create-secret"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     autoComplete="new-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
                     required
                   />
@@ -1418,7 +1434,7 @@ export default function UsersAdminClient({
                           }}
                           className="w-4 h-4 rounded border-border-default bg-bg-primary text-gold-500 focus:ring-gold-500"
                         />
-                        <span>{league.name}</span>
+                        <span>{league.name} — {getCompetitionTypeLabel(league.competitionType)}</span>
                       </label>
                     ))}
                   </div>
@@ -1681,7 +1697,9 @@ export default function UsersAdminClient({
                         {leagues
                           .filter((league) => !editLeagueIds.includes(league.id))
                           .map((league) => (
-                            <option key={league.id} value={league.id}>{league.name}</option>
+                            <option key={league.id} value={league.id}>
+                              {league.name} — {getCompetitionTypeLabel(league.competitionType)}
+                            </option>
                           ))}
                       </select>
                       <button

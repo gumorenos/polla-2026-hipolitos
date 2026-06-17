@@ -168,6 +168,19 @@ export default async function Home() {
     },
   });
 
+  const isChampionSurvivor = league.competitionType === 'champion_survivor';
+
+  const championPick = isChampionSurvivor
+    ? await prisma.championPick.findUnique({
+        where: {
+          leagueId_userId: {
+            leagueId: league.id,
+            userId: dbUser.id,
+          },
+        },
+      })
+    : null;
+
   // Count predictions in this league
   const predictionCount = await prisma.prediction.count({
     where: {
@@ -177,17 +190,19 @@ export default async function Home() {
   });
 
   // Next upcoming match and all matches (with predictions) to calculate pending predictions count
-  const allMatches = await prisma.match.findMany({
-    include: {
-      predictions: {
-        where: {
-          userId: dbUser.id,
-          leagueId: league.id,
-        }
-      }
-    },
-    orderBy: { kickoffUtc: 'asc' },
-  });
+  const allMatches = isChampionSurvivor
+    ? []
+    : await prisma.match.findMany({
+        include: {
+          predictions: {
+            where: {
+              userId: dbUser.id,
+              leagueId: league.id,
+            }
+          }
+        },
+        orderBy: { kickoffUtc: 'asc' },
+      });
 
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
@@ -196,13 +211,30 @@ export default async function Home() {
     return kickoffMs > nowMs;
   }) || null;
 
-  const pendingPredictionsCount = allMatches.filter(m => {
-    const kickoffMs = typeof m.kickoffUtc === 'number' ? m.kickoffUtc : new Date(m.kickoffUtc).getTime();
-    const isFuture = kickoffMs > nowMs;
-    const isNotCancelledOrPostponed = m.resultStatus !== 'cancelled' && m.resultStatus !== 'postponed';
-    const hasNoPrediction = m.predictions.length === 0;
-    return isFuture && isNotCancelledOrPostponed && hasNoPrediction;
-  }).length;
+  const pendingPredictionsCount = isChampionSurvivor
+    ? championPick ? 0 : 1
+    : allMatches.filter(m => {
+        const kickoffMs = typeof m.kickoffUtc === 'number' ? m.kickoffUtc : new Date(m.kickoffUtc).getTime();
+        const isFuture = kickoffMs > nowMs;
+        const isNotCancelledOrPostponed = m.resultStatus !== 'cancelled' && m.resultStatus !== 'postponed';
+        const hasNoPrediction = m.predictions.length === 0;
+        return isFuture && isNotCancelledOrPostponed && hasNoPrediction;
+      }).length;
+
+  const pendingStatusTitle = isChampionSurvivor
+    ? championPick ? 'Campeón elegido.' : 'Elige tu campeón.'
+    : pendingPredictionsCount > 0
+      ? `Tienes ${pendingPredictionsCount} pronósticos pendientes`
+      : '¡Tienes todas tus predicciones completas!';
+
+  const pendingStatusDescription = isChampionSurvivor
+    ? championPick
+      ? 'Tu selección de campeón para esta competencia ya está registrada.'
+      : 'Esta competencia es Solo campeón: no requiere pronósticos de partidos.'
+    : 'Los partidos se bloquean en el sistema en el momento exacto del pitazo inicial (kickoff).';
+
+  const predictionMetricCount = isChampionSurvivor ? (championPick ? 1 : 0) : predictionCount;
+  const predictionMetricLabel = isChampionSurvivor ? 'Selecciones' : 'Pronósticos';
 
   // Count approved members in this league
   const approvedMembersCount = await prisma.leagueMember.count({
@@ -251,8 +283,8 @@ export default async function Home() {
             <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Puesto</p>
           </div>
           <div className="card-base p-4 text-center">
-            <p className="font-mono text-2xl font-bold text-text-primary">{predictionCount}</p>
-            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">Pronósticos</p>
+            <p className="font-mono text-2xl font-bold text-text-primary">{predictionMetricCount}</p>
+            <p className="text-[10px] text-text-muted uppercase font-mono mt-1">{predictionMetricLabel}</p>
           </div>
         </div>
 
@@ -261,7 +293,7 @@ export default async function Home() {
           {/* Left / Main Section */}
           <div className="lg:col-span-7 space-y-4">
             {/* Next Match Card */}
-            {nextMatch ? (
+            {!isChampionSurvivor && nextMatch ? (
               <div className="card-base p-5 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">
@@ -294,30 +326,28 @@ export default async function Home() {
                 </div>
                 <p className="text-xs text-text-muted">{nextMatch.venue} · {nextMatch.city}</p>
               </div>
-            ) : (
+            ) : !isChampionSurvivor ? (
               <div className="card-base p-6 text-center text-text-muted text-sm">
                 No hay próximos partidos programados.
               </div>
-            )}
+            ) : null}
 
             {/* Predictions Status / Quick Action */}
             <div className="card-base p-4 bg-gradient-to-r from-bg-tertiary to-bg-secondary/40 border-border-active flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h4 className="font-bold text-text-primary text-sm flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-gold-400" />
-                  {pendingPredictionsCount > 0
-                    ? `Tienes ${pendingPredictionsCount} pronósticos pendientes`
-                    : '¡Tienes todas tus predicciones completas!'}
+                  {pendingStatusTitle}
                 </h4>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Los partidos se bloquean en el sistema en el momento exacto del pitazo inicial (kickoff).
+                  {pendingStatusDescription}
                 </p>
               </div>
               <Link
                 href="/pronosticos"
                 className="btn-gold whitespace-nowrap self-start md:self-auto text-sm py-2 px-4 font-semibold uppercase tracking-wider"
               >
-                Pronosticar ahora
+                {isChampionSurvivor ? 'Ir a campeón' : 'Pronosticar ahora'}
               </Link>
             </div>
           </div>

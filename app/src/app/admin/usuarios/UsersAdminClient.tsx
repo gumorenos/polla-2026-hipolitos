@@ -83,6 +83,7 @@ export default function UsersAdminClient({
   currentUserId: string;
 }) {
   const router = useRouter();
+  const [userList, setUserList] = useState<UserFromDB[]>(users);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'disabled' | 'superadmins'>('all');
   
@@ -94,6 +95,7 @@ export default function UsersAdminClient({
   const [newEmail, setNewEmail] = useState('');
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newStatus, setNewStatus] = useState('approved');
+  const [newUserType, setNewUserType] = useState<'participant' | 'admin' | 'superadmin'>('participant');
   const [newLeagueIds, setNewLeagueIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -178,6 +180,21 @@ export default function UsersAdminClient({
     return currentSorted !== nextSorted;
   };
 
+  const handleStartCreateUser = () => {
+    setNewUsername('');
+    setNewName('');
+    setNewPassword('');
+    setNewEmail('');
+    setNewWhatsapp('');
+    setNewStatus('approved');
+    setNewUserType('participant');
+    setNewLeagueIds([]);
+    setShowPassword(false);
+    setError(null);
+    setSuccess(null);
+    setShowCreateModal(true);
+  };
+
   const handleStartEditUser = (user: UserFromDB) => {
     setSelectedUser(user);
     setEditName(user.name || '');
@@ -243,11 +260,17 @@ export default function UsersAdminClient({
       leagueIds: editLeagueIds,
     }, reason);
 
-    if (res.error) {
+    if ('error' in res) {
       setError(res.error);
       setActionLoading(false);
     } else {
       setSuccess('Usuario actualizado con éxito.');
+      const updatedUser = res.user;
+      if (updatedUser) {
+        setUserList((currentUsers) =>
+          currentUsers.map((user) => user.id === updatedUser.id ? updatedUser : user)
+        );
+      }
       setShowEditModal(false);
       setActionLoading(false);
       router.refresh();
@@ -269,7 +292,7 @@ export default function UsersAdminClient({
 
     const res = await adminResetUserChampionAction(selectedUser.id, leagueId, reason);
 
-    if (res.error) {
+    if ('error' in res) {
       setError(res.error);
       setActionLoading(false);
     } else {
@@ -303,6 +326,9 @@ export default function UsersAdminClient({
       setError(res.error);
     } else {
       setSuccess(`Usuario ${actionLabel}do correctamente`);
+      setUserList((currentUsers) =>
+        currentUsers.map((user) => user.id === userId ? { ...user, status: targetStatus } : user)
+      );
       router.refresh();
     }
     setLoadingUserId(null);
@@ -326,10 +352,11 @@ export default function UsersAdminClient({
       email: newEmail || undefined,
       whatsapp: newWhatsapp || undefined,
       status: newStatus,
+      userType: newUserType,
       leagueIds: newLeagueIds,
     });
 
-    if (res.error) {
+    if ('error' in res) {
       setError(res.error);
       setActionLoading(false);
     } else {
@@ -339,7 +366,12 @@ export default function UsersAdminClient({
       setNewPassword('');
       setNewEmail('');
       setNewWhatsapp('');
+      setNewUserType('participant');
       setNewLeagueIds([]);
+      const createdUser = res.user;
+      if (createdUser) {
+        setUserList((currentUsers) => [createdUser, ...currentUsers.filter((user) => user.id !== createdUser.id)]);
+      }
       setShowCreateModal(false);
       setActionLoading(false);
       router.refresh();
@@ -458,7 +490,7 @@ export default function UsersAdminClient({
   };
 
   // Filter logic
-  const filteredUsers = users.filter((u) => {
+  const filteredUsers = userList.filter((u) => {
     const matchesSearch =
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -551,7 +583,7 @@ export default function UsersAdminClient({
 
         {/* Manual Create Trigger */}
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleStartCreateUser}
           className="btn-gold py-2 px-4 text-xs flex items-center gap-1.5 uppercase font-semibold tracking-wider w-full md:w-auto justify-center"
         >
           <Plus className="w-4 h-4" /> Crear Usuario
@@ -1256,10 +1288,13 @@ export default function UsersAdminClient({
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
                 <input
+                  id="admin-create-name"
+                  name="admin-create-name"
                   type="text"
                   placeholder="Ej. Carlos Fuentes"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  autoComplete="off"
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                   required
                 />
@@ -1269,10 +1304,13 @@ export default function UsersAdminClient({
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
                 <input
+                  id="admin-create-username"
+                  name="admin-create-username"
                   type="text"
                   placeholder="Ej. carlosf"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
+                  autoComplete="off"
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                   required
                 />
@@ -1283,10 +1321,13 @@ export default function UsersAdminClient({
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Contraseña Temporal</label>
                 <div className="relative">
                   <input
+                    id="admin-create-password"
+                    name="admin-create-password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
                     required
                   />
@@ -1304,10 +1345,13 @@ export default function UsersAdminClient({
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">Correo (Opcional)</label>
                 <input
+                  id="admin-create-email"
+                  name="admin-create-email"
                   type="email"
                   placeholder="Ej. carlos@correo.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
+                  autoComplete="off"
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                 />
               </div>
@@ -1316,10 +1360,13 @@ export default function UsersAdminClient({
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp (Opcional)</label>
                 <input
+                  id="admin-create-whatsapp"
+                  name="admin-create-whatsapp"
                   type="tel"
                   placeholder="Ej. +51 999 999 999"
                   value={newWhatsapp}
                   onChange={(e) => setNewWhatsapp(e.target.value)}
+                  autoComplete="off"
                   className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                 />
               </div>
@@ -1334,6 +1381,19 @@ export default function UsersAdminClient({
                 >
                   <option value="approved">Aprobado / Activo de inmediato</option>
                   <option value="pending">Pendiente de Aprobación</option>
+                </select>
+              </div>
+
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Tipo de usuario</label>
+                <select
+                  value={newUserType}
+                  onChange={(e) => setNewUserType(e.target.value as 'participant' | 'admin' | 'superadmin')}
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                >
+                  <option value="participant">Participante</option>
+                  <option value="admin">Administrador de competencias</option>
+                  <option value="superadmin">Superadmin</option>
                 </select>
               </div>
 
@@ -1411,9 +1471,12 @@ export default function UsersAdminClient({
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
                   <input
+                    id="admin-edit-name"
+                    name="admin-edit-name"
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                     required
                   />
@@ -1423,9 +1486,12 @@ export default function UsersAdminClient({
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
                   <input
+                    id="admin-edit-username"
+                    name="admin-edit-username"
                     type="text"
                     value={editUsername}
                     onChange={(e) => setEditUsername(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                     required
                   />
@@ -1435,9 +1501,12 @@ export default function UsersAdminClient({
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Correo</label>
                   <input
+                    id="admin-edit-email"
+                    name="admin-edit-email"
                     type="email"
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                     required
                   />
@@ -1447,9 +1516,12 @@ export default function UsersAdminClient({
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp</label>
                   <input
+                    id="admin-edit-whatsapp"
+                    name="admin-edit-whatsapp"
                     type="tel"
                     value={editWhatsapp}
                     onChange={(e) => setEditWhatsapp(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                   />
                 </div>
@@ -1474,10 +1546,13 @@ export default function UsersAdminClient({
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Restablecer Contraseña (Opcional)</label>
                   <div className="relative">
                     <input
+                      id="admin-edit-password"
+                      name="admin-edit-password"
                       type={showEditPassword ? 'text' : 'password'}
                       placeholder="Nueva contraseña"
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
+                      autoComplete="new-password"
                       className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
                     />
                     <button
@@ -1494,9 +1569,12 @@ export default function UsersAdminClient({
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Email para Recordatorios</label>
                   <input
+                    id="admin-edit-reminder-email"
+                    name="admin-edit-reminder-email"
                     type="email"
                     value={editReminderEmail}
                     onChange={(e) => setEditReminderEmail(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
                     placeholder="Opcional. Si se deja en blanco se usará el correo principal"
                   />

@@ -6,6 +6,199 @@ import { getCurrentSession } from '../auth-helpers';
 import { calculatePoints } from '../scoring/calculatePoints';
 import { revalidatePath } from 'next/cache';
 import { auth } from '../auth';
+import { randomUUID } from 'crypto';
+
+type AdminUserType = 'participant' | 'admin' | 'superadmin';
+
+const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
+  memberships: {
+    include: {
+      league: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  winnerPredictions: {
+    include: {
+      league: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      team: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  },
+  winnerPredictionHistories: {
+    include: {
+      league: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc' as const,
+    },
+  },
+  _count: {
+    select: {
+      predictions: true,
+    },
+  },
+});
+
+function getAdminUserTypeFlags(userType: AdminUserType) {
+  if (userType === 'superadmin') {
+    return { isSuperadmin: true, canCreateLeagues: true };
+  }
+  if (userType === 'admin') {
+    return { isSuperadmin: false, canCreateLeagues: true };
+  }
+  return { isSuperadmin: false, canCreateLeagues: false };
+}
+
+function parseAdminUserType(userType: string | undefined): AdminUserType | null {
+  if (!userType) return 'participant';
+  if (userType === 'participant' || userType === 'admin' || userType === 'superadmin') {
+    return userType;
+  }
+  return null;
+}
+
+async function upsertPasswordAccounts(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  email: string,
+  hashedPassword: string
+) {
+  const now = new Date();
+  const existingAccounts = await tx.account.findMany({
+    where: {
+      userId,
+      providerId: { in: ['credential', 'email'] },
+    },
+  });
+
+  const credentialAccount = existingAccounts.find((account) => account.providerId === 'credential');
+  if (credentialAccount) {
+    await tx.account.update({
+      where: { id: credentialAccount.id },
+      data: {
+        accountId: userId,
+        password: hashedPassword,
+        updatedAt: now,
+      },
+    });
+  } else {
+    await tx.account.create({
+      data: {
+        id: `acc-credential-${randomUUID()}`,
+        accountId: userId,
+        providerId: 'credential',
+        userId,
+        password: hashedPassword,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
+  const emailAccount = existingAccounts.find((account) => account.providerId === 'email');
+  if (emailAccount) {
+    await tx.account.update({
+      where: { id: emailAccount.id },
+      data: {
+        accountId: email,
+        password: hashedPassword,
+        updatedAt: now,
+      },
+    });
+  } else {
+    await tx.account.create({
+      data: {
+        id: `acc-email-${randomUUID()}`,
+        accountId: email,
+        providerId: 'email',
+        userId,
+        password: hashedPassword,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+}
+
+async function syncEmailPasswordAccount(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  email: string
+) {
+  await tx.account.updateMany({
+    where: { userId, providerId: 'email' },
+    data: { accountId: email, updatedAt: new Date() },
+  });
+}
+
+async function ensureCredentialPasswordAccount(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  email: string
+) {
+  const existingAccounts = await tx.account.findMany({
+    where: {
+      userId,
+      providerId: { in: ['credential', 'email'] },
+    },
+  });
+  const emailAccount = existingAccounts.find((account) => account.providerId === 'email');
+  if (!emailAccount?.password) return;
+
+  const credentialAccount = existingAccounts.find((account) => account.providerId === 'credential');
+  if (credentialAccount) {
+    await tx.account.update({
+      where: { id: credentialAccount.id },
+      data: {
+        accountId: userId,
+        password: emailAccount.password,
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await tx.account.create({
+      data: {
+        id: `acc-credential-${randomUUID()}`,
+        accountId: userId,
+        providerId: 'credential',
+        userId,
+        password: emailAccount.password,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  if (emailAccount.accountId !== email) {
+    await tx.account.update({
+      where: { id: emailAccount.id },
+      data: { accountId: email, updatedAt: new Date() },
+    });
+  }
+}
+
+async function getAdminUserSnapshot(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    include: adminUserInclude,
+  });
+}
 
 export async function updateMatchResultInternal(
   matchId: string,
@@ -637,9 +830,20 @@ export async function updateUserStatusAction(targetUserId: string, status: strin
       return { error: 'Estado inválido' };
     }
 
-    await prisma.user.update({
+    const targetUser = await prisma.user.findUnique({
       where: { id: targetUserId },
-      data: { status },
+      select: { email: true },
+    });
+    if (!targetUser) {
+      return { error: 'Usuario no encontrado' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: targetUserId },
+        data: { status },
+      });
+      await ensureCredentialPasswordAccount(tx, targetUserId, targetUser.email);
     });
 
     // Audit action mapping
@@ -699,6 +903,7 @@ export async function adminCreateUserAction(data: {
   whatsapp?: string;
   status: string;
   leagueIds?: string[];
+  userType?: AdminUserType;
 }) {
   try {
     const session = await getCurrentSession();
@@ -728,6 +933,11 @@ export async function adminCreateUserAction(data: {
     if (!validStatuses.includes(data.status)) {
       return { error: 'Estado inválido' };
     }
+    const parsedUserType = parseAdminUserType(data.userType);
+    if (!parsedUserType) {
+      return { error: 'Selecciona un tipo de usuario válido.' };
+    }
+    const roleFlags = getAdminUserTypeFlags(parsedUserType);
 
     const existingUser = await prisma.user.findUnique({
       where: { username: usernameLower },
@@ -769,22 +979,14 @@ export async function adminCreateUserAction(data: {
           emailVerified: true,
           whatsapp: data.whatsapp?.trim() || null,
           status: data.status,
+          isSuperadmin: roleFlags.isSuperadmin,
+          canCreateLeagues: roleFlags.canCreateLeagues,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
       });
 
-      await tx.account.create({
-        data: {
-          id: `acc-admin-${Math.random().toString(36).substring(2, 11)}`,
-          accountId: email,
-          providerId: 'email',
-          userId: u.id,
-          password: hashedPassword,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
+      await upsertPasswordAccounts(tx, u.id, email, hashedPassword);
 
       for (const leagueId of selectedLeagueIds) {
         await tx.leagueMember.create({
@@ -829,13 +1031,14 @@ export async function adminCreateUserAction(data: {
         userId: adminUser.id,
         action: 'user_created_by_admin',
         target: `user:${newUser.id}`,
-        details: JSON.stringify({ username: usernameLower, status: data.status, leagueIds: selectedLeagueIds }),
+        details: JSON.stringify({ username: usernameLower, status: data.status, userType: parsedUserType, leagueIds: selectedLeagueIds }),
       },
     });
 
     revalidatePath('/admin/usuarios');
     revalidatePath('/admin');
-    return { success: true };
+    const userSnapshot = await getAdminUserSnapshot(newUser.id);
+    return { success: true, user: userSnapshot };
   } catch (error) {
     console.error('Error in adminCreateUserAction:', error);
     return { error: 'Ocurrió un error al crear el usuario administrativamente' };
@@ -932,6 +1135,7 @@ export async function adminUpdateUserAction(
     const updateData: Prisma.UserUpdateInput = {};
     const changes: Record<string, { old: unknown; new: unknown }> = {};
     let selectedLeagueIds: string[] | undefined;
+    const validStatuses = ['pending', 'approved', 'rejected', 'disabled'];
 
     if (data.name !== undefined && data.name.trim() !== oldUser.name) {
       updateData.name = data.name.trim();
@@ -972,6 +1176,9 @@ export async function adminUpdateUserAction(
       changes.whatsapp = { old: oldUser.whatsapp, new: val };
     }
     if (data.status !== undefined && data.status !== oldUser.status) {
+      if (!validStatuses.includes(data.status)) {
+        return { error: 'Estado inválido' };
+      }
       updateData.status = data.status;
       changes.status = { old: oldUser.status, new: data.status };
     }
@@ -1039,37 +1246,17 @@ export async function adminUpdateUserAction(
       if (data.passwordText) {
         const ctx = await auth.$context;
         const hashedPassword = await ctx.password.hash(data.passwordText);
-        
-        const account = await tx.account.findFirst({
-          where: { userId: targetUserId, providerId: 'email' }
-        });
-        if (account) {
-          await tx.account.update({
-            where: { id: account.id },
-            data: {
-              password: hashedPassword,
-              accountId: typeof updateData.email === 'string' ? updateData.email : oldUser.email,
-              updatedAt: new Date(),
-            }
-          });
-        } else {
-          await tx.account.create({
-            data: {
-              id: `acc-admin-update-${Math.random().toString(36).substring(2, 11)}`,
-              accountId: typeof updateData.email === 'string' ? updateData.email : oldUser.email,
-              providerId: 'email',
-              userId: targetUserId,
-              password: hashedPassword,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            }
-          });
-        }
+        await upsertPasswordAccounts(
+          tx,
+          targetUserId,
+          typeof updateData.email === 'string' ? updateData.email : oldUser.email,
+          hashedPassword
+        );
       } else if (typeof updateData.email === 'string') {
-        await tx.account.updateMany({
-          where: { userId: targetUserId, providerId: 'email' },
-          data: { accountId: updateData.email, updatedAt: new Date() },
-        });
+        await syncEmailPasswordAccount(tx, targetUserId, updateData.email);
+        await ensureCredentialPasswordAccount(tx, targetUserId, updateData.email);
+      } else {
+        await ensureCredentialPasswordAccount(tx, targetUserId, oldUser.email);
       }
 
       if (selectedLeagueIds !== undefined) {
@@ -1132,7 +1319,8 @@ export async function adminUpdateUserAction(
     }
 
     revalidatePath('/admin/usuarios');
-    return { success: true };
+    const userSnapshot = await getAdminUserSnapshot(targetUserId);
+    return { success: true, user: userSnapshot };
   } catch (error) {
     console.error('Error in adminUpdateUserAction:', error);
     return { error: 'Ocurrió un error al actualizar el usuario' };
@@ -1183,28 +1371,7 @@ export async function adminResetUserPasswordAction(
     const hashedPassword = await ctx.password.hash(passwordToSet);
 
     await prisma.$transaction(async (tx) => {
-      const account = await tx.account.findFirst({
-        where: { userId: targetUserId, providerId: 'email' }
-      });
-      if (account) {
-        await tx.account.update({
-          where: { id: account.id },
-          data: { password: hashedPassword }
-        });
-      } else {
-        // Create account if not present (fallback)
-        await tx.account.create({
-          data: {
-            id: `acc-admin-reset-${Math.random().toString(36).substring(2, 11)}`,
-            accountId: targetUser.email,
-            providerId: 'email',
-            userId: targetUserId,
-            password: hashedPassword,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }
-        });
-      }
+      await upsertPasswordAccounts(tx, targetUserId, targetUser.email, hashedPassword);
     });
 
     await prisma.adminActionLog.create({

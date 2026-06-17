@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Users, Plus, ArrowRight, Clipboard, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
 import Link from 'next/link';
@@ -47,6 +47,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
   openCreateModal = false,
 }) => {
   const router = useRouter();
+  const createNameInputRef = useRef<HTMLInputElement>(null);
+  const createNameFocusedRef = useRef(false);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [newLeagueName, setNewLeagueName] = useState('');
   const [competitionType, setCompetitionType] = useState<'full_prediction' | 'champion_survivor'>(initialCompetitionType);
@@ -57,6 +59,16 @@ export const LigasClient: React.FC<LigasClientProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showCreateModal) {
+      createNameFocusedRef.current = false;
+      return;
+    }
+    if (createNameFocusedRef.current) return;
+    createNameFocusedRef.current = true;
+    createNameInputRef.current?.focus();
+  }, [showCreateModal]);
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -255,6 +267,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   Nombre de la Competencia
                 </label>
                 <input
+                  ref={createNameInputRef}
                   type="text"
                   placeholder="Ej. Amigos del Fútbol"
                   value={newLeagueName}
@@ -262,7 +275,6 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   className="field"
                   required
                   disabled={loading}
-                  autoFocus
                 />
               </div>
               <div className="space-y-2">

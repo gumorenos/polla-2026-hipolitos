@@ -7,6 +7,7 @@ import { ScoreType, PhaseId, MatchStatus } from '../../types/domain';
 import Link from 'next/link';
 import { Users } from 'lucide-react';
 import { getLimaDateKey, getLimaTimeUntilMidnight } from '../../lib/actions/odds';
+import { calculatePrizePool, getChampionPickStatus } from '../../lib/champion-survivor';
 
 
 export const dynamic = 'force-dynamic';
@@ -210,6 +211,135 @@ export default async function PronosticosPage() {
     };
   }
 
+  const championSurvivorMemberships = memberships.filter(m => m.league.competitionType === 'champion_survivor');
+  const championSurvivorLeagueIds = championSurvivorMemberships.map(m => m.leagueId);
+
+  const [
+    championTeamStatuses,
+    championOddsSnapshots,
+    championParticipants,
+    championLeaguePicks,
+  ] = championSurvivorLeagueIds.length > 0
+    ? await Promise.all([
+        prisma.teamTournamentStatus.findMany({
+          where: { leagueId: { in: championSurvivorLeagueIds } },
+        }),
+        prisma.championOddsSnapshot.findMany({
+          where: {
+            leagueId: { in: championSurvivorLeagueIds },
+            sourceMarket: 'outright_winner',
+          },
+          orderBy: { capturedAt: 'desc' },
+        }),
+        prisma.leagueMember.findMany({
+          where: {
+            leagueId: { in: championSurvivorLeagueIds },
+            isParticipant: true,
+            user: { status: 'approved' },
+          },
+          select: {
+            leagueId: true,
+            userId: true,
+          },
+        }),
+        prisma.championPick.findMany({
+          where: { leagueId: { in: championSurvivorLeagueIds } },
+        }),
+      ])
+    : [[], [], [], []];
+
+  type ChampionInfoPayload = {
+    teamStatuses: Record<string, {
+      status: string;
+      eliminatedAt: string | null;
+    }>;
+    championOdds: Record<string, {
+      decimalOdds: number;
+      impliedProbability: number;
+      expectedValue: number | null;
+      provider: string;
+      bookmaker: string;
+      capturedAt: string;
+    }>;
+    summary: {
+      totalParticipants: number;
+      alive: number;
+      eliminated: number;
+      pending: number;
+      winners: number;
+      prizePool: {
+        amount: number;
+        estimated: boolean;
+        currency: string;
+      };
+    };
+  };
+
+  const championInfoByLeague: Record<string, ChampionInfoPayload> = {};
+
+  for (const membership of championSurvivorMemberships) {
+    const leagueId = membership.leagueId;
+    const participants = championParticipants.filter(member => member.leagueId === leagueId);
+    const picks = championLeaguePicks.filter(pick => pick.leagueId === leagueId);
+    const statuses = championTeamStatuses.filter(status => status.leagueId === leagueId);
+    const statusByTeam = new Map(statuses.map(status => [status.teamCode, status]));
+    const pickByUser = new Map(picks.map(pick => [pick.userId, pick]));
+    const prizePool = calculatePrizePool(membership.league, participants.length);
+    const statusCounts = {
+      alive: 0,
+      eliminated: 0,
+      pending: 0,
+      winners: 0,
+    };
+
+    for (const participant of participants) {
+      const pick = pickByUser.get(participant.userId) || null;
+      const teamStatus = pick ? statusByTeam.get(pick.teamCode) : null;
+      const status = getChampionPickStatus(pick, teamStatus);
+      if (status === 'alive') statusCounts.alive++;
+      if (status === 'eliminated') statusCounts.eliminated++;
+      if (status === 'pending') statusCounts.pending++;
+      if (status === 'winner') statusCounts.winners++;
+    }
+
+    const teamStatusesPayload: ChampionInfoPayload['teamStatuses'] = {};
+    for (const status of statuses) {
+      teamStatusesPayload[status.teamCode] = {
+        status: status.status,
+        eliminatedAt: status.eliminatedAt ? status.eliminatedAt.toISOString() : null,
+      };
+    }
+
+    const championOddsPayload: ChampionInfoPayload['championOdds'] = {};
+    if (membership.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true') {
+      for (const snapshot of championOddsSnapshots) {
+        if (snapshot.leagueId !== leagueId || championOddsPayload[snapshot.teamCode]) continue;
+        const impliedProbability = snapshot.impliedProbability || 1 / snapshot.decimalOdds;
+        championOddsPayload[snapshot.teamCode] = {
+          decimalOdds: snapshot.decimalOdds,
+          impliedProbability,
+          expectedValue: prizePool.amount * impliedProbability,
+          provider: snapshot.provider,
+          bookmaker: snapshot.bookmaker,
+          capturedAt: snapshot.capturedAt.toISOString(),
+        };
+      }
+    }
+
+    championInfoByLeague[leagueId] = {
+      teamStatuses: teamStatusesPayload,
+      championOdds: championOddsPayload,
+      summary: {
+        totalParticipants: participants.length,
+        alive: statusCounts.alive,
+        eliminated: statusCounts.eliminated,
+        pending: statusCounts.pending,
+        winners: statusCounts.winners,
+        prizePool,
+      },
+    };
+  }
+
   // Rate Limiting checks
   const dateKey = await getLimaDateKey(new Date());
   const todayUsage = await prisma.userOddsRefreshUsage.findUnique({
@@ -310,6 +440,7 @@ export default async function PronosticosPage() {
         globalOdds={globalOddsMap}
         userOdds={userOddsMap}
         h2hData={h2hMap}
+        championInfoByLeague={championInfoByLeague}
         canRefreshToday={canRefreshToday}
         timeLeftToday={timeLeftToday}
         manualRefreshEnabled={manualRefreshEnabled}

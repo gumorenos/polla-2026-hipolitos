@@ -161,8 +161,8 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Kept full prediction mode on `WinnerPrediction`; Champion Survivor uses `ChampionPick`.
 - [x] Champion Survivor admin UI for picks, team statuses, manual champion odds, distribution, exclusive picks, and CSV export.
 - [x] Added canonical `/competencia` route, competition type selection, champion deadline field, and explicit creator participant opt-in.
-- [ ] Full Champion Survivor user UI pages.
-- [ ] Champion Survivor visual dashboard.
+- [x] Added read-only Champion Survivor user information panels below the explicit pick form: selected champion context and competition context.
+- [ ] Full Champion Survivor visual dashboard with simulations and social insights.
 
 ---
 

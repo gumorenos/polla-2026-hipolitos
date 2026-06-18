@@ -313,5 +313,5 @@ We implement the following 6 tie-breakers sequentially:
 
 **Consequences:**
 - Existing memberships keep `isParticipant = true` through the migration default.
-- The public Champion Survivor dashboard remains pending; `/pronosticos` only includes the minimal champion-pick flow for Champion Survivor competitions.
-
+- `/pronosticos` includes the explicit champion-pick flow plus read-only informational panels for the selected champion and competition context. Match odds/H2H are contextual aids only, champion odds remain separate from match odds, and `showOdds`/`showH2H` are respected for participant display.
+- The advanced Champion Survivor dashboard, simulations, social insights, pick exclusivity, and social risk analysis remain pending.

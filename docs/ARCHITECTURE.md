@@ -241,6 +241,14 @@ User explicitly saves one champion pick
   → lockedAt is set on save
 ```
 
+`/pronosticos` also provides read-only Champion Survivor context below the explicit pick form:
+
+- `Información de tu campeón` shows the selected or saved team, tournament status, champion market probability from `ChampionOddsSnapshot`, expected value, next match, recent result, match odds, and H2H when data exists.
+- `Información de la competencia` shows recent results, upcoming matches, basic participant survival counts, and estimated prize pool.
+- Match odds and H2H are contextual aids only. Champion market probability remains separate and never uses match odds as a substitute.
+- `showOdds` hides champion odds, expected value, and match odds for participants. `showH2H` hides H2H for participants. Admin management remains available.
+- Simulations, social insights, pick exclusivity, and social risk analysis remain outside this phase.
+
 ```
 Admin or superadmin manages Champion Survivor
   → Server Action validates superadmin or league owner/admin role

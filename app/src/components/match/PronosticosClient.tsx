@@ -7,6 +7,63 @@ import { CheckSquare, AlertCircle, Trophy, Sparkles } from 'lucide-react';
 import { saveWinnerPredictionAction } from '../../lib/actions/predictions';
 import { submitChampionPick } from '../../lib/actions/champion-survivor';
 import { FLAG_MAP } from '../ui/FlagDisc';
+import { formatLeagueCurrency } from '../../lib/utils/currency';
+
+type OddsInfo = {
+  homeOdds: number;
+  drawOdds: number;
+  awayOdds: number;
+  homeProb: number;
+  drawProb: number;
+  awayProb: number;
+  bookmaker: string;
+  provider?: string;
+  capturedAt: string;
+};
+
+type H2HInfo = {
+  totalMatches: number;
+  homeWins: number;
+  draws: number;
+  awayWins: number;
+  homeGoals: number;
+  awayGoals: number;
+  lastMatches: {
+    date: string;
+    competition: string;
+    homeScore: number;
+    awayScore: number;
+    homeTeam: string;
+    awayTeam: string;
+  }[];
+};
+
+type ChampionInfoByLeague = Record<string, {
+  teamStatuses: Record<string, {
+    status: string;
+    eliminatedAt: string | null;
+  }>;
+  championOdds: Record<string, {
+    decimalOdds: number;
+    impliedProbability: number;
+    expectedValue: number | null;
+    provider: string;
+    bookmaker: string;
+    capturedAt: string;
+  }>;
+  summary: {
+    totalParticipants: number;
+    alive: number;
+    eliminated: number;
+    pending: number;
+    winners: number;
+    prizePool: {
+      amount: number;
+      estimated: boolean;
+      currency: string;
+    };
+  };
+}>;
 
 interface PronosticosClientProps {
   matches: Match[];
@@ -48,42 +105,10 @@ interface PronosticosClientProps {
     reason: string | null;
     createdAt: string;
   }[];
-  globalOdds: Record<string, {
-    homeOdds: number;
-    drawOdds: number;
-    awayOdds: number;
-    homeProb: number;
-    drawProb: number;
-    awayProb: number;
-    bookmaker: string;
-    capturedAt: string;
-  }>;
-  userOdds: Record<string, {
-    homeOdds: number;
-    drawOdds: number;
-    awayOdds: number;
-    homeProb: number;
-    drawProb: number;
-    awayProb: number;
-    bookmaker: string;
-    capturedAt: string;
-  }>;
-  h2hData: Record<string, {
-    totalMatches: number;
-    homeWins: number;
-    draws: number;
-    awayWins: number;
-    homeGoals: number;
-    awayGoals: number;
-    lastMatches: {
-      date: string;
-      competition: string;
-      homeScore: number;
-      awayScore: number;
-      homeTeam: string;
-      awayTeam: string;
-    }[];
-  }>;
+  globalOdds: Record<string, OddsInfo>;
+  userOdds: Record<string, OddsInfo>;
+  h2hData: Record<string, H2HInfo>;
+  championInfoByLeague: ChampionInfoByLeague;
   canRefreshToday: boolean;
   timeLeftToday: { hours: number; minutes: number };
   manualRefreshEnabled: boolean;
@@ -104,6 +129,43 @@ function getActionError(result: unknown): string | null {
   return null;
 }
 
+function isFinishedMatch(match: Match): boolean {
+  return (
+    match.resultStatus === 'final' ||
+    match.status === 'result' ||
+    (match.homeScore !== null && match.homeScore !== undefined && match.awayScore !== null && match.awayScore !== undefined)
+  );
+}
+
+function isUpcomingMatch(match: Match): boolean {
+  return !isFinishedMatch(match) && new Date(match.kickoffUtc).getTime() > Date.now();
+}
+
+function includesTeam(match: Match, teamCode: string): boolean {
+  return match.homeTeamCode === teamCode || match.awayTeamCode === teamCode;
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatMatchDate(value: Date | string | number): string {
+  return new Date(value).toLocaleString('es-PE', {
+    timeZone: 'America/Lima',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getTournamentStatusLabel(status?: string | null): string {
+  if (status === 'active') return 'Vivo';
+  if (status === 'eliminated') return 'Eliminado';
+  if (status === 'champion') return 'Campeón acertado';
+  return 'Estado no definido';
+}
+
 export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   matches,
   predictions,
@@ -114,6 +176,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   globalOdds,
   userOdds,
   h2hData,
+  championInfoByLeague,
   canRefreshToday,
   timeLeftToday,
   manualRefreshEnabled,
@@ -164,10 +227,26 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     return leagues.find(l => l.id === activeLeagueId);
   }, [leagues, activeLeagueId]);
 
+  const activeChampionInfo = activeLeague ? championInfoByLeague[activeLeague.id] : undefined;
+
 
   const realTeams = useMemo(() => {
     return teams.filter(t => t.code.length === 3 && !/^\d/.test(t.code) && !/^[WR]/.test(t.code));
   }, [teams]);
+
+  const recentFinishedMatches = useMemo(() => {
+    return matches
+      .filter(isFinishedMatch)
+      .sort((a, b) => new Date(b.kickoffUtc).getTime() - new Date(a.kickoffUtc).getTime())
+      .slice(0, 4);
+  }, [matches]);
+
+  const upcomingMatches = useMemo(() => {
+    return matches
+      .filter(isUpcomingMatch)
+      .sort((a, b) => new Date(a.kickoffUtc).getTime() - new Date(b.kickoffUtc).getTime())
+      .slice(0, 4);
+  }, [matches]);
 
   const handlePredictionSaved = (savedPred: Prediction) => {
     setLocalPreds((prev) => ({
@@ -270,6 +349,77 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
     const percent = total > 0 ? Math.round((predicted / total) * 100) : 0;
     return { total, predicted, percent };
   }, [matches, activePreds]);
+
+  const getTeamName = (teamCode: string) => teams.find(t => t.code === teamCode)?.name || teamCode;
+
+  const getMatchOdds = (matchId: string): OddsInfo | null => userOdds[matchId] || globalOdds[matchId] || null;
+
+  const renderMatchOdds = (match: Match) => {
+    if (!activeLeague?.showOdds) return null;
+
+    const odds = getMatchOdds(match.id);
+    if (!odds) return null;
+
+    return (
+      <div className="rounded-lg border border-border-subtle bg-black/10 p-2 text-[10px] font-mono text-text-secondary space-y-1">
+        <p className="uppercase tracking-wider text-gold-400 font-bold">Odds del partido</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <span>Local: <strong className="text-text-primary">{odds.homeOdds.toFixed(2)}</strong> ({formatPercent(odds.homeProb)})</span>
+          <span>Empate: <strong className="text-text-primary">{odds.drawOdds.toFixed(2)}</strong> ({formatPercent(odds.drawProb)})</span>
+          <span>Visita: <strong className="text-text-primary">{odds.awayOdds.toFixed(2)}</strong> ({formatPercent(odds.awayProb)})</span>
+        </div>
+        <p className="text-[9px] text-text-muted">Bookmaker: {odds.bookmaker}</p>
+      </div>
+    );
+  };
+
+  const renderH2HInfo = (match: Match) => {
+    if (!activeLeague?.showH2H) return null;
+
+    const h2h = h2hData[match.id];
+    if (!h2h) return null;
+
+    return (
+      <div className="rounded-lg border border-border-subtle bg-black/10 p-2 text-[10px] font-mono text-text-secondary space-y-1">
+        <p className="uppercase tracking-wider text-gold-400 font-bold">Historial H2H</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <span>Partidos: <strong className="text-text-primary">{h2h.totalMatches}</strong></span>
+          <span>{match.homeTeamCode}: <strong className="text-text-primary">{h2h.homeWins}</strong></span>
+          <span>Empates: <strong className="text-text-primary">{h2h.draws}</strong></span>
+          <span>{match.awayTeamCode}: <strong className="text-text-primary">{h2h.awayWins}</strong></span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCompactMatch = (match: Match, options?: { showContext?: boolean }) => (
+    <div key={match.id} className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-primary">
+            {getTeamName(match.homeTeamCode)} <span className="text-text-muted">vs</span> {getTeamName(match.awayTeamCode)}
+          </p>
+          <p className="text-[10px] text-text-muted font-mono">
+            {match.phase.toUpperCase()} · {match.jornada} · {formatMatchDate(match.kickoffUtc)} (Hora Lima)
+          </p>
+          {options?.showContext && (
+            <p className="text-[10px] text-text-secondary">{match.venue} · {match.city}</p>
+          )}
+        </div>
+        {isFinishedMatch(match) ? (
+          <span className="font-mono text-sm font-bold text-gold-400 whitespace-nowrap">
+            {match.homeScore ?? '-'} - {match.awayScore ?? '-'}
+          </span>
+        ) : (
+          <span className="text-[9px] font-mono uppercase text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+            Próximo
+          </span>
+        )}
+      </div>
+      {!isFinishedMatch(match) && renderMatchOdds(match)}
+      {!isFinishedMatch(match) && renderH2HInfo(match)}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -452,7 +602,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                         disabled={savingWinner}
                         className="btn-gold py-1.5 px-4 text-xs uppercase font-mono tracking-wider font-semibold whitespace-nowrap"
                       >
-                        {isCorrectionActive ? 'Guardar corrección' : 'Guardar campeón'}
+                        {isCorrectionActive
+                          ? 'Guardar corrección'
+                          : activeLeague.competitionType === 'champion_survivor'
+                            ? 'Guardar selección'
+                            : 'Guardar campeón'}
                       </button>
                     )}
                   </>
@@ -542,6 +696,180 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
               );
             })()}
           </div>
+        );
+      })()}
+
+      {activeLeague?.competitionType === 'champion_survivor' && (() => {
+        const consideredTeamCode = selectedWinners[activeLeagueId] || localWinners[activeLeagueId] || '';
+        const consideredTeam = consideredTeamCode ? teams.find(t => t.code === consideredTeamCode) : null;
+        const consideredTeamName = consideredTeam?.name || consideredTeamCode;
+        const consideredTeamFlag = consideredTeamCode ? (FLAG_MAP[consideredTeamCode.toUpperCase()] || '') : '';
+        const teamStatus = consideredTeamCode ? activeChampionInfo?.teamStatuses[consideredTeamCode] : undefined;
+        const championOdds = consideredTeamCode ? activeChampionInfo?.championOdds[consideredTeamCode] : undefined;
+        const teamUpcomingMatch = consideredTeamCode
+          ? matches
+              .filter(match => isUpcomingMatch(match) && includesTeam(match, consideredTeamCode))
+              .sort((a, b) => new Date(a.kickoffUtc).getTime() - new Date(b.kickoffUtc).getTime())[0]
+          : null;
+        const teamRecentResult = consideredTeamCode
+          ? matches
+              .filter(match => isFinishedMatch(match) && includesTeam(match, consideredTeamCode))
+              .sort((a, b) => new Date(b.kickoffUtc).getTime() - new Date(a.kickoffUtc).getTime())[0]
+          : null;
+        const summary = activeChampionInfo?.summary;
+
+        return (
+          <>
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Información de tu campeón</h3>
+                <p className="text-xs text-text-secondary">Datos de solo lectura para evaluar tu selección antes o después de guardarla.</p>
+              </div>
+
+              {!consideredTeamCode ? (
+                <p className="text-sm text-text-secondary">
+                  Selecciona un equipo para ver información útil antes de guardar tu elección.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Selección</p>
+                      <p className="text-lg font-bold text-text-primary">
+                        {consideredTeamFlag} {consideredTeamName} <span className="text-text-muted font-mono text-sm">({consideredTeamCode})</span>
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Estado en torneo</p>
+                      <p className="text-lg font-bold text-gold-400">{getTournamentStatusLabel(teamStatus?.status)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Probabilidad de mercado de campeón</p>
+                      {!activeLeague.showOdds ? (
+                        <p className="text-xs text-text-muted italic">Las ayudas de mercado están desactivadas para esta competencia.</p>
+                      ) : championOdds ? (
+                        <div className="space-y-1">
+                          <p className="text-lg font-bold text-gold-400">{formatPercent(championOdds.impliedProbability)}</p>
+                          <p className="text-[10px] text-text-secondary font-mono">Cuota outright: {championOdds.decimalOdds.toFixed(2)}</p>
+                          {championOdds.expectedValue !== null && summary && (
+                            <p className="text-[10px] text-text-secondary font-mono">
+                              Valor esperado estimado: {formatLeagueCurrency(championOdds.expectedValue, summary.prizePool.currency)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text-muted italic">Probabilidad de campeonar no disponible.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Próximo partido de la selección</h4>
+                      {teamUpcomingMatch ? (
+                        renderCompactMatch(teamUpcomingMatch, { showContext: true })
+                      ) : (
+                        <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                          No hay próximos partidos disponibles para esta selección.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Resultado reciente de la selección</h4>
+                      {teamRecentResult ? (
+                        renderCompactMatch(teamRecentResult, { showContext: true })
+                      ) : (
+                        <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                          Todavía no hay resultados recientes para esta selección.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!activeLeague.showOdds && (
+                    <p className="text-[10px] text-text-muted italic">Las ayudas de mercado están desactivadas para esta competencia.</p>
+                  )}
+                  {!activeLeague.showH2H && (
+                    <p className="text-[10px] text-text-muted italic">El historial H2H está desactivado para esta competencia.</p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Información de la competencia</h3>
+                <p className="text-xs text-text-secondary">Contexto general de solo lectura para Champion Survivor.</p>
+              </div>
+
+              {summary && (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Participantes</p>
+                    <p className="text-lg font-bold text-text-primary">{summary.totalParticipants}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Vivos</p>
+                    <p className="text-lg font-bold text-green-400">{summary.alive}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Eliminados</p>
+                    <p className="text-lg font-bold text-red-400">{summary.eliminated}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Sin selección</p>
+                    <p className="text-lg font-bold text-text-primary">{summary.pending}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Ganadores</p>
+                    <p className="text-lg font-bold text-gold-400">{summary.winners}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Pozo estimado</p>
+                    <p className="text-lg font-bold text-text-primary">
+                      {formatLeagueCurrency(summary.prizePool.amount, summary.prizePool.currency)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Resultados recientes</h4>
+                  {recentFinishedMatches.length > 0 ? (
+                    <div className="space-y-2">
+                      {recentFinishedMatches.map(match => renderCompactMatch(match))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                      Todavía no hay resultados recientes.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Próximos partidos</h4>
+                  {upcomingMatches.length > 0 ? (
+                    <div className="space-y-2">
+                      {upcomingMatches.map(match => renderCompactMatch(match))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                      No hay próximos partidos disponibles.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {!activeLeague.showOdds && (
+                <p className="text-[10px] text-text-muted italic">Las ayudas de mercado están desactivadas para esta competencia.</p>
+              )}
+              {!activeLeague.showH2H && (
+                <p className="text-[10px] text-text-muted italic">El historial H2H está desactivado para esta competencia.</p>
+              )}
+            </section>
+          </>
         );
       })()}
 

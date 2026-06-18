@@ -247,7 +247,15 @@ User explicitly saves one champion pick
 - `Información de la competencia` shows recent results, upcoming matches, basic participant survival counts, and estimated prize pool.
 - Match odds and H2H are contextual aids only. Champion market probability remains separate and never uses match odds as a substitute.
 - `showOdds` hides champion odds, expected value, and match odds for participants. `showH2H` hides H2H for participants. Admin management remains available.
-- Simulations, social insights, pick exclusivity, and social risk analysis remain outside this phase.
+- Simulations and match-by-match tournament models remain outside this phase.
+
+Champion Survivor also includes aggregate social and market panels for participants:
+
+- `Mi pick vs mercado` uses only `ChampionOddsSnapshot` outright winner rows for champion probability, decimal odds, provider/bookmaker, captured time, and expected value.
+- `Riesgo social` shows aggregate same-team pick counts, pick exclusivity, and individual estimated EV as `prizePool * championProbability / samePickCount` when market aids are enabled.
+- `Pick popular vs pick diferencial` classifies picks with simple probability and popularity thresholds. Probability-based classification is hidden when `showOdds` is disabled.
+- `Mapa de supervivencia` shows survival counts, pick distribution by team, exclusive picks, and combined alive probability when all alive teams have champion odds.
+- Social counts and distribution are aggregate-only; participant names are not exposed in these panels. Simulations remain pending.
 
 ```
 Admin or superadmin manages Champion Survivor

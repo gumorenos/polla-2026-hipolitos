@@ -7,7 +7,13 @@ import { ScoreType, PhaseId, MatchStatus } from '../../types/domain';
 import Link from 'next/link';
 import { Users } from 'lucide-react';
 import { getLimaDateKey, getLimaTimeUntilMidnight } from '../../lib/actions/odds';
-import { calculatePrizePool, getChampionPickStatus } from '../../lib/champion-survivor';
+import {
+  buildPickDistribution,
+  buildSurvivalSummary,
+  calculateChampionProbability,
+  calculatePrizePool,
+  getChampionPickStatus,
+} from '../../lib/champion-survivor';
 
 
 export const dynamic = 'force-dynamic';
@@ -267,11 +273,33 @@ export default async function PronosticosPage() {
       eliminated: number;
       pending: number;
       winners: number;
+      combinedAliveProbability: number | null;
+      combinedAliveProbabilityAvailable: boolean;
       prizePool: {
         amount: number;
         estimated: boolean;
         currency: string;
       };
+    };
+    distribution: {
+      byTeam: {
+        teamCode: string;
+        count: number;
+        percentage: number;
+        status: string;
+      }[];
+      mostPickedTeam: {
+        teamCode: string;
+        count: number;
+        percentage: number;
+        status: string;
+      } | null;
+      exclusivePicks: {
+        teamCode: string;
+        count: number;
+        percentage: number;
+        status: string;
+      }[];
     };
   };
 
@@ -283,23 +311,16 @@ export default async function PronosticosPage() {
     const picks = championLeaguePicks.filter(pick => pick.leagueId === leagueId);
     const statuses = championTeamStatuses.filter(status => status.leagueId === leagueId);
     const statusByTeam = new Map(statuses.map(status => [status.teamCode, status]));
-    const pickByUser = new Map(picks.map(pick => [pick.userId, pick]));
     const prizePool = calculatePrizePool(membership.league, participants.length);
-    const statusCounts = {
-      alive: 0,
-      eliminated: 0,
-      pending: 0,
-      winners: 0,
-    };
+    const showMarketAids = membership.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true';
+    const latestChampionOddsByTeam = new Map<string, (typeof championOddsSnapshots)[number]>();
+    const distribution = buildPickDistribution(picks, statuses, participants.length);
 
-    for (const participant of participants) {
-      const pick = pickByUser.get(participant.userId) || null;
-      const teamStatus = pick ? statusByTeam.get(pick.teamCode) : null;
-      const status = getChampionPickStatus(pick, teamStatus);
-      if (status === 'alive') statusCounts.alive++;
-      if (status === 'eliminated') statusCounts.eliminated++;
-      if (status === 'pending') statusCounts.pending++;
-      if (status === 'winner') statusCounts.winners++;
+    if (showMarketAids) {
+      for (const snapshot of championOddsSnapshots) {
+        if (snapshot.leagueId !== leagueId || latestChampionOddsByTeam.has(snapshot.teamCode)) continue;
+        latestChampionOddsByTeam.set(snapshot.teamCode, snapshot);
+      }
     }
 
     const teamStatusesPayload: ChampionInfoPayload['teamStatuses'] = {};
@@ -311,32 +332,49 @@ export default async function PronosticosPage() {
     }
 
     const championOddsPayload: ChampionInfoPayload['championOdds'] = {};
-    if (membership.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true') {
-      for (const snapshot of championOddsSnapshots) {
-        if (snapshot.leagueId !== leagueId || championOddsPayload[snapshot.teamCode]) continue;
-        const impliedProbability = snapshot.impliedProbability || 1 / snapshot.decimalOdds;
+    if (showMarketAids) {
+      for (const snapshot of latestChampionOddsByTeam.values()) {
+        const probability = calculateChampionProbability(snapshot, prizePool.amount);
+        if (probability.impliedProbability === null || probability.decimalOdds === null) continue;
         championOddsPayload[snapshot.teamCode] = {
-          decimalOdds: snapshot.decimalOdds,
-          impliedProbability,
-          expectedValue: prizePool.amount * impliedProbability,
-          provider: snapshot.provider,
-          bookmaker: snapshot.bookmaker,
+          decimalOdds: probability.decimalOdds,
+          impliedProbability: probability.impliedProbability,
+          expectedValue: probability.expectedValue,
+          provider: probability.provider || snapshot.provider,
+          bookmaker: probability.bookmaker || snapshot.bookmaker,
           capturedAt: snapshot.capturedAt.toISOString(),
         };
       }
     }
 
+    const rankingEntries = participants.map((participant) => {
+      const pick = picks.find((item) => item.userId === participant.userId) || null;
+      const teamStatus = pick ? statusByTeam.get(pick.teamCode) : null;
+      const status = getChampionPickStatus(pick, teamStatus);
+      const championProbability = pick ? championOddsPayload[pick.teamCode]?.impliedProbability ?? null : null;
+      const expectedValue = pick ? championOddsPayload[pick.teamCode]?.expectedValue ?? null : null;
+
+      return {
+        userId: participant.userId,
+        status,
+        teamCode: pick?.teamCode || null,
+        submittedAt: pick?.submittedAt || null,
+        eliminatedAt: teamStatus?.eliminatedAt || null,
+        championProbability,
+        expectedValue,
+      };
+    });
+    const summary = buildSurvivalSummary(rankingEntries, prizePool);
+
     championInfoByLeague[leagueId] = {
       teamStatuses: teamStatusesPayload,
       championOdds: championOddsPayload,
       summary: {
-        totalParticipants: participants.length,
-        alive: statusCounts.alive,
-        eliminated: statusCounts.eliminated,
-        pending: statusCounts.pending,
-        winners: statusCounts.winners,
-        prizePool,
+        ...summary,
+        combinedAliveProbability: showMarketAids ? summary.combinedAliveProbability : null,
+        combinedAliveProbabilityAvailable: showMarketAids && summary.combinedAliveProbabilityAvailable,
       },
+      distribution,
     };
   }
 

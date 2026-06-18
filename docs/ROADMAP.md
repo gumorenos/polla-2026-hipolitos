@@ -162,7 +162,8 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Champion Survivor admin UI for picks, team statuses, manual champion odds, distribution, exclusive picks, and CSV export.
 - [x] Added canonical `/competencia` route, competition type selection, champion deadline field, and explicit creator participant opt-in.
 - [x] Added read-only Champion Survivor user information panels below the explicit pick form: selected champion context and competition context.
-- [ ] Full Champion Survivor visual dashboard with simulations and social insights.
+- [x] Added Champion Survivor social and market insight panels: pick versus market, social risk, popular versus differential, survival map, distribution, exclusive picks, and combined alive probability.
+- [ ] Full Champion Survivor visual dashboard with simulations and advanced views.
 
 ---
 

@@ -8,6 +8,7 @@ import { saveWinnerPredictionAction } from '../../lib/actions/predictions';
 import { submitChampionPick } from '../../lib/actions/champion-survivor';
 import { FLAG_MAP } from '../ui/FlagDisc';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
+import { calculateIndividualExpectedValue, classifyChampionPick } from '../../lib/champion-survivor';
 
 type OddsInfo = {
   homeOdds: number;
@@ -57,11 +58,33 @@ type ChampionInfoByLeague = Record<string, {
     eliminated: number;
     pending: number;
     winners: number;
+    combinedAliveProbability: number | null;
+    combinedAliveProbabilityAvailable: boolean;
     prizePool: {
       amount: number;
       estimated: boolean;
       currency: string;
     };
+  };
+  distribution: {
+    byTeam: {
+      teamCode: string;
+      count: number;
+      percentage: number;
+      status: string;
+    }[];
+    mostPickedTeam: {
+      teamCode: string;
+      count: number;
+      percentage: number;
+      status: string;
+    } | null;
+    exclusivePicks: {
+      teamCode: string;
+      count: number;
+      percentage: number;
+      status: string;
+    }[];
   };
 }>;
 
@@ -164,6 +187,13 @@ function getTournamentStatusLabel(status?: string | null): string {
   if (status === 'eliminated') return 'Eliminado';
   if (status === 'champion') return 'Campeón acertado';
   return 'Estado no definido';
+}
+
+function getStatusTone(status?: string | null): string {
+  if (status === 'champion') return 'border-gold-500/50 bg-gold-400/10 text-gold-400';
+  if (status === 'eliminated') return 'border-red-500/30 bg-red-500/10 text-red-400 opacity-70';
+  if (status === 'active') return 'border-green-500/30 bg-green-500/10 text-green-400';
+  return 'border-border-subtle bg-bg-secondary/30 text-text-secondary';
 }
 
 export const PronosticosClient: React.FC<PronosticosClientProps> = ({
@@ -706,6 +736,51 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
         const consideredTeamFlag = consideredTeamCode ? (FLAG_MAP[consideredTeamCode.toUpperCase()] || '') : '';
         const teamStatus = consideredTeamCode ? activeChampionInfo?.teamStatuses[consideredTeamCode] : undefined;
         const championOdds = consideredTeamCode ? activeChampionInfo?.championOdds[consideredTeamCode] : undefined;
+        const distribution = activeChampionInfo?.distribution;
+        const selectedDistributionItem = consideredTeamCode
+          ? distribution?.byTeam.find(item => item.teamCode === consideredTeamCode) || null
+          : null;
+        const selectedPopularityRank = selectedDistributionItem && distribution
+          ? distribution.byTeam.findIndex(item => item.teamCode === selectedDistributionItem.teamCode) + 1
+          : null;
+        const selectedSamePickCount = selectedDistributionItem?.count ?? 0;
+        const selectedPickPercentage = selectedDistributionItem?.percentage ?? 0;
+        const selectedIndividualEv = activeLeague.showOdds && championOdds && activeChampionInfo
+          ? calculateIndividualExpectedValue(
+              activeChampionInfo.summary.prizePool.amount,
+              championOdds.impliedProbability,
+              selectedSamePickCount
+            )
+          : null;
+        const selectedClassification = activeLeague.showOdds && selectedDistributionItem
+          ? classifyChampionPick({
+              probability: championOdds?.impliedProbability ?? null,
+              pickCount: selectedDistributionItem.count,
+              pickPercentage: selectedDistributionItem.percentage,
+              popularityRank: selectedPopularityRank,
+              isExclusive: selectedDistributionItem.count === 1,
+            })
+          : null;
+        const topPopularPicks = distribution?.byTeam.slice(0, 3) ?? [];
+        const topDifferentialPicks = activeLeague.showOdds && distribution
+          ? distribution.byTeam
+              .map((item, index) => {
+                const odds = activeChampionInfo?.championOdds[item.teamCode];
+                return {
+                  ...item,
+                  probability: odds?.impliedProbability ?? null,
+                  classification: classifyChampionPick({
+                    probability: odds?.impliedProbability ?? null,
+                    pickCount: item.count,
+                    pickPercentage: item.percentage,
+                    popularityRank: index + 1,
+                    isExclusive: item.count === 1,
+                  }),
+                };
+              })
+              .filter(item => item.classification.key === 'attractive_differential')
+              .slice(0, 3)
+          : [];
         const teamUpcomingMatch = consideredTeamCode
           ? matches
               .filter(match => isUpcomingMatch(match) && includesTeam(match, consideredTeamCode))
@@ -720,6 +795,228 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
 
         return (
           <>
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Mi pick vs mercado</h3>
+                <p className="text-xs text-text-secondary">Comparación de tu selección contra el mercado de campeón, sin usar odds de partidos.</p>
+              </div>
+
+              {!consideredTeamCode ? (
+                <p className="text-sm text-text-secondary">Selecciona un equipo para comparar tu elección con el mercado.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] font-mono uppercase text-text-muted">Selección</p>
+                    <p className="text-lg font-bold text-text-primary">{consideredTeamFlag} {consideredTeamName}</p>
+                    <p className="text-[10px] font-mono text-text-muted">{consideredTeamCode}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] font-mono uppercase text-text-muted">Estado</p>
+                    <p className="text-lg font-bold text-gold-400">{getTournamentStatusLabel(teamStatus?.status)}</p>
+                  </div>
+                  {!activeLeague.showOdds ? (
+                    <div className="md:col-span-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-xs text-text-muted italic">Las ayudas de mercado están desactivadas para esta competencia.</p>
+                    </div>
+                  ) : championOdds ? (
+                    <>
+                      <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                        <p className="text-[10px] font-mono uppercase text-text-muted">Probabilidad mercado campeón</p>
+                        <p className="text-lg font-bold text-gold-400">{formatPercent(championOdds.impliedProbability)}</p>
+                        <p className="text-[10px] font-mono text-text-secondary">Cuota decimal: {championOdds.decimalOdds.toFixed(2)}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                        <p className="text-[10px] font-mono uppercase text-text-muted">Valor esperado estimado</p>
+                        <p className="text-lg font-bold text-text-primary">
+                          {championOdds.expectedValue !== null && summary
+                            ? formatLeagueCurrency(championOdds.expectedValue, summary.prizePool.currency)
+                            : 'No disponible'}
+                        </p>
+                        <p className="text-[9px] font-mono text-text-muted">
+                          {championOdds.provider} · {championOdds.bookmaker} · {formatMatchDate(championOdds.capturedAt)}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="md:col-span-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-xs text-text-muted italic">Probabilidad de campeonar no disponible.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Riesgo social</h3>
+                <p className="text-xs text-text-secondary">Cuántos participantes comparten tu pick y cómo eso divide el valor esperado.</p>
+              </div>
+
+              {!consideredTeamCode ? (
+                <p className="text-sm text-text-secondary">Selecciona un equipo para ver el riesgo social de ese pick.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] font-mono uppercase text-text-muted">Participantes con el mismo pick</p>
+                    <p className="text-lg font-bold text-text-primary">{selectedSamePickCount}</p>
+                    <p className="text-[10px] font-mono text-text-secondary">{formatPercent(selectedPickPercentage)} del total</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] font-mono uppercase text-text-muted">Pick exclusivo</p>
+                    <p className="text-lg font-bold text-gold-400">{selectedSamePickCount === 1 ? 'Sí' : 'No'}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] font-mono uppercase text-text-muted">Valor esperado individual estimado</p>
+                    <p className="text-lg font-bold text-text-primary">
+                      {activeLeague.showOdds && selectedIndividualEv !== null && summary
+                        ? formatLeagueCurrency(selectedIndividualEv, summary.prizePool.currency)
+                        : 'No disponible'}
+                    </p>
+                    <p className="text-[9px] text-text-muted">Estimación, no pago garantizado.</p>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Pick popular vs pick diferencial</h3>
+                <p className="text-xs text-text-secondary">Clasificación simple por probabilidad de mercado y concentración de picks.</p>
+              </div>
+
+              {!activeLeague.showOdds && (
+                <p className="text-[10px] text-text-muted italic">Las ayudas de mercado están desactivadas para esta competencia.</p>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                  <p className="text-[10px] font-mono uppercase text-text-muted">Tu clasificación</p>
+                  {!consideredTeamCode ? (
+                    <p className="text-sm text-text-secondary mt-1">Selecciona un equipo para clasificar tu pick.</p>
+                  ) : activeLeague.showOdds && selectedClassification ? (
+                    <>
+                      <p className="text-lg font-bold text-gold-400">{selectedClassification.label}</p>
+                      <p className="text-[10px] text-text-secondary">{selectedSamePickCount} pick(s) · {formatPercent(selectedPickPercentage)}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-text-secondary mt-1">{selectedSamePickCount} pick(s) · {formatPercent(selectedPickPercentage)}</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 space-y-2">
+                  <p className="text-[10px] font-mono uppercase text-text-muted">Top 3 populares</p>
+                  {topPopularPicks.length > 0 ? topPopularPicks.map((item, index) => (
+                    <div key={item.teamCode} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-text-primary">{index + 1}. {FLAG_MAP[item.teamCode] || ''} {getTeamName(item.teamCode)}</span>
+                      <span className="font-mono text-text-secondary">{item.count} · {formatPercent(item.percentage)}</span>
+                    </div>
+                  )) : (
+                    <p className="text-xs text-text-secondary">Todavía no hay picks registrados.</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 space-y-2">
+                  <p className="text-[10px] font-mono uppercase text-text-muted">Top 3 diferenciales</p>
+                  {activeLeague.showOdds ? (
+                    topDifferentialPicks.length > 0 ? topDifferentialPicks.map((item) => (
+                      <div key={item.teamCode} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-text-primary">{FLAG_MAP[item.teamCode] || ''} {getTeamName(item.teamCode)}</span>
+                        <span className="font-mono text-text-secondary">{item.count} · {item.probability !== null ? formatPercent(item.probability) : 'S/P'}</span>
+                      </div>
+                    )) : (
+                      <p className="text-xs text-text-secondary">No hay diferenciales atractivos con datos de mercado suficientes.</p>
+                    )
+                  ) : (
+                    <p className="text-xs text-text-secondary">Clasificación de mercado oculta.</p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="card-base p-5 space-y-4">
+              <div>
+                <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Mapa de supervivencia</h3>
+                <p className="text-xs text-text-secondary">Resumen agregado de picks y estado de supervivencia por selección.</p>
+              </div>
+
+              {summary && (
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Total participantes</p>
+                    <p className="text-lg font-bold text-text-primary">{summary.totalParticipants}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Vivos</p>
+                    <p className="text-lg font-bold text-green-400">{summary.alive}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Eliminados</p>
+                    <p className="text-lg font-bold text-red-400">{summary.eliminated}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Sin selección</p>
+                    <p className="text-lg font-bold text-text-primary">{summary.pending}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Ganadores</p>
+                    <p className="text-lg font-bold text-gold-400">{summary.winners}</p>
+                  </div>
+                  <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[9px] font-mono uppercase text-text-muted">Pozo estimado</p>
+                    <p className="text-lg font-bold text-text-primary">{formatLeagueCurrency(summary.prizePool.amount, summary.prizePool.currency)}</p>
+                  </div>
+                  {activeLeague.showOdds && (
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[9px] font-mono uppercase text-text-muted">Prob. vivos</p>
+                      <p className="text-lg font-bold text-gold-400">
+                        {summary.combinedAliveProbabilityAvailable && summary.combinedAliveProbability !== null
+                          ? formatPercent(summary.combinedAliveProbability)
+                          : 'No disponible'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {distribution && distribution.byTeam.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Distribución por selección</h4>
+                    <div className="space-y-2">
+                      {distribution.byTeam.map(item => (
+                        <div key={item.teamCode} className={`rounded-xl border p-3 ${getStatusTone(item.status)}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-bold">{FLAG_MAP[item.teamCode] || ''} {getTeamName(item.teamCode)}</span>
+                            <span className="font-mono text-xs">{item.count} · {formatPercent(item.percentage)}</span>
+                          </div>
+                          <p className="text-[10px] font-mono mt-1">{getTournamentStatusLabel(item.status)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-mono uppercase tracking-wider text-gold-400 font-bold">Picks exclusivos</h4>
+                    {distribution.exclusivePicks.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {distribution.exclusivePicks.map(item => (
+                          <span key={item.teamCode} className={`text-xs font-mono px-2 py-1 rounded-full border ${getStatusTone(item.status)}`}>
+                            {FLAG_MAP[item.teamCode] || ''} {getTeamName(item.teamCode)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-text-secondary">No hay picks exclusivos por ahora.</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                  Todavía no hay picks registrados.
+                </p>
+              )}
+            </section>
+
             <section className="card-base p-5 space-y-4">
               <div>
                 <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Información de tu campeón</h3>

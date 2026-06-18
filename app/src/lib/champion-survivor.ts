@@ -54,6 +54,20 @@ export type ChampionRankingEntry = {
   expectedValue?: number | null;
 };
 
+export type ChampionPickClassificationKey =
+  | 'favorite_popular'
+  | 'attractive_differential'
+  | 'longshot'
+  | 'high_risk'
+  | 'saturated'
+  | 'popularity_only'
+  | 'unclassified';
+
+export type ChampionPickClassification = {
+  key: ChampionPickClassificationKey;
+  label: string;
+};
+
 export const CHAMPION_SURVIVOR_LABELS = {
   probability: 'Probabilidad según mercado',
   expectedValue: 'Valor esperado estimado',
@@ -157,6 +171,56 @@ export function calculateChampionProbability(
     capturedAt: snapshot.capturedAt || null,
     labels: CHAMPION_SURVIVOR_LABELS,
   };
+}
+
+export function calculateIndividualExpectedValue(
+  prizePoolAmount?: number | null,
+  probability?: number | null,
+  samePickCount?: number | null
+): number | null {
+  if (
+    prizePoolAmount === null ||
+    prizePoolAmount === undefined ||
+    probability === null ||
+    probability === undefined ||
+    !samePickCount ||
+    samePickCount <= 0
+  ) {
+    return null;
+  }
+
+  return (prizePoolAmount * probability) / samePickCount;
+}
+
+export function classifyChampionPick(input: {
+  probability?: number | null;
+  pickCount: number;
+  pickPercentage: number;
+  popularityRank?: number | null;
+  isExclusive?: boolean;
+}): ChampionPickClassification {
+  const { probability, pickCount, pickPercentage, popularityRank, isExclusive } = input;
+  const manyPicks = pickPercentage >= 0.2 || (popularityRank !== null && popularityRank !== undefined && popularityRank <= 3);
+
+  if (probability === null || probability === undefined) {
+    return pickCount > 0
+      ? { key: 'popularity_only', label: 'Popularidad disponible' }
+      : { key: 'unclassified', label: 'Sin clasificación' };
+  }
+
+  // Thresholds are intentionally simple and transparent for a lightweight user-facing heuristic.
+  const highProbability = probability >= 0.1;
+  const lowProbability = probability < 0.05;
+
+  if (lowProbability && manyPicks) return { key: 'high_risk', label: 'Riesgo alto' };
+  if (lowProbability) return { key: 'longshot', label: 'Longshot' };
+  if (highProbability && manyPicks) return { key: 'favorite_popular', label: 'Favorito popular' };
+  if (highProbability && (isExclusive || pickPercentage < 0.2)) {
+    return { key: 'attractive_differential', label: 'Diferencial atractivo' };
+  }
+  if (manyPicks && probability < pickPercentage) return { key: 'saturated', label: 'Saturado' };
+
+  return { key: 'unclassified', label: 'Sin clasificación' };
 }
 
 export function buildPickDistribution(

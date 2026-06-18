@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSurvivalSummary,
   calculateChampionProbability,
+  calculateIndividualExpectedValue,
   calculatePrizePool,
+  classifyChampionPick,
   getChampionPickStatus,
   isChampionDeadlinePassed,
   resolveCompetitionType,
@@ -108,5 +110,36 @@ describe('Champion Survivor business logic', () => {
     expect(summary.eliminated).toBe(1);
     expect(summary.combinedAliveProbabilityAvailable).toBe(false);
     expect(summary.combinedAliveProbability).toBeNull();
+  });
+
+  it('calculates individual expected value by splitting prize pool EV across same-team picks', () => {
+    expect(calculateIndividualExpectedValue(1000, 0.2, 4)).toBe(50);
+    expect(calculateIndividualExpectedValue(1000, null, 4)).toBeNull();
+    expect(calculateIndividualExpectedValue(1000, 0.2, 0)).toBeNull();
+  });
+
+  it('classifies popular, differential, and longshot champion picks with simple thresholds', () => {
+    expect(classifyChampionPick({
+      probability: 0.18,
+      pickCount: 5,
+      pickPercentage: 0.25,
+      popularityRank: 1,
+    }).label).toBe('Favorito popular');
+
+    expect(classifyChampionPick({
+      probability: 0.12,
+      pickCount: 1,
+      pickPercentage: 0.05,
+      popularityRank: 6,
+      isExclusive: true,
+    }).label).toBe('Diferencial atractivo');
+
+    expect(classifyChampionPick({
+      probability: 0.03,
+      pickCount: 1,
+      pickPercentage: 0.05,
+      popularityRank: 8,
+      isExclusive: true,
+    }).label).toBe('Longshot');
   });
 });

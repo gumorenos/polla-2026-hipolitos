@@ -342,15 +342,6 @@ export default function UsersAdminClient({
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newWhatsapp, setNewWhatsapp] = useState('');
-  const [newStatus, setNewStatus] = useState('approved');
-  const [newUserType, setNewUserType] = useState<AdminUserType>('participant');
-  const [newLeagueIds, setNewLeagueIds] = useState<string[]>([]);
-  const [showPassword, setShowPassword] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserFromDB | null>(null);
@@ -372,6 +363,7 @@ export default function UsersAdminClient({
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editLeagueIds, setEditLeagueIds] = useState<string[]>([]);
   const [editAddLeagueId, setEditAddLeagueId] = useState('');
+  const [editChangeReason, setEditChangeReason] = useState('');
 
   // New Modals
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -398,7 +390,6 @@ export default function UsersAdminClient({
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const renderLegacyCreateModal = false;
   const renderClientDeleteBlock = false;
 
   // Teams list used for champion pick corrections
@@ -458,6 +449,7 @@ export default function UsersAdminClient({
     setEditThemeMode(user.themeMode || 'black');
     setEditLeagueIds(user.memberships?.map((membership) => membership.league.id) ?? []);
     setEditAddLeagueId('');
+    setEditChangeReason('');
     setEditModalError(null);
     setError(null);
     setSuccess(null);
@@ -473,25 +465,18 @@ export default function UsersAdminClient({
 
     // Detect sensitive edits
     const isSensitiveEdit = 
-      editUsername !== selectedUser.username ||
+      editUsername !== (selectedUser.username || '') ||
       editStatus !== selectedUser.status ||
       editIsSuperadmin !== selectedUser.isSuperadmin ||
+      editCanCreateLeagues !== Boolean(selectedUser.canCreateLeagues) ||
       hasLeagueSelectionChanged(selectedUser.memberships?.map((membership) => membership.league.id) ?? [], editLeagueIds) ||
       !!editPassword;
 
-    let reason: string | undefined;
-    if (isSensitiveEdit) {
-      const promptReason = prompt("Has modificado campos sensibles (usuario, estado, superadmin, contraseña o competencias). Por favor ingresa el motivo del cambio (obligatorio):");
-      if (promptReason === null) {
-        setActionLoading(false);
-        return; // Cancelled
-      }
-      if (!promptReason.trim()) {
-        setEditModalError("El motivo es obligatorio para realizar cambios sensibles.");
-        setActionLoading(false);
-        return;
-      }
-      reason = promptReason;
+    const reason = editChangeReason.trim();
+    if (isSensitiveEdit && !reason) {
+      setEditModalError('Ingresa el motivo del cambio.');
+      setActionLoading(false);
+      return;
     }
 
     const res = await adminUpdateUserAction(selectedUser.id, {
@@ -508,7 +493,7 @@ export default function UsersAdminClient({
       reminderEmail: editReminderEmail,
       themeMode: editThemeMode,
       leagueIds: editLeagueIds,
-    }, reason);
+    }, reason || 'Actualización administrativa.');
 
     if ('error' in res) {
       setEditModalError(res.error ?? 'No se pudo guardar el usuario.');
@@ -582,50 +567,6 @@ export default function UsersAdminClient({
       router.refresh();
     }
     setLoadingUserId(null);
-  };
-
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUsername.trim() || !newName.trim() || !newPassword.trim()) {
-      setError('Nombre completo, usuario y contraseña son requeridos');
-      return;
-    }
-
-    setActionLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    const res = await adminCreateUserAction({
-      username: newUsername,
-      name: newName,
-      passwordText: newPassword,
-      email: newEmail || undefined,
-      whatsapp: newWhatsapp || undefined,
-      status: newStatus,
-      userType: newUserType,
-      leagueIds: newLeagueIds,
-    });
-
-    if ('error' in res) {
-      setError(res.error ?? 'No se pudo crear el usuario.');
-      setActionLoading(false);
-    } else {
-      setSuccess('Usuario creado exitosamente.');
-      setNewUsername('');
-      setNewName('');
-      setNewPassword('');
-      setNewEmail('');
-      setNewWhatsapp('');
-      setNewUserType('participant');
-      setNewLeagueIds([]);
-      const createdUser = res.user;
-      if (createdUser) {
-        setUserList((currentUsers) => [createdUser, ...currentUsers.filter((user) => user.id !== createdUser.id)]);
-      }
-      setShowCreateModal(false);
-      setActionLoading(false);
-      router.refresh();
-    }
   };
 
   // Password reset modal trigger
@@ -1528,205 +1469,19 @@ export default function UsersAdminClient({
         </div>
       )}
 
-      {/* Manual Create User Modal */}
+      {/* Create User Modal */}
       {showCreateModal && (
         <CreateUserModal
           leagues={leagues}
           onClose={() => setShowCreateModal(false)}
           onCreated={(createdUser) => {
-            setSuccess('Usuario creado exitosamente.');
+            setSuccess('Usuario creado con éxito.');
             setUserList((currentUsers) => [createdUser, ...currentUsers.filter((user) => user.id !== createdUser.id)]);
             setShowCreateModal(false);
             router.refresh();
           }}
         />
       )}
-      {renderLegacyCreateModal && showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setShowCreateModal(false)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div>
-              <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Crear Cuenta Manual</h3>
-              <p className="text-xs text-text-secondary">El usuario se registrará directamente con las credenciales especificadas.</p>
-            </div>
-
-            <form onSubmit={handleCreateUser} className="space-y-3" autoComplete="off">
-              {/* Full Name */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
-                <input
-                  id="admin-create-name"
-                  name="admin-create-name"
-                  type="text"
-                  placeholder="Ej. Carlos Fuentes"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  autoComplete="off"
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  required
-                />
-              </div>
-
-              {/* Username */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
-                <input
-                  id="admin-create-username"
-                  name="admin-create-login-handle"
-                  type="text"
-                  placeholder="Ej. carlosf"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  autoComplete="new-password"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                  required
-                />
-              </div>
-
-              {/* Temporary Password */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Contraseña Temporal</label>
-                <div className="relative">
-                  <input
-                    id="admin-create-password"
-                    name="admin-create-secret"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Mínimo 6 caracteres"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    autoComplete="new-password"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2 text-text-muted hover:text-text-primary"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Email (Optional) */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Correo (Opcional)</label>
-                <input
-                  id="admin-create-email"
-                  name="admin-create-email"
-                  type="email"
-                  placeholder="Ej. carlos@correo.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  autoComplete="off"
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                />
-              </div>
-
-              {/* Whatsapp (Optional) */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp (Opcional)</label>
-                <input
-                  id="admin-create-whatsapp"
-                  name="admin-create-whatsapp"
-                  type="tel"
-                  placeholder="Ej. +51 999 999 999"
-                  value={newWhatsapp}
-                  onChange={(e) => setNewWhatsapp(e.target.value)}
-                  autoComplete="off"
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                />
-              </div>
-
-              {/* Initial Status */}
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Estado Inicial</label>
-                <select
-                  value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                >
-                  <option value="approved">Aprobado / Activo de inmediato</option>
-                  <option value="pending">Pendiente de Aprobación</option>
-                </select>
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-mono text-text-secondary uppercase">Tipo de usuario</label>
-                <select
-                  value={newUserType}
-                  onChange={(e) => setNewUserType(e.target.value as 'participant' | 'admin' | 'superadmin')}
-                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
-                >
-                  <option value="participant">Participante</option>
-                  <option value="admin">Administrador de competencias</option>
-                  <option value="superadmin">Superadmin</option>
-                </select>
-              </div>
-
-              <div className="space-y-2 text-left">
-                <div>
-                  <label className="text-[10px] font-mono text-text-secondary uppercase">Competencias vigentes</label>
-                  <p className="text-[10px] text-text-muted mt-0.5">Selecciona las competencias a las que quieres agregar este usuario.</p>
-                </div>
-                {leagues.length > 0 ? (
-                  <div className="space-y-1.5 bg-bg-secondary border border-border rounded-lg p-2">
-                    {leagues.map((league) => (
-                      <label key={league.id} className="flex items-center gap-2 text-xs text-text-primary">
-                        <input
-                          type="checkbox"
-                          checked={newLeagueIds.includes(league.id)}
-                          onChange={(e) => {
-                            setNewLeagueIds((current) =>
-                              e.target.checked
-                                ? [...current, league.id]
-                                : current.filter((leagueId) => leagueId !== league.id)
-                            );
-                          }}
-                          className="w-4 h-4 rounded border-border-default bg-bg-primary text-gold-500 focus:ring-gold-500"
-                        />
-                        <span>{league.name} — {getCompetitionTypeLabel(league.competitionType)}</span>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-text-muted italic">No hay competencias vigentes disponibles.</p>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all text-text-primary"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="btn-gold py-2 px-5 text-xs uppercase font-mono"
-                >
-                  {actionLoading ? 'Registrando...' : 'Registrar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -1751,6 +1506,22 @@ export default function UsersAdminClient({
             )}
 
             <form onSubmit={handleEditUserSubmit} className="space-y-4">
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo del cambio</label>
+                <textarea
+                  id="admin-edit-change-reason"
+                  name="admin-edit-change-reason"
+                  value={editChangeReason}
+                  onChange={(e) => setEditChangeReason(e.target.value)}
+                  rows={2}
+                  placeholder="Actualización administrativa."
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold resize-y"
+                />
+                <p className="text-[10px] text-text-muted">
+                  Requerido para cambios sensibles como usuario, estado, contraseña o competencias.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 {/* Full Name */}
                 <div className="space-y-1">

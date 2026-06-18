@@ -8,7 +8,8 @@ import {
   adminResetUserChampionAction,
   adminResetUserPasswordAction,
   adminSoftDeleteUserAction,
-  adminHardDeleteUserAction
+  adminHardDeleteUserAction,
+  adminTransferLeagueOwnershipAction
 } from '../../../lib/actions/admin';
 import {
   allowWinnerPredictionCorrectionAction,
@@ -16,6 +17,13 @@ import {
 } from '../../../lib/actions/predictions';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Search, Eye, EyeOff, ShieldAlert, Ban, Info, Key } from 'lucide-react';
+
+interface OwnedLeague {
+  id: string;
+  name: string;
+  slug: string;
+  competitionType?: string | null;
+}
 
 interface UserFromDB {
   id: string;
@@ -32,6 +40,7 @@ interface UserFromDB {
   emailRemindersEnabled?: boolean;
   reminderEmail?: string | null;
   themeMode?: string;
+  leaguesOwned?: OwnedLeague[];
   memberships?: {
     league: {
       id: string;
@@ -385,6 +394,13 @@ export default function UsersAdminClient({
   const [hardDeleteUser, setHardDeleteUser] = useState<UserFromDB | null>(null);
   const [hardDeleteReason, setHardDeleteReason] = useState('');
   const [hardDeleteConfirmation, setHardDeleteConfirmation] = useState('');
+  const [ownerBlockMessage, setOwnerBlockMessage] = useState<string | null>(null);
+  const [ownerBlockLeagues, setOwnerBlockLeagues] = useState<OwnedLeague[]>([]);
+  const [transferLeague, setTransferLeague] = useState<OwnedLeague | null>(null);
+  const [transferCurrentOwner, setTransferCurrentOwner] = useState<UserFromDB | null>(null);
+  const [transferNewOwnerId, setTransferNewOwnerId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -425,6 +441,23 @@ export default function UsersAdminClient({
     const currentSorted = [...currentIds].sort().join('|');
     const nextSorted = [...nextIds].sort().join('|');
     return currentSorted !== nextSorted;
+  };
+
+  const transferOwnerOptions = (currentOwnerId: string) =>
+    userList.filter((user) =>
+      user.id !== currentOwnerId &&
+      user.status === 'approved' &&
+      (user.isSuperadmin || Boolean(user.canCreateLeagues))
+    );
+
+  const replaceUserInList = (updatedUser: UserFromDB | null | undefined) => {
+    if (!updatedUser) return;
+    setUserList((currentUsers) =>
+      currentUsers.map((user) => user.id === updatedUser.id ? updatedUser : user)
+    );
+    setHardDeleteUser((currentUser) => currentUser?.id === updatedUser.id ? updatedUser : currentUser);
+    setTransferCurrentOwner((currentUser) => currentUser?.id === updatedUser.id ? updatedUser : currentUser);
+    setDetailUser((currentUser) => currentUser?.id === updatedUser.id ? updatedUser : currentUser);
   };
 
   const handleStartCreateUser = () => {
@@ -645,6 +678,8 @@ export default function UsersAdminClient({
     setHardDeleteUser(user);
     setHardDeleteReason('');
     setHardDeleteConfirmation('');
+    setOwnerBlockMessage(null);
+    setOwnerBlockLeagues(user.leaguesOwned ?? []);
     setShowHardDeleteModal(true);
   };
 
@@ -672,17 +707,70 @@ export default function UsersAdminClient({
       alert(res.error ?? "No se pudo eliminar el usuario.");
     } else {
       setSuccess(res.message ?? "Usuario eliminado con éxito.");
-      const updatedUser = res.user;
-      if (res.action === 'disabled' && updatedUser) {
-        setUserList((currentUsers) =>
-          currentUsers.map((user) => user.id === updatedUser.id ? updatedUser : user)
-        );
-      } else {
+      if (res.mode === 'deleted' || res.action === 'deleted') {
         setUserList((currentUsers) => currentUsers.filter((user) => user.id !== hardDeleteUser.id));
+        setShowHardDeleteModal(false);
+      } else if ((res.mode === 'disabled' || res.action === 'disabled') && 'user' in res && res.user) {
+        replaceUserInList(res.user);
+        setShowHardDeleteModal(false);
+      } else if (res.mode === 'blocked_owner' && 'user' in res && res.user) {
+        replaceUserInList(res.user);
+        setOwnerBlockMessage(res.message ?? 'Este usuario es propietario de una o más competencias. Transfiere la propiedad antes de eliminarlo.');
+        setOwnerBlockLeagues(('ownedLeagues' in res ? res.ownedLeagues : undefined) ?? res.user.leaguesOwned ?? []);
       }
-      setShowHardDeleteModal(false);
       router.refresh();
     }
+  };
+
+  const handleStartOwnershipTransfer = (league: OwnedLeague, owner: UserFromDB) => {
+    setTransferLeague(league);
+    setTransferCurrentOwner(owner);
+    setTransferNewOwnerId('');
+    setTransferReason('');
+    setTransferError(null);
+  };
+
+  const handleTransferOwnershipSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferLeague || !transferCurrentOwner) return;
+    if (!transferNewOwnerId) {
+      setTransferError('Selecciona un nuevo propietario.');
+      return;
+    }
+    if (!transferReason.trim()) {
+      setTransferError('El motivo de la transferencia es obligatorio.');
+      return;
+    }
+
+    setActionLoading(true);
+    setTransferError(null);
+    const res = await adminTransferLeagueOwnershipAction(
+      transferLeague.id,
+      transferNewOwnerId,
+      transferReason
+    );
+    setActionLoading(false);
+
+    if ('error' in res) {
+      setTransferError(res.error ?? 'No se pudo transferir la propiedad de la competencia.');
+      return;
+    }
+
+    replaceUserInList(res.previousOwnerUser);
+    replaceUserInList(res.newOwnerUser);
+    const remainingOwnedLeagues = (res.previousOwnerUser?.leaguesOwned ?? []).filter((league) => league.id !== transferLeague.id);
+    setOwnerBlockLeagues(remainingOwnedLeagues);
+    setOwnerBlockMessage(
+      remainingOwnedLeagues.length > 0
+        ? 'Propiedad transferida con éxito. Este usuario todavía es propietario de otra competencia.'
+        : 'Propiedad transferida con éxito. Este usuario ya no está bloqueado por propiedad.'
+    );
+    setSuccess(res.message ?? 'Propiedad de la competencia transferida con éxito.');
+    setTransferLeague(null);
+    setTransferCurrentOwner(null);
+    setTransferNewOwnerId('');
+    setTransferReason('');
+    router.refresh();
   };
 
   // Detail Modal trigger
@@ -709,6 +797,15 @@ export default function UsersAdminClient({
 
     return true;
   });
+
+  const hardDeleteOwnedLeagues = ownerBlockLeagues.length > 0
+    ? ownerBlockLeagues
+    : hardDeleteUser?.leaguesOwned ?? [];
+  const hardDeleteOwnerMessage = ownerBlockMessage ?? (
+    hardDeleteOwnedLeagues.length > 0
+      ? 'Este usuario es propietario de una o más competencias. Transfiere la propiedad antes de eliminarlo.'
+      : null
+  );
 
   return (
     <div className="space-y-6">
@@ -939,9 +1036,9 @@ export default function UsersAdminClient({
                               onClick={() => handleStartHardDelete(user)}
                               disabled={isLoading}
                               className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-950 border-red-500/30 text-red-400 hover:bg-red-900"
-                              title="Eliminar permanentemente de la BD"
+                              title="Eliminar o desactivar según historial y propiedad"
                             >
-                              Eliminar
+                              Eliminar / desactivar
                             </button>
                           </>
                         )}
@@ -1093,7 +1190,7 @@ export default function UsersAdminClient({
                         disabled={isLoading}
                         className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border bg-red-950 border-red-500/30 text-red-400 hover:bg-red-900"
                       >
-                        Eliminar
+                        Eliminar / desactivar
                       </button>
                     </>
                   )}
@@ -1180,6 +1277,31 @@ export default function UsersAdminClient({
                 </div>
               ) : (
                 <p className="text-text-muted italic">No está unido a ninguna competencia.</p>
+              )}
+            </div>
+
+            <div className="space-y-2 text-left text-xs">
+              <p className="font-bold font-mono text-gold uppercase tracking-wider text-[10px]">Competencias propias:</p>
+              {detailUser.leaguesOwned && detailUser.leaguesOwned.length > 0 ? (
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {detailUser.leaguesOwned.map((league) => (
+                    <div key={league.id} className="bg-bg-secondary p-2 rounded border border-border/45 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <p className="text-text-primary font-semibold">{league.name}</p>
+                        <p className="text-[10px] text-text-muted">{league.slug} — {getCompetitionTypeLabel(league.competitionType)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleStartOwnershipTransfer(league, detailUser)}
+                        className="px-2 py-1 border border-gold/40 text-gold hover:bg-gold/10 rounded text-[9px] uppercase font-mono font-bold"
+                      >
+                        Transferir propiedad
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-text-muted italic">No es propietario de ninguna competencia.</p>
               )}
             </div>
 
@@ -1394,7 +1516,7 @@ export default function UsersAdminClient({
             <div className="flex items-center gap-3">
               <ShieldAlert className="w-6 h-6 text-red-500" />
               <div className="text-left">
-                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Eliminación Definitiva</h3>
+                <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Eliminar / desactivar</h3>
                 <p className="text-xs text-text-secondary">@{hardDeleteUser.username} ({hardDeleteUser.name})</p>
               </div>
             </div>
@@ -1420,8 +1542,34 @@ export default function UsersAdminClient({
               <form onSubmit={handleHardDeleteSubmit} className="space-y-4 text-left">
                 <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-[11px] text-red-200">
                   <p className="font-bold uppercase mb-1">¡Advertencia Peligrosa!</p>
-                  <p>Si el usuario no tiene registros históricos, se eliminará. Si tiene pronósticos o picks, será desactivado para conservar el historial.</p>
+                  <p>Si el usuario no tiene registros históricos, se eliminará. Si tiene pronósticos, picks o historial competitivo, será desactivado para conservar el historial.</p>
                 </div>
+
+                {hardDeleteOwnerMessage && (
+                  <div className="p-4 bg-amber-950/40 border border-amber-500/40 rounded-lg text-xs text-amber-100 space-y-3">
+                    <p className="font-bold uppercase text-amber-300">{hardDeleteOwnerMessage}</p>
+                    <div className="space-y-2">
+                      {hardDeleteOwnedLeagues.map((league) => (
+                        <div key={league.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-bg-secondary border border-border rounded-lg p-2">
+                          <div>
+                            <p className="font-semibold text-text-primary">{league.name}</p>
+                            <p className="text-[10px] text-text-muted">
+                              {league.slug} — {getCompetitionTypeLabel(league.competitionType)}
+                            </p>
+                            <p className="text-[10px] text-text-muted">Propietario actual: @{hardDeleteUser.username}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleStartOwnershipTransfer(league, hardDeleteUser)}
+                            className="px-3 py-1.5 border border-gold/40 text-gold hover:bg-gold/10 rounded-lg text-[10px] uppercase font-mono font-bold"
+                          >
+                            Transferir propiedad
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo de la eliminación</label>
@@ -1460,11 +1608,108 @@ export default function UsersAdminClient({
                     disabled={actionLoading || hardDeleteConfirmation.trim().toLowerCase() !== hardDeleteUser.username?.toLowerCase()}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold text-xs rounded-xl uppercase font-mono"
                   >
-                    {actionLoading ? 'Eliminando...' : 'Eliminar permanentemente'}
+                    {actionLoading ? 'Procesando...' : 'Eliminar / desactivar'}
                   </button>
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Ownership Modal */}
+      {transferLeague && transferCurrentOwner && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary">
+            <button
+              type="button"
+              onClick={() => {
+                setTransferLeague(null);
+                setTransferCurrentOwner(null);
+              }}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-left">
+              <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Transferir propiedad</h3>
+              <p className="text-xs text-text-secondary">Cambia el propietario de una competencia sin borrar historial.</p>
+            </div>
+
+            {transferError && (
+              <div className="p-3 bg-red-900/50 text-red-200 border border-red-500 rounded-md text-xs">
+                {transferError}
+              </div>
+            )}
+
+            <form onSubmit={handleTransferOwnershipSubmit} className="space-y-4 text-left">
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Competencia</label>
+                <div className="bg-bg-secondary border border-border rounded-lg p-2 text-xs text-text-primary">
+                  <p className="font-semibold">{transferLeague.name}</p>
+                  <p className="text-[10px] text-text-muted">{transferLeague.slug} — {getCompetitionTypeLabel(transferLeague.competitionType)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Propietario actual</label>
+                <div className="bg-bg-secondary border border-border rounded-lg p-2 text-xs text-text-primary">
+                  {transferCurrentOwner.name} @{transferCurrentOwner.username}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Nuevo propietario</label>
+                <select
+                  value={transferNewOwnerId}
+                  onChange={(e) => setTransferNewOwnerId(e.target.value)}
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+                  required
+                >
+                  <option value="">Seleccionar administrador...</option>
+                  {transferOwnerOptions(transferCurrentOwner.id).map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} @{user.username} {user.isSuperadmin ? '(Superadmin)' : '(Admin)'}
+                    </option>
+                  ))}
+                </select>
+                {transferOwnerOptions(transferCurrentOwner.id).length === 0 && (
+                  <p className="text-[10px] text-amber-300">No hay administradores activos disponibles para recibir esta competencia.</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-text-secondary uppercase">Motivo de la transferencia</label>
+                <textarea
+                  value={transferReason}
+                  onChange={(e) => setTransferReason(e.target.value)}
+                  className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold focus:outline-none h-20 resize-none"
+                  placeholder="Explica por qué se transfiere la propiedad."
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferLeague(null);
+                    setTransferCurrentOwner(null);
+                  }}
+                  className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono text-text-primary"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading || !transferNewOwnerId}
+                  className="btn-gold py-2 px-5 text-xs uppercase font-mono disabled:opacity-50"
+                >
+                  {actionLoading ? 'Transfiriendo...' : 'Transferir'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -10,7 +10,17 @@ import { randomUUID } from 'crypto';
 
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
 
+const ownedLeagueSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  competitionType: true,
+} satisfies Prisma.LeagueSelect;
+
 const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
+  leaguesOwned: {
+    select: ownedLeagueSelect,
+  },
   memberships: {
     include: {
       league: {
@@ -43,6 +53,7 @@ const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
       league: {
         select: {
           name: true,
+          competitionType: true,
         },
       },
     },
@@ -1521,9 +1532,53 @@ export async function adminHardDeleteUserAction(
       }
     }
 
-    const ownedLeagueCount = await prisma.league.count({ where: { createdBy: targetUserId } });
-    if (ownedLeagueCount > 0) {
-      return { error: 'No puedes eliminar este usuario porque es propietario de una competencia.' };
+    const ownedLeagues = await prisma.league.findMany({
+      where: { createdBy: targetUserId },
+      select: ownedLeagueSelect,
+      orderBy: { name: 'asc' },
+    });
+    if (ownedLeagues.length > 0) {
+      const wasAlreadyDisabled = targetUser.status === 'disabled';
+
+      if (!wasAlreadyDisabled) {
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: targetUserId },
+            data: { status: 'disabled' },
+          });
+          await tx.session.deleteMany({
+            where: { userId: targetUserId },
+          });
+        });
+      }
+
+      await prisma.adminActionLog.create({
+        data: {
+          userId: adminUser.id,
+          action: wasAlreadyDisabled ? 'user_delete_blocked_owner' : 'user_disabled_owner_block',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({
+            ownedLeagues,
+            reason,
+            wasAlreadyDisabled,
+          }),
+        },
+      });
+
+      revalidatePath('/admin/usuarios');
+      const userSnapshot = await getAdminUserSnapshot(targetUserId);
+      const message = wasAlreadyDisabled
+        ? 'El usuario ya está desactivado. No se puede eliminar porque es propietario de una competencia.'
+        : 'Usuario desactivado. No se eliminó porque es propietario de una competencia.';
+
+      return {
+        success: true,
+        mode: 'blocked_owner' as const,
+        action: 'blocked_owner' as const,
+        message,
+        user: userSnapshot,
+        ownedLeagues,
+      };
     }
 
     // Check related records
@@ -1531,6 +1586,7 @@ export async function adminHardDeleteUserAction(
     const winnerPredictionCount = await prisma.winnerPrediction.count({ where: { userId: targetUserId } });
     const championPickCount = await prisma.championPick.count({ where: { userId: targetUserId } });
     const winnerPredictionHistoryCount = await prisma.winnerPredictionHistory.count({ where: { userId: targetUserId } });
+    const standingCount = await prisma.standing.count({ where: { userId: targetUserId } });
     const adminActionLogCount = await prisma.adminActionLog.count({ where: { userId: targetUserId } });
 
     if (
@@ -1538,6 +1594,7 @@ export async function adminHardDeleteUserAction(
       winnerPredictionCount > 0 ||
       championPickCount > 0 ||
       winnerPredictionHistoryCount > 0 ||
+      standingCount > 0 ||
       adminActionLogCount > 0
     ) {
       await prisma.$transaction(async (tx) => {
@@ -1560,6 +1617,7 @@ export async function adminHardDeleteUserAction(
             winnerPredictionCount,
             championPickCount,
             winnerPredictionHistoryCount,
+            standingCount,
             adminActionLogCount,
             reason,
           }),
@@ -1570,32 +1628,180 @@ export async function adminHardDeleteUserAction(
       const userSnapshot = await getAdminUserSnapshot(targetUserId);
       return {
         success: true,
+        mode: 'disabled' as const,
         action: 'disabled' as const,
         message: 'Usuario desactivado porque tiene registros históricos.',
         user: userSnapshot,
       };
     }
 
-    // Write log BEFORE deletion since user relation is Cascade
-    await prisma.adminActionLog.create({
-      data: {
-        userId: adminUser.id,
-        action: 'user_hard_deleted',
-        target: `user:${targetUserId}`,
-        details: JSON.stringify({ username: targetUser.username, email: targetUser.email, reason }),
-      },
-    });
-
-    // Cascade deletion of User
-    await prisma.user.delete({
-      where: { id: targetUserId }
+    await prisma.$transaction(async (tx) => {
+      await tx.adminActionLog.create({
+        data: {
+          userId: adminUser.id,
+          action: 'user_hard_deleted',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({ username: targetUser.username, email: targetUser.email, reason }),
+        },
+      });
+      await tx.session.deleteMany({ where: { userId: targetUserId } });
+      await tx.account.deleteMany({ where: { userId: targetUserId } });
+      await tx.leagueMember.deleteMany({ where: { userId: targetUserId } });
+      await tx.reminderLog.deleteMany({ where: { userId: targetUserId } });
+      await tx.userOddsRefreshUsage.deleteMany({ where: { userId: targetUserId } });
+      await tx.oddsSnapshot.deleteMany({ where: { userId: targetUserId } });
+      await tx.user.delete({
+        where: { id: targetUserId },
+      });
     });
 
     revalidatePath('/admin/usuarios');
-    return { success: true, action: 'deleted' as const, message: 'Usuario eliminado con éxito.' };
+    return {
+      success: true,
+      mode: 'deleted' as const,
+      action: 'deleted' as const,
+      message: 'Usuario eliminado con éxito.',
+      userId: targetUserId,
+    };
   } catch (error) {
     console.error('Error in adminHardDeleteUserAction:', error);
     return { error: 'Ocurrió un error al eliminar definitivamente al usuario.' };
+  }
+}
+
+export async function adminTransferLeagueOwnershipAction(
+  leagueId: string,
+  newOwnerUserId: string,
+  reason: string
+) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || !session.user) {
+      return { error: 'No autorizado' };
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!adminUser || adminUser.status !== 'approved' || !adminUser.isSuperadmin) {
+      return { error: 'No tienes permisos para realizar esta acción.' };
+    }
+
+    if (!reason.trim()) {
+      return { error: 'El motivo de la transferencia es obligatorio.' };
+    }
+
+    if (!newOwnerUserId.trim()) {
+      return { error: 'Selecciona un nuevo propietario.' };
+    }
+
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+          },
+        },
+      },
+    });
+    if (!league) {
+      return { error: 'Competencia no encontrada.' };
+    }
+
+    if (league.createdBy === newOwnerUserId) {
+      return { error: 'El nuevo propietario debe ser distinto al propietario actual.' };
+    }
+
+    const newOwner = await prisma.user.findUnique({
+      where: { id: newOwnerUserId },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        status: true,
+        isSuperadmin: true,
+        canCreateLeagues: true,
+      },
+    });
+    if (!newOwner) {
+      return { error: 'Nuevo propietario no encontrado.' };
+    }
+    if (newOwner.status !== 'approved') {
+      return { error: 'No se puede transferir la propiedad a un usuario desactivado, rechazado o pendiente.' };
+    }
+    if (!newOwner.isSuperadmin && !newOwner.canCreateLeagues) {
+      return { error: 'El nuevo propietario debe ser administrador o superadministrador activo.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.league.update({
+        where: { id: leagueId },
+        data: { createdBy: newOwner.id },
+      });
+      await tx.leagueMember.updateMany({
+        where: {
+          leagueId,
+          role: 'owner',
+        },
+        data: { role: 'member' },
+      });
+      await tx.leagueMember.upsert({
+        where: {
+          leagueId_userId: {
+            leagueId,
+            userId: newOwner.id,
+          },
+        },
+        update: {
+          role: 'owner',
+          isParticipant: true,
+        },
+        create: {
+          leagueId,
+          userId: newOwner.id,
+          role: 'owner',
+          isParticipant: true,
+        },
+      });
+      await tx.adminActionLog.create({
+        data: {
+          userId: adminUser.id,
+          action: 'league_ownership_transfer',
+          target: `league:${leagueId}`,
+          details: JSON.stringify({
+            previousOwnerId: league.createdBy,
+            previousOwnerUsername: league.owner.username,
+            newOwnerId: newOwner.id,
+            newOwnerUsername: newOwner.username,
+            reason,
+          }),
+        },
+      });
+    });
+
+    revalidatePath('/admin/usuarios');
+    revalidatePath('/admin/ligas');
+    revalidatePath(`/liga/${league.slug}`);
+    revalidatePath(`/competencia/${league.slug}`);
+
+    const previousOwnerUser = await getAdminUserSnapshot(league.createdBy);
+    const newOwnerUser = await getAdminUserSnapshot(newOwner.id);
+    return {
+      success: true,
+      message: 'Propiedad de la competencia transferida con éxito.',
+      league: {
+        id: league.id,
+        name: league.name,
+        slug: league.slug,
+        competitionType: league.competitionType,
+      },
+      previousOwnerUser,
+      newOwnerUser,
+    };
+  } catch (error) {
+    console.error('Error in adminTransferLeagueOwnershipAction:', error);
+    return { error: 'No se pudo transferir la propiedad de la competencia.' };
   }
 }
 

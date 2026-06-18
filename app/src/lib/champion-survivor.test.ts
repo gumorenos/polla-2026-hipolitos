@@ -8,6 +8,7 @@ import {
   getChampionPickStatus,
   isChampionDeadlinePassed,
   resolveCompetitionType,
+  simulateChampionOdds,
   sortChampionSurvivorRanking,
 } from './champion-survivor';
 
@@ -141,5 +142,94 @@ describe('Champion Survivor business logic', () => {
       popularityRank: 8,
       isExclusive: true,
     }).label).toBe('Longshot');
+  });
+
+  it('normalizes outright champion implied probabilities for simulation', () => {
+    const result = simulateChampionOdds({
+      iterations: 1000,
+      seed: 7,
+      teamStatuses: [],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+        { teamCode: 'BRA', decimalOdds: 4, impliedProbability: 0.25, sourceMarket: 'outright_winner' },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.resolved).toBe(false);
+    expect(result.entries.find((entry) => entry.teamCode === 'ARG')?.normalizedProbability).toBeCloseTo(2 / 3);
+    expect(result.entries.find((entry) => entry.teamCode === 'BRA')?.normalizedProbability).toBeCloseTo(1 / 3);
+  });
+
+  it('excludes eliminated teams from champion odds simulation', () => {
+    const result = simulateChampionOdds({
+      iterations: 100,
+      seed: 9,
+      teamStatuses: [{ teamCode: 'BRA', status: 'eliminated' }],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+        { teamCode: 'BRA', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.resolved).toBe(true);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].teamCode).toBe('ARG');
+    expect(result.entries[0].simulatedProbability).toBe(1);
+  });
+
+  it('resolves champion status deterministically in champion odds simulation', () => {
+    const result = simulateChampionOdds({
+      iterations: 100,
+      seed: 11,
+      teamStatuses: [{ teamCode: 'FRA', status: 'champion' }],
+      oddsSnapshots: [],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.resolved).toBe(true);
+    expect(result.entries).toEqual([{
+      teamCode: 'FRA',
+      decimalOdds: null,
+      rawImpliedProbability: null,
+      normalizedProbability: 1,
+      simulatedWins: 100,
+      simulatedProbability: 1,
+      status: 'champion',
+      provider: null,
+      bookmaker: null,
+      capturedAt: null,
+    }]);
+  });
+
+  it('returns unavailable simulation when no outright champion odds exist', () => {
+    const result = simulateChampionOdds({
+      teamStatuses: [],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'match_winner' },
+      ],
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.entries).toEqual([]);
+    expect(result.message).toBe('Simulación no disponible porque no hay cuotas de campeón cargadas.');
+  });
+
+  it('keeps deterministic simulated probabilities close to normalized probabilities', () => {
+    const result = simulateChampionOdds({
+      iterations: 10000,
+      seed: 2026,
+      teamStatuses: [],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+        { teamCode: 'BRA', decimalOdds: 4, impliedProbability: 0.25, sourceMarket: 'outright_winner' },
+      ],
+    });
+
+    const arg = result.entries.find((entry) => entry.teamCode === 'ARG');
+    const bra = result.entries.find((entry) => entry.teamCode === 'BRA');
+    expect(arg?.simulatedProbability).toBeCloseTo(arg?.normalizedProbability ?? 0, 1);
+    expect(bra?.simulatedProbability).toBeCloseTo(bra?.normalizedProbability ?? 0, 1);
   });
 });

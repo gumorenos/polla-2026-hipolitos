@@ -86,6 +86,25 @@ type ChampionInfoByLeague = Record<string, {
       status: string;
     }[];
   };
+  simulation: {
+    available: boolean;
+    resolved: boolean;
+    iterations: number;
+    message: string | null;
+    lastCapturedAt: string | null;
+    entries: {
+      teamCode: string;
+      decimalOdds: number | null;
+      rawImpliedProbability: number | null;
+      normalizedProbability: number;
+      simulatedWins: number;
+      simulatedProbability: number;
+      status: string;
+      provider: string | null;
+      bookmaker: string | null;
+      capturedAt: string | null;
+    }[];
+  } | null;
 }>;
 
 interface PronosticosClientProps {
@@ -781,6 +800,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
               .filter(item => item.classification.key === 'attractive_differential')
               .slice(0, 3)
           : [];
+        const simulation = activeChampionInfo?.simulation || null;
+        const selectedSimulationEntry = consideredTeamCode && simulation
+          ? simulation.entries.find(entry => entry.teamCode === consideredTeamCode) || null
+          : null;
+        const topSimulationEntries = simulation?.entries.slice(0, 5) ?? [];
         const teamUpcomingMatch = consideredTeamCode
           ? matches
               .filter(match => isUpcomingMatch(match) && includesTeam(match, consideredTeamCode))
@@ -1014,6 +1038,87 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
                   Todavía no hay picks registrados.
                 </p>
+              )}
+            </section>
+
+            <section className="card-base p-5 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                <div>
+                  <h3 className="font-display text-xl tracking-wide uppercase text-text-primary">Simulación según cuotas de campeón</h3>
+                  <p className="text-xs text-text-secondary">Basado en cuotas de campeón, no en odds de partidos.</p>
+                </div>
+                {activeLeague.showOdds && simulation?.available && (
+                  <div className="text-left md:text-right text-[10px] font-mono text-text-secondary">
+                    <p>Iteraciones: <span className="text-text-primary">{simulation.iterations.toLocaleString('es-PE')}</span></p>
+                    <p>Última captura: <span className="text-text-primary">{simulation.lastCapturedAt ? formatMatchDate(simulation.lastCapturedAt) : 'No disponible'}</span></p>
+                  </div>
+                )}
+              </div>
+
+              {!activeLeague.showOdds ? (
+                <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                  Las ayudas de mercado están desactivadas para esta competencia.
+                </p>
+              ) : !simulation?.available ? (
+                <p className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3 text-xs text-text-secondary">
+                  {simulation?.message || 'No disponible'}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Estado</p>
+                      <p className="text-lg font-bold text-text-primary">{simulation.resolved ? 'Resuelto' : 'Monte Carlo liviano'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Top simulado</p>
+                      <p className="text-lg font-bold text-gold-400">
+                        {topSimulationEntries[0]
+                          ? `${FLAG_MAP[topSimulationEntries[0].teamCode] || ''} ${getTeamName(topSimulationEntries[0].teamCode)}`
+                          : 'No disponible'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                      <p className="text-[10px] font-mono uppercase text-text-muted">Tu pick</p>
+                      {!consideredTeamCode ? (
+                        <p className="text-sm text-text-secondary">Selecciona un equipo.</p>
+                      ) : selectedSimulationEntry ? (
+                        <p className="text-lg font-bold text-gold-400">{formatPercent(selectedSimulationEntry.simulatedProbability)}</p>
+                      ) : (
+                        <p className="text-sm text-text-secondary">No disponible</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase font-mono text-text-muted border-b border-border-subtle">
+                          <th className="py-2 pr-3">Equipo</th>
+                          <th className="py-2 px-3">Probabilidad de mercado normalizada</th>
+                          <th className="py-2 px-3">Probabilidad simulada</th>
+                          <th className="py-2 px-3">Cuota</th>
+                          <th className="py-2 pl-3">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-subtle/40">
+                        {topSimulationEntries.map((entry) => (
+                          <tr key={entry.teamCode} className={entry.teamCode === consideredTeamCode ? 'bg-gold-400/5' : undefined}>
+                            <td className="py-2 pr-3 font-semibold text-text-primary">
+                              {FLAG_MAP[entry.teamCode] || ''} {getTeamName(entry.teamCode)}
+                            </td>
+                            <td className="py-2 px-3 font-mono text-text-secondary">{formatPercent(entry.normalizedProbability)}</td>
+                            <td className="py-2 px-3 font-mono text-gold-400">{formatPercent(entry.simulatedProbability)}</td>
+                            <td className="py-2 px-3 font-mono text-text-secondary">
+                              {entry.decimalOdds !== null ? entry.decimalOdds.toFixed(2) : 'No disponible'}
+                            </td>
+                            <td className="py-2 pl-3 font-mono text-text-secondary">{getTournamentStatusLabel(entry.status)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </section>
 

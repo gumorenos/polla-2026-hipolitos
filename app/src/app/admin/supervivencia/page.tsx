@@ -76,6 +76,7 @@ export default async function AdminChampionSurvivorPage() {
           picks: [],
           summary: null,
           distribution: { byTeam: [], mostPickedTeam: null, exclusivePicks: [] },
+          simulation: null,
           prizePool: null,
         } satisfies ChampionSurvivorLeagueData;
       }
@@ -84,6 +85,7 @@ export default async function AdminChampionSurvivorPage() {
         picks: ChampionSurvivorLeagueData['picks'];
         summary: ChampionSurvivorLeagueData['summary'];
         distribution: ChampionSurvivorLeagueData['distribution'];
+        simulation: ChampionSurvivorLeagueData['simulation'];
         prizePool: ChampionSurvivorLeagueData['prizePool'];
       };
 
@@ -129,6 +131,7 @@ export default async function AdminChampionSurvivorPage() {
         })),
         summary: state.summary,
         distribution: state.distribution,
+        simulation: serializeSimulation(state.simulation),
         prizePool: state.prizePool,
       } satisfies ChampionSurvivorLeagueData;
     })
@@ -163,6 +166,21 @@ export default async function AdminChampionSurvivorPage() {
       />
     </div>
   );
+}
+
+function serializeSimulation(
+  simulation: ChampionSurvivorLeagueData['simulation']
+): ChampionSurvivorLeagueData['simulation'] {
+  if (!simulation) return null;
+
+  return {
+    ...simulation,
+    lastCapturedAt: simulation.lastCapturedAt ? new Date(simulation.lastCapturedAt).toISOString() : null,
+    entries: simulation.entries.map((entry) => ({
+      ...entry,
+      capturedAt: entry.capturedAt ? new Date(entry.capturedAt).toISOString() : null,
+    })),
+  };
 }
 
 function serializeLeague(league: {

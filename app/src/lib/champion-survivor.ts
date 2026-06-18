@@ -21,6 +21,7 @@ export type ChampionOddsLike = {
   provider?: string | null;
   bookmaker?: string | null;
   capturedAt?: Date | string | null;
+  sourceMarket?: string | null;
 };
 
 export type PrizePoolInput = {
@@ -66,6 +67,28 @@ export type ChampionPickClassificationKey =
 export type ChampionPickClassification = {
   key: ChampionPickClassificationKey;
   label: string;
+};
+
+export type ChampionOddsSimulationEntry = {
+  teamCode: string;
+  decimalOdds: number | null;
+  rawImpliedProbability: number | null;
+  normalizedProbability: number;
+  simulatedWins: number;
+  simulatedProbability: number;
+  status: TeamTournamentStatusValue;
+  provider: string | null;
+  bookmaker: string | null;
+  capturedAt: Date | string | null;
+};
+
+export type ChampionOddsSimulationResult = {
+  available: boolean;
+  resolved: boolean;
+  iterations: number;
+  message: string | null;
+  lastCapturedAt: Date | string | null;
+  entries: ChampionOddsSimulationEntry[];
 };
 
 export const CHAMPION_SURVIVOR_LABELS = {
@@ -223,6 +246,146 @@ export function classifyChampionPick(input: {
   return { key: 'unclassified', label: 'Sin clasificación' };
 }
 
+export function simulateChampionOdds(input: {
+  oddsSnapshots: ChampionOddsLike[];
+  teamStatuses: TeamStatusLike[];
+  iterations?: number;
+  seed?: number;
+}): ChampionOddsSimulationResult {
+  const iterations = normalizeSimulationIterations(input.iterations);
+  const statusByTeam = new Map(
+    input.teamStatuses.map((status) => [status.teamCode, normalizeTeamStatus(status.status)])
+  );
+  const championTeam = input.teamStatuses.find((status) => normalizeTeamStatus(status.status) === 'champion');
+
+  if (championTeam) {
+    return {
+      available: true,
+      resolved: true,
+      iterations,
+      message: null,
+      lastCapturedAt: null,
+      entries: [{
+        teamCode: championTeam.teamCode,
+        decimalOdds: null,
+        rawImpliedProbability: null,
+        normalizedProbability: 1,
+        simulatedWins: iterations,
+        simulatedProbability: 1,
+        status: 'champion',
+        provider: null,
+        bookmaker: null,
+        capturedAt: null,
+      }],
+    };
+  }
+
+  const latestByTeam = new Map<string, ChampionOddsLike>();
+  for (const snapshot of input.oddsSnapshots) {
+    if (snapshot.sourceMarket && snapshot.sourceMarket !== 'outright_winner') continue;
+    if (!Number.isFinite(snapshot.decimalOdds) || snapshot.decimalOdds <= 1) continue;
+
+    const current = latestByTeam.get(snapshot.teamCode);
+    if (!current || compareCapturedAt(snapshot.capturedAt, current.capturedAt) > 0) {
+      latestByTeam.set(snapshot.teamCode, snapshot);
+    }
+  }
+
+  const included = Array.from(latestByTeam.values())
+    .map((snapshot) => {
+      const status = statusByTeam.get(snapshot.teamCode) || 'unknown';
+      return {
+        snapshot,
+        status,
+        rawImpliedProbability: 1 / snapshot.decimalOdds,
+      };
+    })
+    .filter((item) => item.status !== 'eliminated' && item.status !== 'runner_up');
+
+  if (included.length === 0) {
+    return {
+      available: false,
+      resolved: false,
+      iterations,
+      message: 'Simulación no disponible porque no hay cuotas de campeón cargadas.',
+      lastCapturedAt: null,
+      entries: [],
+    };
+  }
+
+  const lastCapturedAt = included
+    .map((item) => item.snapshot.capturedAt || null)
+    .filter((value): value is Date | string => Boolean(value))
+    .sort((a, b) => compareCapturedAt(b, a))[0] || null;
+
+  const totalProbability = included.reduce((sum, item) => sum + item.rawImpliedProbability, 0);
+  if (totalProbability <= 0) {
+    return {
+      available: false,
+      resolved: false,
+      iterations,
+      message: 'Simulación no disponible porque no hay cuotas de campeón cargadas.',
+      lastCapturedAt: null,
+      entries: [],
+    };
+  }
+
+  const normalized = included.map((item) => ({
+    ...item,
+    normalizedProbability: item.rawImpliedProbability / totalProbability,
+  }));
+
+  if (normalized.length === 1) {
+    const only = normalized[0];
+    return {
+      available: true,
+      resolved: true,
+      iterations,
+      message: null,
+      lastCapturedAt,
+      entries: [buildSimulationEntry(only, iterations, 1)],
+    };
+  }
+
+  const wins = new Map(normalized.map((item) => [item.snapshot.teamCode, 0]));
+  const random = createSeededRandom(input.seed ?? 2026);
+  const cumulative = normalized.reduce<Array<{ teamCode: string; threshold: number }>>((acc, item) => {
+    const previous = acc[acc.length - 1]?.threshold || 0;
+    acc.push({
+      teamCode: item.snapshot.teamCode,
+      threshold: previous + item.normalizedProbability,
+    });
+    return acc;
+  }, []);
+
+  for (let iteration = 0; iteration < iterations; iteration++) {
+    const draw = random();
+    const winner = cumulative.find((item) => draw <= item.threshold) || cumulative[cumulative.length - 1];
+    wins.set(winner.teamCode, (wins.get(winner.teamCode) || 0) + 1);
+  }
+
+  const entries = normalized
+    .map((item) => {
+      const simulatedWins = wins.get(item.snapshot.teamCode) || 0;
+      return buildSimulationEntry(item, simulatedWins, simulatedWins / iterations);
+    })
+    .sort((a, b) => {
+      if (a.simulatedProbability !== b.simulatedProbability) {
+        return b.simulatedProbability - a.simulatedProbability;
+      }
+      return a.teamCode.localeCompare(b.teamCode);
+    });
+
+  return {
+    available: true,
+    resolved: false,
+    iterations,
+    message: null,
+    lastCapturedAt,
+    entries,
+  };
+}
+
 export function buildPickDistribution(
   picks: ChampionPickLike[],
   teamStatuses: TeamStatusLike[],
@@ -339,6 +502,51 @@ function compareNullableDates(
   const rightTime = right ? new Date(right).getTime() : Infinity;
   if (leftTime === rightTime) return 0;
   return direction === 'asc' ? leftTime - rightTime : rightTime - leftTime;
+}
+
+function buildSimulationEntry(
+  item: {
+    snapshot: ChampionOddsLike;
+    status: TeamTournamentStatusValue;
+    rawImpliedProbability: number;
+    normalizedProbability: number;
+  },
+  simulatedWins: number,
+  simulatedProbability: number
+): ChampionOddsSimulationEntry {
+  return {
+    teamCode: item.snapshot.teamCode,
+    decimalOdds: item.snapshot.decimalOdds,
+    rawImpliedProbability: item.rawImpliedProbability,
+    normalizedProbability: item.normalizedProbability,
+    simulatedWins,
+    simulatedProbability,
+    status: item.status,
+    provider: item.snapshot.provider || null,
+    bookmaker: item.snapshot.bookmaker || null,
+    capturedAt: item.snapshot.capturedAt || null,
+  };
+}
+
+function normalizeSimulationIterations(iterations?: number): number {
+  if (!iterations || !Number.isFinite(iterations)) return 10000;
+  return Math.max(1, Math.floor(iterations));
+}
+
+function compareCapturedAt(left?: Date | string | null, right?: Date | string | null): number {
+  const leftTime = left ? new Date(left).getTime() : 0;
+  const rightTime = right ? new Date(right).getTime() : 0;
+  return leftTime - rightTime;
+}
+
+function createSeededRandom(seed: number): () => number {
+  let state = Math.trunc(seed) % 2147483647;
+  if (state <= 0) state += 2147483646;
+
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state - 1) / 2147483646;
+  };
 }
 
 export function toCsvValue(value: unknown): string {

@@ -13,6 +13,7 @@ import {
   calculateChampionProbability,
   calculatePrizePool,
   getChampionPickStatus,
+  simulateChampionOdds,
 } from '../../lib/champion-survivor';
 
 
@@ -301,6 +302,25 @@ export default async function PronosticosPage() {
         status: string;
       }[];
     };
+    simulation: {
+      available: boolean;
+      resolved: boolean;
+      iterations: number;
+      message: string | null;
+      lastCapturedAt: string | null;
+      entries: {
+        teamCode: string;
+        decimalOdds: number | null;
+        rawImpliedProbability: number | null;
+        normalizedProbability: number;
+        simulatedWins: number;
+        simulatedProbability: number;
+        status: string;
+        provider: string | null;
+        bookmaker: string | null;
+        capturedAt: string | null;
+      }[];
+    } | null;
   };
 
   const championInfoByLeague: Record<string, ChampionInfoPayload> = {};
@@ -365,6 +385,14 @@ export default async function PronosticosPage() {
       };
     });
     const summary = buildSurvivalSummary(rankingEntries, prizePool);
+    const simulation = showMarketAids
+      ? simulateChampionOdds({
+          oddsSnapshots: Array.from(latestChampionOddsByTeam.values()),
+          teamStatuses: statuses,
+          iterations: 10000,
+          seed: 2026,
+        })
+      : null;
 
     championInfoByLeague[leagueId] = {
       teamStatuses: teamStatusesPayload,
@@ -375,6 +403,16 @@ export default async function PronosticosPage() {
         combinedAliveProbabilityAvailable: showMarketAids && summary.combinedAliveProbabilityAvailable,
       },
       distribution,
+      simulation: simulation
+        ? {
+            ...simulation,
+            lastCapturedAt: simulation.lastCapturedAt ? new Date(simulation.lastCapturedAt).toISOString() : null,
+            entries: simulation.entries.map((entry) => ({
+              ...entry,
+              capturedAt: entry.capturedAt ? new Date(entry.capturedAt).toISOString() : null,
+            })),
+          }
+        : null,
     };
   }
 

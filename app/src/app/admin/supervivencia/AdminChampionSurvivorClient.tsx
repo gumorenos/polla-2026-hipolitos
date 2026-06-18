@@ -115,6 +115,25 @@ export interface ChampionSurvivorLeagueData {
       status: string;
     }>;
   };
+  simulation: {
+    available: boolean;
+    resolved: boolean;
+    iterations: number;
+    message: string | null;
+    lastCapturedAt: string | null;
+    entries: Array<{
+      teamCode: string;
+      decimalOdds: number | null;
+      rawImpliedProbability: number | null;
+      normalizedProbability: number;
+      simulatedWins: number;
+      simulatedProbability: number;
+      status: string;
+      provider: string | null;
+      bookmaker: string | null;
+      capturedAt: string | null;
+    }>;
+  } | null;
   prizePool: { amount: number; estimated: boolean; currency: string } | null;
 }
 
@@ -391,6 +410,7 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
       ) : (
         <>
           <SummaryCards data={activeData} />
+          <SimulationPanel data={activeData} />
           <PicksTable
             data={activeData}
             picks={filteredPicks}
@@ -514,6 +534,61 @@ function SummaryCards({ data }: { data: ChampionSurvivorLeagueData }) {
           <p className="text-xl font-bold text-text-primary mt-1">{card.value}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function SimulationPanel({ data }: { data: ChampionSurvivorLeagueData }) {
+  const simulation = data.simulation;
+  const rows = simulation?.entries.slice(0, 8) ?? [];
+
+  return (
+    <div className="card-base overflow-hidden">
+      <div className="p-4 border-b border-border-subtle flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div>
+          <h3 className="font-display text-2xl tracking-wide text-text-primary">SIMULACIÓN SEGÚN CUOTAS DE CAMPEÓN</h3>
+          <p className="text-xs text-text-secondary">Basado en cuotas de campeón, no en odds de partidos.</p>
+        </div>
+        {simulation?.available && (
+          <div className="text-left md:text-right text-[10px] font-mono text-text-secondary">
+            <p>Iteraciones: <span className="text-text-primary">{simulation.iterations.toLocaleString('es-PE')}</span></p>
+            <p>Última captura: <span className="text-text-primary">{formatDateTime(simulation.lastCapturedAt)}</span></p>
+          </div>
+        )}
+      </div>
+
+      {!simulation?.available ? (
+        <p className="p-4 text-xs text-text-secondary">
+          {simulation?.message || 'No disponible'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] uppercase font-mono text-text-muted border-b border-border-subtle">
+                <th className="py-2 px-4">Equipo</th>
+                <th className="py-2 px-4">Probabilidad de mercado normalizada</th>
+                <th className="py-2 px-4">Probabilidad simulada</th>
+                <th className="py-2 px-4">Cuota</th>
+                <th className="py-2 px-4">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-subtle/40">
+              {rows.map((entry) => (
+                <tr key={entry.teamCode}>
+                  <td className="py-2 px-4 font-mono font-bold text-text-primary">{entry.teamCode}</td>
+                  <td className="py-2 px-4 font-mono text-text-secondary">{formatProbability(entry.normalizedProbability)}</td>
+                  <td className="py-2 px-4 font-mono text-gold-400">{formatProbability(entry.simulatedProbability)}</td>
+                  <td className="py-2 px-4 font-mono text-text-secondary">
+                    {entry.decimalOdds !== null ? entry.decimalOdds.toFixed(2) : 'No disponible'}
+                  </td>
+                  <td className="py-2 px-4 text-text-secondary uppercase font-mono text-[10px]">{statusLabel(entry.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

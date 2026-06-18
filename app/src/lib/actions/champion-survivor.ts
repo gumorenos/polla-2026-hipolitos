@@ -14,6 +14,7 @@ import {
   isChampionDeadlinePassed,
   isChampionSurvivorCompetition,
   normalizeTeamStatus,
+  simulateChampionOdds,
   sortChampionSurvivorRanking,
   type ChampionRankingEntry,
   type TeamTournamentStatusValue,
@@ -128,10 +129,7 @@ async function buildChampionSurvivorEntries(leagueId: string) {
   const pickByUser = new Map(picks.map((pick) => [pick.userId, pick]));
   const statusByTeam = new Map(teamStatuses.map((status) => [status.teamCode, status]));
   const prizePool = calculatePrizePool(leagueResult, members.length);
-  const oddsByTeam = await latestChampionOddsByTeam(
-    leagueId,
-    picks.map((pick) => pick.teamCode)
-  );
+  const oddsByTeam = await latestChampionOddsByTeam(leagueId);
 
   const entries = members.map((member) => {
     const pick = pickByUser.get(member.userId) || null;
@@ -194,6 +192,12 @@ async function buildChampionSurvivorEntries(leagueId: string) {
     members.length
   );
   const summary = buildSurvivalSummary(sortedEntries, prizePool);
+  const simulation = simulateChampionOdds({
+    oddsSnapshots: Array.from(oddsByTeam.values()),
+    teamStatuses,
+    iterations: 10000,
+    seed: 2026,
+  });
 
   return {
     league: leagueResult,
@@ -203,6 +207,7 @@ async function buildChampionSurvivorEntries(leagueId: string) {
     entries: sortedEntries,
     distribution,
     summary,
+    simulation,
     prizePool,
   } as const;
 }
@@ -365,6 +370,7 @@ export async function getChampionSurvivorAdminState(leagueId: string): ActionRes
       picks: state.entries,
       summary: state.summary,
       distribution: state.distribution,
+      simulation: state.simulation,
       prizePool: state.prizePool,
     },
   };

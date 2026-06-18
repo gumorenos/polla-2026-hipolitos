@@ -945,7 +945,7 @@ export async function adminCreateUserAction(data: {
       where: { username: usernameLower },
     });
     if (existingUser) {
-      return { error: 'El nombre de usuario ya está registrado' };
+      return { error: 'El nombre de usuario ya existe.' };
     }
 
     const ctx = await auth.$context;
@@ -1154,7 +1154,7 @@ export async function adminUpdateUserAction(
           where: { username: usernameLower, NOT: { id: targetUserId } }
         });
         if (existingUser) {
-          return { error: 'El nombre de usuario ya está registrado por otro usuario' };
+          return { error: 'El nombre de usuario ya existe.' };
         }
         updateData.username = usernameLower;
         updateData.displayUsername = usernameLower;
@@ -1418,15 +1418,18 @@ export async function adminSoftDeleteUserAction(
     }
 
     if (targetUserId === adminUser.id) {
-      const otherActiveSuperadmins = await prisma.user.count({
+      return { error: 'No puedes eliminar tu propio usuario.' };
+    }
+
+    if (targetUser.isSuperadmin && targetUser.status === 'approved') {
+      const activeSuperadminCount = await prisma.user.count({
         where: {
           isSuperadmin: true,
           status: 'approved',
-          NOT: { id: adminUser.id }
-        }
+        },
       });
-      if (otherActiveSuperadmins === 0) {
-        return { error: 'No puedes desactivar tu propio usuario porque eres el único superadministrador activo.' };
+      if (activeSuperadminCount <= 1) {
+        return { error: 'No puedes eliminar el último superadministrador.' };
       }
     }
 
@@ -1527,10 +1530,49 @@ export async function adminHardDeleteUserAction(
     const predictionCount = await prisma.prediction.count({ where: { userId: targetUserId } });
     const winnerPredictionCount = await prisma.winnerPrediction.count({ where: { userId: targetUserId } });
     const championPickCount = await prisma.championPick.count({ where: { userId: targetUserId } });
+    const winnerPredictionHistoryCount = await prisma.winnerPredictionHistory.count({ where: { userId: targetUserId } });
+    const adminActionLogCount = await prisma.adminActionLog.count({ where: { userId: targetUserId } });
 
-    if (predictionCount > 0 || winnerPredictionCount > 0 || championPickCount > 0) {
+    if (
+      predictionCount > 0 ||
+      winnerPredictionCount > 0 ||
+      championPickCount > 0 ||
+      winnerPredictionHistoryCount > 0 ||
+      adminActionLogCount > 0
+    ) {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: { status: 'disabled' },
+        });
+        await tx.session.deleteMany({
+          where: { userId: targetUserId },
+        });
+      });
+
+      await prisma.adminActionLog.create({
+        data: {
+          userId: adminUser.id,
+          action: 'user_disabled_for_history',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({
+            predictionCount,
+            winnerPredictionCount,
+            championPickCount,
+            winnerPredictionHistoryCount,
+            adminActionLogCount,
+            reason,
+          }),
+        },
+      });
+
+      revalidatePath('/admin/usuarios');
+      const userSnapshot = await getAdminUserSnapshot(targetUserId);
       return {
-        error: 'Este usuario tiene registros históricos y no puede eliminarse. Puedes desactivarlo.'
+        success: true,
+        action: 'disabled' as const,
+        message: 'Usuario desactivado porque tiene registros históricos.',
+        user: userSnapshot,
       };
     }
 
@@ -1550,7 +1592,7 @@ export async function adminHardDeleteUserAction(
     });
 
     revalidatePath('/admin/usuarios');
-    return { success: true };
+    return { success: true, action: 'deleted' as const, message: 'Usuario eliminado con éxito.' };
   } catch (error) {
     console.error('Error in adminHardDeleteUserAction:', error);
     return { error: 'Ocurrió un error al eliminar definitivamente al usuario.' };

@@ -76,6 +76,256 @@ interface UserFromDB {
   };
 }
 
+type LeagueOption = { id: string; name: string; competitionType?: string | null };
+type AdminUserType = 'participant' | 'admin' | 'superadmin';
+
+function getCompetitionTypeLabel(competitionType?: string | null) {
+  if (competitionType === 'full_prediction') return 'Polla completa';
+  if (competitionType === 'champion_survivor') return 'Solo campeón';
+  return 'Tipo no definido';
+}
+
+function CreateUserModal({
+  leagues,
+  onClose,
+  onCreated,
+}: {
+  leagues: LeagueOption[];
+  onClose: () => void;
+  onCreated: (user: UserFromDB) => void;
+}) {
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [newStatus, setNewStatus] = useState('approved');
+  const [newUserType, setNewUserType] = useState<AdminUserType>('participant');
+  const [newLeagueIds, setNewLeagueIds] = useState<string[]>([]);
+
+  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const username = String(formData.get('username') ?? '').trim();
+    const name = String(formData.get('name') ?? '').trim();
+    const passwordText = String(formData.get('passwordText') ?? '');
+    const email = String(formData.get('email') ?? '').trim();
+    const whatsapp = String(formData.get('whatsapp') ?? '').trim();
+
+    if (!name || !username) {
+      setModalError('Nombre visible y nombre de usuario son requeridos.');
+      return;
+    }
+    if (!passwordText.trim()) {
+      setModalError('La contraseña es obligatoria.');
+      return;
+    }
+
+    setActionLoading(true);
+    setModalError(null);
+
+    const res = await adminCreateUserAction({
+      username,
+      name,
+      passwordText,
+      email: email || undefined,
+      whatsapp: whatsapp || undefined,
+      status: newStatus,
+      userType: newUserType,
+      leagueIds: newLeagueIds,
+    });
+
+    setActionLoading(false);
+
+    if ('error' in res) {
+      setModalError(res.error ?? 'No se pudo crear el usuario.');
+      return;
+    }
+
+    if (res.user) {
+      onCreated(res.user);
+    } else {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div>
+          <h3 className="font-display text-2xl tracking-wide uppercase text-text-primary">Crear Cuenta Manual</h3>
+          <p className="text-xs text-text-secondary">El usuario se registrará directamente con las credenciales especificadas.</p>
+        </div>
+
+        {modalError && (
+          <div className="p-3 bg-red-900/50 text-red-200 border border-red-500 rounded-md text-xs">
+            {modalError}
+          </div>
+        )}
+
+        <form onSubmit={handleCreateUser} className="space-y-3" autoComplete="off">
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre visible</label>
+            <input
+              id="admin-create-name"
+              name="name"
+              type="text"
+              placeholder="Ej. Carlos Fuentes"
+              autoComplete="off"
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+              required
+            />
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre de usuario</label>
+            <input
+              id="admin-create-username"
+              name="username"
+              type="text"
+              placeholder="Ej. carlosf"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+              required
+            />
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Contraseña temporal</label>
+            <div className="relative">
+              <input
+                id="admin-create-password"
+                name="passwordText"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Mínimo 6 caracteres"
+                autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 pr-10 text-xs focus:ring-1 focus:ring-gold"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute right-3 top-2 text-text-muted hover:text-text-primary"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Correo (opcional)</label>
+            <input
+              id="admin-create-email"
+              name="email"
+              type="email"
+              placeholder="Ej. carlos@correo.com"
+              autoComplete="off"
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+            />
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">WhatsApp (opcional)</label>
+            <input
+              id="admin-create-whatsapp"
+              name="whatsapp"
+              type="tel"
+              placeholder="Ej. +51 999 999 999"
+              autoComplete="off"
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+            />
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Estado inicial</label>
+            <select
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value)}
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+            >
+              <option value="approved">Aprobado</option>
+              <option value="pending">Pendiente</option>
+              <option value="disabled">Desactivado</option>
+            </select>
+          </div>
+
+          <div className="space-y-1 text-left">
+            <label className="text-[10px] font-mono text-text-secondary uppercase">Tipo de usuario</label>
+            <select
+              value={newUserType}
+              onChange={(e) => setNewUserType(e.target.value as AdminUserType)}
+              className="w-full bg-bg-secondary text-text-primary border border-border rounded-lg p-2 text-xs focus:ring-1 focus:ring-gold"
+            >
+              <option value="participant">Participante</option>
+              <option value="admin">Administrador de competencias</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 text-left">
+            <div>
+              <label className="text-[10px] font-mono text-text-secondary uppercase">Competencias vigentes</label>
+              <p className="text-[10px] text-text-muted mt-0.5">Selecciona las competencias a las que quieres agregar este usuario.</p>
+            </div>
+            {leagues.length > 0 ? (
+              <div className="space-y-1.5 bg-bg-secondary border border-border rounded-lg p-2">
+                {leagues.map((league) => (
+                  <label key={league.id} className="flex items-center gap-2 text-xs text-text-primary">
+                    <input
+                      type="checkbox"
+                      checked={newLeagueIds.includes(league.id)}
+                      onChange={(e) => {
+                        setNewLeagueIds((current) =>
+                          e.target.checked
+                            ? [...current, league.id]
+                            : current.filter((leagueId) => leagueId !== league.id)
+                        );
+                      }}
+                      className="w-4 h-4 rounded border-border-default bg-bg-primary text-gold-500 focus:ring-gold-500"
+                    />
+                    <span>{league.name} — {getCompetitionTypeLabel(league.competitionType)}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-text-muted italic">No hay competencias vigentes disponibles.</p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-border-default hover:bg-bg-hover rounded-xl text-xs uppercase font-mono transition-all text-text-primary"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={actionLoading}
+              className="btn-gold py-2 px-5 text-xs uppercase font-mono"
+            >
+              {actionLoading ? 'Creando...' : 'Crear Usuario'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function UsersAdminClient({ 
   users, 
   leagues = [], 
@@ -98,12 +348,13 @@ export default function UsersAdminClient({
   const [newEmail, setNewEmail] = useState('');
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newStatus, setNewStatus] = useState('approved');
-  const [newUserType, setNewUserType] = useState<'participant' | 'admin' | 'superadmin'>('participant');
+  const [newUserType, setNewUserType] = useState<AdminUserType>('participant');
   const [newLeagueIds, setNewLeagueIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserFromDB | null>(null);
+  const [editModalError, setEditModalError] = useState<string | null>(null);
   
   // Edit Form Fields
   const [editName, setEditName] = useState('');
@@ -147,6 +398,8 @@ export default function UsersAdminClient({
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const renderLegacyCreateModal = false;
+  const renderClientDeleteBlock = false;
 
   // Teams list used for champion pick corrections
   const teams = [
@@ -170,12 +423,6 @@ export default function UsersAdminClient({
     { code: 'SEN', name: 'Senegal' },
   ];
 
-  const getCompetitionTypeLabel = (competitionType?: string | null) => {
-    if (competitionType === 'full_prediction') return 'Polla completa';
-    if (competitionType === 'champion_survivor') return 'Solo campeón';
-    return 'Tipo no definido';
-  };
-
   const getSelectedUserLeagueOptions = () => {
     const options = new Map<string, { id: string; name: string; competitionType?: string | null }>();
     leagues.forEach((league) => options.set(league.id, league));
@@ -190,15 +437,6 @@ export default function UsersAdminClient({
   };
 
   const handleStartCreateUser = () => {
-    setNewUsername('');
-    setNewName('');
-    setNewPassword('');
-    setNewEmail('');
-    setNewWhatsapp('');
-    setNewStatus('approved');
-    setNewUserType('participant');
-    setNewLeagueIds([]);
-    setShowPassword(false);
     setError(null);
     setSuccess(null);
     setShowCreateModal(true);
@@ -220,6 +458,9 @@ export default function UsersAdminClient({
     setEditThemeMode(user.themeMode || 'black');
     setEditLeagueIds(user.memberships?.map((membership) => membership.league.id) ?? []);
     setEditAddLeagueId('');
+    setEditModalError(null);
+    setError(null);
+    setSuccess(null);
     setShowEditModal(true);
   };
 
@@ -227,7 +468,7 @@ export default function UsersAdminClient({
     e.preventDefault();
     if (!selectedUser) return;
     setActionLoading(true);
-    setError(null);
+    setEditModalError(null);
     setSuccess(null);
 
     // Detect sensitive edits
@@ -246,7 +487,7 @@ export default function UsersAdminClient({
         return; // Cancelled
       }
       if (!promptReason.trim()) {
-        alert("El motivo es obligatorio para realizar cambios sensibles.");
+        setEditModalError("El motivo es obligatorio para realizar cambios sensibles.");
         setActionLoading(false);
         return;
       }
@@ -270,7 +511,7 @@ export default function UsersAdminClient({
     }, reason);
 
     if ('error' in res) {
-      setError(res.error ?? 'No se pudo guardar el usuario.');
+      setEditModalError(res.error ?? 'No se pudo guardar el usuario.');
       setActionLoading(false);
     } else {
       setSuccess('Usuario actualizado con éxito.');
@@ -296,13 +537,13 @@ export default function UsersAdminClient({
     }
     
     setActionLoading(true);
-    setError(null);
+    setEditModalError(null);
     setSuccess(null);
 
     const res = await adminResetUserChampionAction(selectedUser.id, leagueId, reason);
 
     if ('error' in res) {
-      setError(res.error ?? 'No se pudo restablecer la predicción de campeón.');
+      setEditModalError(res.error ?? 'No se pudo restablecer la predicción de campeón.');
       setActionLoading(false);
     } else {
       setSuccess('Predicción de campeón restablecida con éxito.');
@@ -331,7 +572,7 @@ export default function UsersAdminClient({
 
     const res = await updateUserStatusAction(userId, targetStatus, reason);
 
-    if (res.error) {
+    if ('error' in res) {
       setError(res.error ?? 'No se pudo actualizar el estado del usuario.');
     } else {
       setSuccess(`Usuario ${actionLabel}do correctamente`);
@@ -414,8 +655,8 @@ export default function UsersAdminClient({
     );
     setActionLoading(false);
 
-    if (res.error) {
-      alert(res.error);
+    if ('error' in res) {
+      alert(res.error ?? 'No se pudo restablecer la contraseña.');
     } else if (res.temporaryPassword) {
       setPasswordResetSuccessText(res.temporaryPassword);
       setSuccess("Contraseña restablecida con éxito.");
@@ -446,10 +687,13 @@ export default function UsersAdminClient({
     );
     setActionLoading(false);
 
-    if (res.error) {
-      alert(res.error);
+    if ('error' in res) {
+      alert(res.error ?? 'No se pudo desactivar el usuario.');
     } else {
       setSuccess("Usuario desactivado y archivado correctamente.");
+      setUserList((currentUsers) =>
+        currentUsers.map((user) => user.id === softDeleteUser.id ? { ...user, status: 'disabled' } : user)
+      );
       setShowSoftDeleteModal(false);
       router.refresh();
     }
@@ -483,11 +727,18 @@ export default function UsersAdminClient({
     );
     setActionLoading(false);
 
-    if (res.error) {
+    if ('error' in res) {
       alert(res.error ?? "No se pudo eliminar el usuario.");
     } else {
-      setSuccess("Usuario eliminado con éxito.");
-      setUserList((currentUsers) => currentUsers.filter((user) => user.id !== hardDeleteUser.id));
+      setSuccess(res.message ?? "Usuario eliminado con éxito.");
+      const updatedUser = res.user;
+      if (res.action === 'disabled' && updatedUser) {
+        setUserList((currentUsers) =>
+          currentUsers.map((user) => user.id === updatedUser.id ? updatedUser : user)
+        );
+      } else {
+        setUserList((currentUsers) => currentUsers.filter((user) => user.id !== hardDeleteUser.id));
+      }
       setShowHardDeleteModal(false);
       router.refresh();
     }
@@ -644,7 +895,7 @@ export default function UsersAdminClient({
                       </td>
                       <td className="p-3 text-xs max-w-xs truncate">
                         {user.memberships && user.memberships.length > 0 ? (
-                          user.memberships.map((m) => m.league.name).join(', ')
+                          user.memberships.map((m) => `${m.league.name} — ${getCompetitionTypeLabel(m.league.competitionType)}`).join(', ')
                         ) : (
                           <span className="text-text-muted italic">Ninguna</span>
                         )}
@@ -824,9 +1075,9 @@ export default function UsersAdminClient({
                   </div>
                   <div className="col-span-2">
                     <span className="text-text-muted block">Competencias:</span>
-                    <span className="text-text-primary truncate block" title={user.memberships?.map(m => m.league.name).join(', ')}>
+                    <span className="text-text-primary truncate block" title={user.memberships?.map(m => `${m.league.name} — ${getCompetitionTypeLabel(m.league.competitionType)}`).join(', ')}>
                       {user.memberships && user.memberships.length > 0 ? (
-                        user.memberships.map((m) => m.league.name).join(', ')
+                        user.memberships.map((m) => `${m.league.name} — ${getCompetitionTypeLabel(m.league.competitionType)}`).join(', ')
                       ) : (
                         <span className="text-text-muted italic">Ninguna</span>
                       )}
@@ -981,7 +1232,7 @@ export default function UsersAdminClient({
                 <div className="space-y-1 max-h-24 overflow-y-auto">
                   {detailUser.memberships.map((m) => (
                     <div key={m.league.id} className="bg-bg-secondary p-1.5 rounded border border-border/45 flex justify-between">
-                      <span>{m.league.name}</span>
+                      <span>{m.league.name} — {getCompetitionTypeLabel(m.league.competitionType)}</span>
                       <span className="text-gold font-bold uppercase text-[9px]">{m.role}</span>
                     </div>
                   ))}
@@ -1207,7 +1458,7 @@ export default function UsersAdminClient({
               </div>
             </div>
 
-            {((hardDeleteUser._count?.predictions ?? 0) > 0 || (hardDeleteUser.winnerPredictions?.length ?? 0) > 0) ? (
+            {renderClientDeleteBlock && ((hardDeleteUser._count?.predictions ?? 0) > 0 || (hardDeleteUser.winnerPredictions?.length ?? 0) > 0) ? (
               <div className="space-y-4 text-left">
                 <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-xs text-red-200 space-y-2">
                   <p className="font-bold uppercase text-red-400">Acción Bloqueada</p>
@@ -1228,7 +1479,7 @@ export default function UsersAdminClient({
               <form onSubmit={handleHardDeleteSubmit} className="space-y-4 text-left">
                 <div className="p-4 bg-red-950/40 border border-red-500/40 rounded-lg text-[11px] text-red-200">
                   <p className="font-bold uppercase mb-1">¡Advertencia Peligrosa!</p>
-                  <p>Esta acción es irreversible y purgará por completo al usuario de la base de datos. Solo se permite porque no tiene pronósticos registrados.</p>
+                  <p>Si el usuario no tiene registros históricos, se eliminará. Si tiene pronósticos o picks, será desactivado para conservar el historial.</p>
                 </div>
 
                 <div className="space-y-1">
@@ -1279,6 +1530,18 @@ export default function UsersAdminClient({
 
       {/* Manual Create User Modal */}
       {showCreateModal && (
+        <CreateUserModal
+          leagues={leagues}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={(createdUser) => {
+            setSuccess('Usuario creado exitosamente.');
+            setUserList((currentUsers) => [createdUser, ...currentUsers.filter((user) => user.id !== createdUser.id)]);
+            setShowCreateModal(false);
+            router.refresh();
+          }}
+        />
+      )}
+      {renderLegacyCreateModal && showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="card-base p-6 max-w-md w-full border border-border rounded-lg space-y-4 relative bg-bg-tertiary max-h-[90vh] overflow-y-auto">
             <button
@@ -1481,11 +1744,17 @@ export default function UsersAdminClient({
               <p className="text-xs text-text-secondary">Modifica los datos del usuario y gestiona su participación.</p>
             </div>
 
+            {editModalError && (
+              <div className="p-3 bg-red-900/50 text-red-200 border border-red-500 rounded-md text-xs">
+                {editModalError}
+              </div>
+            )}
+
             <form onSubmit={handleEditUserSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 {/* Full Name */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre Completo</label>
+                  <label className="text-[10px] font-mono text-text-secondary uppercase">Nombre visible</label>
                   <input
                     id="admin-edit-name"
                     name="admin-edit-name"
@@ -1667,7 +1936,9 @@ export default function UsersAdminClient({
                       return (
                         <div key={leagueId} className="flex justify-between items-center bg-bg-secondary p-2 rounded border border-border-default/60">
                           <div className="text-left font-mono">
-                            <p className="font-semibold text-text-primary text-xs">{league?.name ?? 'Competencia'}</p>
+                            <p className="font-semibold text-text-primary text-xs">
+                              {league ? `${league.name} — ${getCompetitionTypeLabel(league.competitionType)}` : 'Competencia'}
+                            </p>
                             {membership && (
                               <p className="text-[9px] text-text-muted">Rol actual: <span className="text-gold font-semibold uppercase">{membership.role === 'owner' ? 'Dueño' : membership.role === 'admin' ? 'Admin' : 'Miembro'}</span></p>
                             )}
@@ -1768,7 +2039,7 @@ export default function UsersAdminClient({
                                 setActionLoading(true);
                                 const res = await allowWinnerPredictionCorrectionAction(wp.leagueId, selectedUser.id, duration, reason);
                                 setActionLoading(false);
-                                if (res.error) alert(res.error);
+                                if ('error' in res) alert(res.error ?? 'No se pudo habilitar la corrección.');
                                 else {
                                   alert("Corrección habilitada.");
                                   router.refresh();
@@ -1795,7 +2066,7 @@ export default function UsersAdminClient({
                                 setActionLoading(true);
                                 const res = await directCorrectWinnerPredictionAction(wp.leagueId, selectedUser.id, newCode, reason);
                                 setActionLoading(false);
-                                if (res.error) alert(res.error);
+                                if ('error' in res) alert(res.error ?? 'No se pudo modificar el campeón.');
                                 else {
                                   alert("Campeón modificado directamente.");
                                   router.refresh();

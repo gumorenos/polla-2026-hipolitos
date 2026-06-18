@@ -135,7 +135,7 @@ export default async function AdminChampionSurvivorPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 py-2">
+    <div className="w-full max-w-7xl xl:max-w-[1400px] mx-auto space-y-6 py-2">
       <div className="flex items-center justify-between pb-1 border-b border-border-subtle pt-2">
         <div className="flex items-center gap-3">
           <Link

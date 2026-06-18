@@ -707,10 +707,10 @@ export default function UsersAdminClient({
       alert(res.error ?? "No se pudo eliminar el usuario.");
     } else {
       setSuccess(res.message ?? "Usuario eliminado con éxito.");
-      if (res.mode === 'deleted' || res.action === 'deleted') {
+      if (res.mode === 'deleted') {
         setUserList((currentUsers) => currentUsers.filter((user) => user.id !== hardDeleteUser.id));
         setShowHardDeleteModal(false);
-      } else if ((res.mode === 'disabled' || res.action === 'disabled') && 'user' in res && res.user) {
+      } else if (res.mode === 'disabled' && 'user' in res && res.user) {
         replaceUserInList(res.user);
         setShowHardDeleteModal(false);
       } else if (res.mode === 'blocked_owner' && 'user' in res && res.user) {

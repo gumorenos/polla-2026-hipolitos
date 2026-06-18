@@ -1574,7 +1574,6 @@ export async function adminHardDeleteUserAction(
       return {
         success: true,
         mode: 'blocked_owner' as const,
-        action: 'blocked_owner' as const,
         message,
         user: userSnapshot,
         ownedLeagues,
@@ -1629,7 +1628,6 @@ export async function adminHardDeleteUserAction(
       return {
         success: true,
         mode: 'disabled' as const,
-        action: 'disabled' as const,
         message: 'Usuario desactivado porque tiene registros históricos.',
         user: userSnapshot,
       };
@@ -1659,7 +1657,6 @@ export async function adminHardDeleteUserAction(
     return {
       success: true,
       mode: 'deleted' as const,
-      action: 'deleted' as const,
       message: 'Usuario eliminado con éxito.',
       userId: targetUserId,
     };

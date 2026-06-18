@@ -98,7 +98,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <>
-      <div className="space-y-6 w-full max-w-7xl xl:max-w-[1400px] mx-auto py-2">
+      <div className="space-y-6 w-full py-2">
         {/* Page Header */}
         <div className="flex items-center justify-between pt-2 pb-1 border-b border-border-subtle">
           <div className="flex items-center gap-3">

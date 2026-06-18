@@ -25,7 +25,7 @@ export default async function AdminResultadosPage() {
   });
 
   return (
-    <div className="w-full max-w-7xl xl:max-w-[1400px] mx-auto p-4 md:p-8 space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-3xl text-gold">Ingresar Resultados</h1>
         <Link href="/admin" className="text-sm text-gold hover:underline">

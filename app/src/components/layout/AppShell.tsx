@@ -5,6 +5,7 @@ import { BottomNav } from './BottomNav';
 import { SidebarNav } from './SidebarNav';
 import { Shield } from 'lucide-react';
 import { authClient } from '../../lib/auth-client';
+import { usePathname } from 'next/navigation';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -13,6 +14,11 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { data: session } = authClient.useSession();
   const isSuperadmin = session?.user?.isSuperadmin === true;
+  const pathname = usePathname();
+  const isAdminArea = pathname === '/admin' || pathname.startsWith('/admin/');
+  const mainClassName = isAdminArea
+    ? 'flex-1 overflow-y-auto w-full max-w-[1600px] 2xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8'
+    : 'flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto';
 
   return (
     <div className="flex min-h-screen bg-bg-primary text-text-primary">
@@ -40,7 +46,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </header>
 
         {/* Dynamic Page Scroll Content */}
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+        <main className={mainClassName}>
           {children}
         </main>
       </div>

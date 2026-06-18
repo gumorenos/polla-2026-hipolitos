@@ -19,6 +19,7 @@ interface PronosticosClientProps {
     championDeadline: string | null;
     championPoints: number;
     showOdds: boolean;
+    showH2H: boolean;
     competitionType: string;
     isParticipant: boolean;
   }[];
@@ -658,6 +659,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                 onPredictionSaved={handlePredictionSaved}
                 leagueId={activeLeagueId}
                 showOdds={activeLeague?.showOdds}
+                showH2H={activeLeague?.showH2H}
                 globalOdds={gOdds}
                 userOdds={uOdds}
                 h2h={h2h}

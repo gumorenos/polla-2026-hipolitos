@@ -51,6 +51,7 @@ interface MatchCardProps {
   
   // Odds & H2H features
   showOdds?: boolean;
+  showH2H?: boolean;
   globalOdds?: OddsData | null;
   userOdds?: OddsData | null;
   h2h?: H2HData | null;
@@ -75,6 +76,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   variant = 'scoreboard',
   onSavePrediction,
   showOdds = true,
+  showH2H = true,
   globalOdds,
   userOdds,
   h2h,
@@ -346,6 +348,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   // Collapsible Head-to-Head history module
   const renderH2HModule = () => {
+    if (!showH2H) return null;
+
     if (!h2h) {
       return (
         <div className="mt-3 pt-2.5 border-t border-border-subtle/50 text-[10px] text-text-muted italic">

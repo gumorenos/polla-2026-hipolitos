@@ -15,6 +15,8 @@ interface CreateLeagueInput {
   competitionType?: string | null;
   championDeadline?: string | null;
   joinAsParticipant?: boolean;
+  showOdds?: boolean;
+  showH2H?: boolean;
 }
 
 function resolveCompetitionTypeInput(value?: string | null): CompetitionTypeInput | null {
@@ -30,7 +32,7 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
   }
 
   const userId = session.user.id;
-  const payload = typeof input === 'string' ? { name: input } : input;
+  const payload: CreateLeagueInput = typeof input === 'string' ? { name: input } : input;
   
   try {
     const user = await prisma.user.findUnique({
@@ -55,6 +57,14 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
     if (!competitionType) {
       return { error: 'Tipo de competencia inválido.' };
     }
+    if (payload.showOdds !== undefined && typeof payload.showOdds !== 'boolean') {
+      return { error: 'Configuración de odds inválida.' };
+    }
+    if (payload.showH2H !== undefined && typeof payload.showH2H !== 'boolean') {
+      return { error: 'Configuración de historial inválida.' };
+    }
+    const showOdds = payload.showOdds ?? true;
+    const showH2H = payload.showH2H ?? true;
 
     let championDeadline: Date | null = null;
     if (payload.championDeadline) {
@@ -100,6 +110,8 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
           status: 'active',
           competitionType,
           championDeadline,
+          showOdds,
+          showH2H,
         },
       });
 
@@ -143,6 +155,8 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
           name: league.name,
           competitionType,
           ownerJoinedAsParticipant: payload.joinAsParticipant === true,
+          showOdds,
+          showH2H,
         }),
       },
     });
@@ -518,6 +532,7 @@ export async function updateLeagueSettingsAction(
     pointsDraw?: number;
     pointsConsolation?: number;
     showOdds?: boolean;
+    showH2H?: boolean;
     championTeamCode?: string | null;
   }
 ) {
@@ -549,6 +564,12 @@ export async function updateLeagueSettingsAction(
     if (!isAuthorized) {
       return { error: 'No tienes permisos para configurar esta polla.' };
     }
+    if (data.showOdds !== undefined && typeof data.showOdds !== 'boolean') {
+      return { error: 'Configuración de odds inválida.' };
+    }
+    if (data.showH2H !== undefined && typeof data.showH2H !== 'boolean') {
+      return { error: 'Configuración de historial inválida.' };
+    }
 
     // Update league
     const updated = await prisma.league.update({
@@ -570,6 +591,7 @@ export async function updateLeagueSettingsAction(
         pointsDraw: data.pointsDraw ?? league.pointsDraw,
         pointsConsolation: data.pointsConsolation ?? league.pointsConsolation,
         showOdds: data.showOdds ?? league.showOdds,
+        showH2H: data.showH2H ?? league.showH2H,
         championTeamCode: data.championTeamCode,
       },
     });

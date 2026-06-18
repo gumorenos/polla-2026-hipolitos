@@ -214,6 +214,7 @@ We implement the following 6 tie-breakers sequentially:
 3. **Timezone-Locked Rate Limits:** Manual user-triggered refreshes are restricted to exactly **1 request per local day** (resets at midnight in the `America/Lima` timezone). This prevents spamming and key usage while allowing users to query updated odds closer to kickoff.
 4. **SQLite Atomic Lock Transactions:** To prevent double-clicks or concurrent requests from bypassing the rate-limit checks, we check previous usage and write the new `UserOddsRefreshUsage` log within a single atomic database transaction. If the unique constraint on `userId_dateKey` is violated, the transaction rolls back immediately.
 5. **Outcome-Based Odds Schema:** Modified `OddsSnapshot` to record individual outcome items (Home, Draw, Away) as independent rows. This allows storing outcomes separately and referencing selection keys easily.
+6. **Competition-Level Visibility:** Each competition can disable user-facing market aids independently with `showOdds` and H2H history with `showH2H`. These flags only control participant display; cached `OddsSnapshot`, `ChampionOddsSnapshot`, and `HeadToHeadSnapshot` records remain available for admin maintenance.
 
 ---
 
@@ -313,5 +314,4 @@ We implement the following 6 tie-breakers sequentially:
 **Consequences:**
 - Existing memberships keep `isParticipant = true` through the migration default.
 - The public Champion Survivor dashboard remains pending; `/pronosticos` only includes the minimal champion-pick flow for Champion Survivor competitions.
-
 

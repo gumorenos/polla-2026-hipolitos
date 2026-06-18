@@ -261,6 +261,7 @@ export default async function PronosticosPage() {
     championDeadline: m.league.championDeadline ? m.league.championDeadline.toISOString() : null,
     championPoints: m.league.championPoints,
     showOdds: m.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true',
+    showH2H: m.league.showH2H,
     competitionType: m.league.competitionType,
     isParticipant: m.isParticipant,
   }));

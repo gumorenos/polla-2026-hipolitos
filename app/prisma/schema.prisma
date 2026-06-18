@@ -195,6 +195,7 @@ model League {
   pointsDraw        Int                @default(3)
   pointsConsolation Int                @default(1)
   showOdds          Boolean            @default(true)
+  showH2H           Boolean            @default(true)
   championTeamCode  String?
   knockoutOutcomeBasis String            @default("qualified_team") // "qualified_team" | "score_result"
   competitionType   CompetitionType    @default(full_prediction)

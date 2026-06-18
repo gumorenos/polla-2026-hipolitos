@@ -79,6 +79,7 @@ export default async function AdminLigasPage() {
     isDefault: l.isDefault,
     isActive: l.isActive,
     showOdds: l.showOdds,
+    showH2H: l.showH2H,
     members: l.members.map((m) => ({
       userId: m.userId,
       role: m.role,

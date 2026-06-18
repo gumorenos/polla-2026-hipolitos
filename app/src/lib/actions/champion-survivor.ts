@@ -243,7 +243,7 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
     : null;
   const pickStatus = getChampionPickStatus(pick, teamStatus);
   const championDeadlinePassed = isChampionDeadlinePassed(leagueResult.league.championDeadline);
-  const probability = pick
+  const probability = pick && leagueResult.league.showOdds
     ? calculateChampionProbability(oddsByTeam.get(pick.teamCode), prizePool.amount)
     : calculateChampionProbability(null, prizePool.amount);
 
@@ -257,6 +257,8 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
         currency: leagueResult.league.currency,
         entryFee: leagueResult.league.entryFee,
         prizePoolOverride: leagueResult.league.prizePoolOverride,
+        showOdds: leagueResult.league.showOdds,
+        showH2H: leagueResult.league.showH2H,
       },
       competitionType: leagueResult.league.competitionType,
       championDeadline: leagueResult.league.championDeadline,

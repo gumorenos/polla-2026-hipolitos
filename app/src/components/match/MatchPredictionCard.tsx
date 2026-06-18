@@ -11,6 +11,7 @@ interface MatchPredictionCardProps {
   onPredictionSaved?: (pred: Prediction) => void;
   leagueId: string;
   showOdds?: boolean;
+  showH2H?: boolean;
   globalOdds?: {
     homeOdds: number;
     drawOdds: number;
@@ -59,6 +60,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
   onPredictionSaved,
   leagueId,
   showOdds = true,
+  showH2H = true,
   globalOdds,
   userOdds,
   h2h,
@@ -121,6 +123,7 @@ export const MatchPredictionCard: React.FC<MatchPredictionCardProps> = ({
         variant={variant}
         onSavePrediction={handleSave}
         showOdds={showOdds}
+        showH2H={showH2H}
         globalOdds={globalOdds}
         userOdds={userOdds}
         h2h={h2h}

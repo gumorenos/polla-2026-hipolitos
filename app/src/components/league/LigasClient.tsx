@@ -54,6 +54,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
   const [competitionType, setCompetitionType] = useState<'full_prediction' | 'champion_survivor'>(initialCompetitionType);
   const [championDeadline, setChampionDeadline] = useState('');
   const [joinAsParticipant, setJoinAsParticipant] = useState(false);
+  const [showOdds, setShowOdds] = useState(true);
+  const [showH2H, setShowH2H] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(openCreateModal);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -88,6 +90,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       competitionType,
       championDeadline: championDeadline ? parseLimaDateTimeToUtc(championDeadline) : null,
       joinAsParticipant,
+      showOdds,
+      showH2H,
     });
 
     if (result.error) {
@@ -98,6 +102,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       setCompetitionType('full_prediction');
       setChampionDeadline('');
       setJoinAsParticipant(false);
+      setShowOdds(true);
+      setShowH2H(true);
       setShowCreateModal(false);
       setLoading(false);
       if (result.data) {
@@ -346,6 +352,37 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   Si no marcas esta opción, crearás y administrarás la competencia como dueño sin contar como jugador activo.
                 </span>
               </label>
+              <div className="space-y-2">
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  Puedes desactivar estas ayudas para hacer la competencia más difícil.
+                </p>
+                <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showOdds}
+                    onChange={(e) => setShowOdds(e.target.checked)}
+                    className="mt-0.5"
+                    disabled={loading}
+                  />
+                  <span className="text-xs text-text-secondary leading-relaxed">
+                    <span className="block font-semibold text-text-primary">Mostrar odds</span>
+                    Muestra ayudas de mercado cuando existan datos cacheados.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showH2H}
+                    onChange={(e) => setShowH2H(e.target.checked)}
+                    className="mt-0.5"
+                    disabled={loading}
+                  />
+                  <span className="text-xs text-text-secondary leading-relaxed">
+                    <span className="block font-semibold text-text-primary">Mostrar historial / H2H</span>
+                    Muestra estadísticas de enfrentamientos directos cuando existan datos cacheados.
+                  </span>
+                </label>
+              </div>
               <p className="text-[10px] text-text-muted leading-relaxed">
                 Una vez creada, generaremos un código de invitación único. Podrás compartir este código para que otros se unan.
               </p>

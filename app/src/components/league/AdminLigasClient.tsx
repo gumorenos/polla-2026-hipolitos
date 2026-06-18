@@ -47,6 +47,7 @@ interface LeagueAdminData {
   isDefault: boolean;
   isActive: boolean;
   showOdds: boolean;
+  showH2H: boolean;
 }
 
 interface ApprovedUserData {
@@ -95,6 +96,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
     const entryFee = parseFloat(formData.get('entryFee') as string) || 0;
     const currency = formData.get('currency') as string;
     const showOdds = formData.get('showOdds') === 'true';
+    const showH2H = formData.get('showH2H') === 'true';
     const championPoints = parseInt(formData.get('championPoints') as string) || 10;
     const pointsExactScore = parseInt(formData.get('pointsExactScore') as string) || 5;
     const pointsWinner = parseInt(formData.get('pointsWinner') as string) || 3;
@@ -110,6 +112,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
       entryFee,
       currency,
       showOdds,
+      showH2H,
       championPoints,
       championDeadline,
       pointsExactScore,
@@ -651,19 +654,40 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     className="field text-xs py-1.5 w-full"
                   />
                 </div>
+              </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                    Mostrar Cuotas de Mercado
-                  </label>
-                  <select
-                    name="showOdds"
-                    defaultValue={String(settingsLeague.showOdds)}
-                    className="field text-xs py-1.5 w-full"
-                  >
-                    <option value="true">Mostrar</option>
-                    <option value="false">Ocultar</option>
-                  </select>
+              <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  Puedes desactivar estas ayudas para hacer la competencia más difícil.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Mostrar odds
+                    </label>
+                    <select
+                      name="showOdds"
+                      defaultValue={String(settingsLeague.showOdds)}
+                      className="field text-xs py-1.5 w-full"
+                    >
+                      <option value="true">Mostrar</option>
+                      <option value="false">Ocultar</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                      Mostrar historial / H2H
+                    </label>
+                    <select
+                      name="showH2H"
+                      defaultValue={String(settingsLeague.showH2H)}
+                      className="field text-xs py-1.5 w-full"
+                    >
+                      <option value="true">Mostrar</option>
+                      <option value="false">Ocultar</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

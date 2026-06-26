@@ -108,7 +108,7 @@ async function latestChampionOddsByTeam(leagueId: string, teamCodes?: string[]) 
 }
 
 async function buildChampionSurvivorEntries(leagueId: string) {
-  const [leagueResult, members, picks, teamStatuses] = await Promise.all([
+  const [leagueResult, members, picks, teamStatuses, teams] = await Promise.all([
     prisma.league.findUnique({ where: { id: leagueId } }),
     prisma.leagueMember.findMany({
       where: { leagueId, isParticipant: true, user: { status: 'approved' } },
@@ -121,6 +121,9 @@ async function buildChampionSurvivorEntries(leagueId: string) {
     }),
     prisma.teamTournamentStatus.findMany({
       where: { leagueId },
+    }),
+    prisma.team.findMany({
+      select: { code: true, name: true },
     }),
   ]);
 
@@ -193,10 +196,11 @@ async function buildChampionSurvivorEntries(leagueId: string) {
   );
   const summary = buildSurvivalSummary(sortedEntries, prizePool);
   const simulation = simulateChampionOdds({
+    leagueId,
     oddsSnapshots: Array.from(oddsByTeam.values()),
     teamStatuses,
+    teamNames: Object.fromEntries(teams.map((team) => [team.code, team.name])),
     iterations: 10000,
-    seed: 2026,
   });
 
   return {

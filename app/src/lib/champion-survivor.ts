@@ -16,6 +16,7 @@ export type TeamStatusLike = {
 
 export type ChampionOddsLike = {
   teamCode: string;
+  teamName?: string | null;
   decimalOdds: number;
   impliedProbability: number;
   provider?: string | null;
@@ -71,6 +72,7 @@ export type ChampionPickClassification = {
 
 export type ChampionOddsSimulationEntry = {
   teamCode: string;
+  teamName: string | null;
   decimalOdds: number | null;
   rawImpliedProbability: number | null;
   normalizedProbability: number;
@@ -247,8 +249,10 @@ export function classifyChampionPick(input: {
 }
 
 export function simulateChampionOdds(input: {
+  leagueId?: string;
   oddsSnapshots: ChampionOddsLike[];
   teamStatuses: TeamStatusLike[];
+  teamNames?: Record<string, string>;
   iterations?: number;
   seed?: number;
 }): ChampionOddsSimulationResult {
@@ -256,30 +260,6 @@ export function simulateChampionOdds(input: {
   const statusByTeam = new Map(
     input.teamStatuses.map((status) => [status.teamCode, normalizeTeamStatus(status.status)])
   );
-  const championTeam = input.teamStatuses.find((status) => normalizeTeamStatus(status.status) === 'champion');
-
-  if (championTeam) {
-    return {
-      available: true,
-      resolved: true,
-      iterations,
-      message: null,
-      lastCapturedAt: null,
-      entries: [{
-        teamCode: championTeam.teamCode,
-        decimalOdds: null,
-        rawImpliedProbability: null,
-        normalizedProbability: 1,
-        simulatedWins: iterations,
-        simulatedProbability: 1,
-        status: 'champion',
-        provider: null,
-        bookmaker: null,
-        capturedAt: null,
-      }],
-    };
-  }
-
   const latestByTeam = new Map<string, ChampionOddsLike>();
   for (const snapshot of input.oddsSnapshots) {
     if (snapshot.sourceMarket && snapshot.sourceMarket !== 'outright_winner') continue;
@@ -291,11 +271,57 @@ export function simulateChampionOdds(input: {
     }
   }
 
+  const championTeam = input.teamStatuses.find((status) => normalizeTeamStatus(status.status) === 'champion');
+
+  if (championTeam) {
+    const otherEntries = Array.from(latestByTeam.values())
+      .filter((snapshot) => snapshot.teamCode !== championTeam.teamCode)
+      .filter((snapshot) => {
+        const status = statusByTeam.get(snapshot.teamCode) || 'unknown';
+        return status !== 'eliminated' && status !== 'runner_up';
+      })
+      .map((snapshot) => ({
+        teamCode: snapshot.teamCode,
+        teamName: snapshot.teamName || input.teamNames?.[snapshot.teamCode] || null,
+        decimalOdds: snapshot.decimalOdds,
+        rawImpliedProbability: 1 / snapshot.decimalOdds,
+        normalizedProbability: 0,
+        simulatedWins: 0,
+        simulatedProbability: 0,
+        status: statusByTeam.get(snapshot.teamCode) || 'unknown',
+        provider: snapshot.provider || null,
+        bookmaker: snapshot.bookmaker || null,
+        capturedAt: snapshot.capturedAt || null,
+      }));
+
+    return {
+      available: true,
+      resolved: true,
+      iterations,
+      message: null,
+      lastCapturedAt: getLatestCapturedAt(Array.from(latestByTeam.values())),
+      entries: [{
+        teamCode: championTeam.teamCode,
+        teamName: input.teamNames?.[championTeam.teamCode] || null,
+        decimalOdds: null,
+        rawImpliedProbability: null,
+        normalizedProbability: 1,
+        simulatedWins: iterations,
+        simulatedProbability: 1,
+        status: 'champion',
+        provider: null,
+        bookmaker: null,
+        capturedAt: null,
+      }, ...otherEntries],
+    };
+  }
+
   const included = Array.from(latestByTeam.values())
     .map((snapshot) => {
       const status = statusByTeam.get(snapshot.teamCode) || 'unknown';
       return {
         snapshot,
+        teamName: snapshot.teamName || input.teamNames?.[snapshot.teamCode] || null,
         status,
         rawImpliedProbability: 1 / snapshot.decimalOdds,
       };
@@ -313,10 +339,7 @@ export function simulateChampionOdds(input: {
     };
   }
 
-  const lastCapturedAt = included
-    .map((item) => item.snapshot.capturedAt || null)
-    .filter((value): value is Date | string => Boolean(value))
-    .sort((a, b) => compareCapturedAt(b, a))[0] || null;
+  const lastCapturedAt = getLatestCapturedAt(included.map((item) => item.snapshot));
 
   const totalProbability = included.reduce((sum, item) => sum + item.rawImpliedProbability, 0);
   if (totalProbability <= 0) {
@@ -348,7 +371,7 @@ export function simulateChampionOdds(input: {
   }
 
   const wins = new Map(normalized.map((item) => [item.snapshot.teamCode, 0]));
-  const random = createSeededRandom(input.seed ?? 2026);
+  const random = createSeededRandom(input.seed ?? deriveSimulationSeed(input.leagueId, lastCapturedAt, iterations));
   const cumulative = normalized.reduce<Array<{ teamCode: string; threshold: number }>>((acc, item) => {
     const previous = acc[acc.length - 1]?.threshold || 0;
     acc.push({
@@ -507,6 +530,7 @@ function compareNullableDates(
 function buildSimulationEntry(
   item: {
     snapshot: ChampionOddsLike;
+    teamName: string | null;
     status: TeamTournamentStatusValue;
     rawImpliedProbability: number;
     normalizedProbability: number;
@@ -516,6 +540,7 @@ function buildSimulationEntry(
 ): ChampionOddsSimulationEntry {
   return {
     teamCode: item.snapshot.teamCode,
+    teamName: item.teamName,
     decimalOdds: item.snapshot.decimalOdds,
     rawImpliedProbability: item.rawImpliedProbability,
     normalizedProbability: item.normalizedProbability,
@@ -537,6 +562,30 @@ function compareCapturedAt(left?: Date | string | null, right?: Date | string | 
   const leftTime = left ? new Date(left).getTime() : 0;
   const rightTime = right ? new Date(right).getTime() : 0;
   return leftTime - rightTime;
+}
+
+function getLatestCapturedAt(snapshots: ChampionOddsLike[]): Date | string | null {
+  return snapshots
+    .map((snapshot) => snapshot.capturedAt || null)
+    .filter((value): value is Date | string => Boolean(value))
+    .sort((a, b) => compareCapturedAt(b, a))[0] || null;
+}
+
+function deriveSimulationSeed(
+  leagueId: string | undefined,
+  lastCapturedAt: Date | string | null,
+  iterations: number
+): number {
+  const capturedAt = lastCapturedAt ? new Date(lastCapturedAt).toISOString() : 'no-captured-at';
+  return hashStringToPositiveInteger(`${leagueId || 'league'}:${capturedAt}:${iterations}`);
+}
+
+function hashStringToPositiveInteger(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) || 1;
 }
 
 function createSeededRandom(seed: number): () => number {

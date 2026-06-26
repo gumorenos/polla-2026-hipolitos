@@ -123,6 +123,7 @@ export interface ChampionSurvivorLeagueData {
     lastCapturedAt: string | null;
     entries: Array<{
       teamCode: string;
+      teamName: string | null;
       decimalOdds: number | null;
       rawImpliedProbability: number | null;
       normalizedProbability: number;
@@ -576,7 +577,10 @@ function SimulationPanel({ data }: { data: ChampionSurvivorLeagueData }) {
             <tbody className="divide-y divide-border-subtle/40">
               {rows.map((entry) => (
                 <tr key={entry.teamCode}>
-                  <td className="py-2 px-4 font-mono font-bold text-text-primary">{entry.teamCode}</td>
+                  <td className="py-2 px-4">
+                    <p className="font-semibold text-text-primary">{entry.teamName || entry.teamCode}</p>
+                    <p className="font-mono text-[10px] text-text-muted">{entry.teamCode}</p>
+                  </td>
                   <td className="py-2 px-4 font-mono text-text-secondary">{formatProbability(entry.normalizedProbability)}</td>
                   <td className="py-2 px-4 font-mono text-gold-400">{formatProbability(entry.simulatedProbability)}</td>
                   <td className="py-2 px-4 font-mono text-text-secondary">

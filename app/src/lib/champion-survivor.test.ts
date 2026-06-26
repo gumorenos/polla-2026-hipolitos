@@ -191,6 +191,7 @@ describe('Champion Survivor business logic', () => {
     expect(result.resolved).toBe(true);
     expect(result.entries).toEqual([{
       teamCode: 'FRA',
+      teamName: null,
       decimalOdds: null,
       rawImpliedProbability: null,
       normalizedProbability: 1,
@@ -201,6 +202,24 @@ describe('Champion Survivor business logic', () => {
       bookmaker: null,
       capturedAt: null,
     }]);
+  });
+
+  it('sets other valid odds teams to zero when champion status is resolved', () => {
+    const result = simulateChampionOdds({
+      leagueId: 'league-a',
+      iterations: 100,
+      teamStatuses: [{ teamCode: 'FRA', status: 'champion' }],
+      oddsSnapshots: [
+        { teamCode: 'FRA', decimalOdds: 3, impliedProbability: 1 / 3, sourceMarket: 'outright_winner' },
+        { teamCode: 'ARG', decimalOdds: 4, impliedProbability: 0.25, sourceMarket: 'outright_winner' },
+      ],
+      teamNames: { FRA: 'Francia', ARG: 'Argentina' },
+    });
+
+    expect(result.resolved).toBe(true);
+    expect(result.entries.find((entry) => entry.teamCode === 'FRA')?.simulatedProbability).toBe(1);
+    expect(result.entries.find((entry) => entry.teamCode === 'ARG')?.simulatedProbability).toBe(0);
+    expect(result.entries.find((entry) => entry.teamCode === 'ARG')?.teamName).toBe('Argentina');
   });
 
   it('returns unavailable simulation when no outright champion odds exist', () => {
@@ -214,6 +233,58 @@ describe('Champion Survivor business logic', () => {
     expect(result.available).toBe(false);
     expect(result.entries).toEqual([]);
     expect(result.message).toBe('Simulación no disponible porque no hay cuotas de campeón cargadas.');
+  });
+
+  it('skips invalid decimal odds in champion odds simulation', () => {
+    const result = simulateChampionOdds({
+      iterations: 100,
+      teamStatuses: [],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 1, impliedProbability: 1, sourceMarket: 'outright_winner' },
+        { teamCode: 'BRA', decimalOdds: 0, impliedProbability: 0, sourceMarket: 'outright_winner' },
+        { teamCode: 'FRA', decimalOdds: 4, impliedProbability: 0.25, sourceMarket: 'outright_winner' },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.resolved).toBe(true);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].teamCode).toBe('FRA');
+    expect(result.entries[0].simulatedProbability).toBe(1);
+  });
+
+  it('derives stable simulation results from league and latest odds capture when seed is omitted', () => {
+    const input = {
+      leagueId: 'league-a',
+      iterations: 1000,
+      teamStatuses: [],
+      oddsSnapshots: [
+        {
+          teamCode: 'ARG',
+          teamName: 'Argentina',
+          decimalOdds: 2,
+          impliedProbability: 0.5,
+          sourceMarket: 'outright_winner',
+          capturedAt: '2026-06-26T12:00:00.000Z',
+        },
+        {
+          teamCode: 'BRA',
+          teamName: 'Brasil',
+          decimalOdds: 4,
+          impliedProbability: 0.25,
+          sourceMarket: 'outright_winner',
+          capturedAt: '2026-06-26T12:00:00.000Z',
+        },
+      ],
+    };
+
+    const first = simulateChampionOdds(input);
+    const second = simulateChampionOdds(input);
+
+    expect(first.entries.map((entry) => entry.simulatedWins)).toEqual(
+      second.entries.map((entry) => entry.simulatedWins)
+    );
+    expect(first.entries[0].teamName).toBe('Argentina');
   });
 
   it('keeps deterministic simulated probabilities close to normalized probabilities', () => {

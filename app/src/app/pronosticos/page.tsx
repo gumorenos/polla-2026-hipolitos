@@ -310,6 +310,7 @@ export default async function PronosticosPage() {
       lastCapturedAt: string | null;
       entries: {
         teamCode: string;
+        teamName: string | null;
         decimalOdds: number | null;
         rawImpliedProbability: number | null;
         normalizedProbability: number;
@@ -335,6 +336,7 @@ export default async function PronosticosPage() {
     const showMarketAids = membership.league.showOdds && process.env.ODDS_DISPLAY_ENABLED === 'true';
     const latestChampionOddsByTeam = new Map<string, (typeof championOddsSnapshots)[number]>();
     const distribution = buildPickDistribution(picks, statuses, participants.length);
+    const teamNames = Object.fromEntries(teams.map((team) => [team.code, team.name]));
 
     if (showMarketAids) {
       for (const snapshot of championOddsSnapshots) {
@@ -387,10 +389,11 @@ export default async function PronosticosPage() {
     const summary = buildSurvivalSummary(rankingEntries, prizePool);
     const simulation = showMarketAids
       ? simulateChampionOdds({
+          leagueId,
           oddsSnapshots: Array.from(latestChampionOddsByTeam.values()),
           teamStatuses: statuses,
+          teamNames,
           iterations: 10000,
-          seed: 2026,
         })
       : null;
 

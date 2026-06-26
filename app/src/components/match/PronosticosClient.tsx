@@ -94,6 +94,7 @@ type ChampionInfoByLeague = Record<string, {
     lastCapturedAt: string | null;
     entries: {
       teamCode: string;
+      teamName: string | null;
       decimalOdds: number | null;
       rawImpliedProbability: number | null;
       normalizedProbability: number;

@@ -13,23 +13,26 @@ Process:
 1. Read the latest champion outright odds per team.
 2. Exclude teams marked as eliminated in `TeamTournamentStatus`.
 3. If a team is marked as champion, return a resolved deterministic result.
-4. Convert decimal odds into raw implied probability:
+4. Skip invalid decimal odds. Odds must be greater than `1`.
+5. Convert decimal odds into raw implied probability:
 
 ```text
 impliedProbability = 1 / decimalOdds
 ```
 
-5. Normalize the probabilities across teams still eligible in the simulation:
+6. Normalize the probabilities across teams still eligible in the simulation:
 
 ```text
 normalizedProbability = impliedProbability / sum(impliedProbability of included teams)
 ```
 
-6. Run a lightweight Monte Carlo simulation with the normalized probabilities. The default iteration count is `10000`.
+7. Run a lightweight Monte Carlo simulation with the normalized probabilities. The default iteration count is `10000`.
+8. Use a deterministic seed derived from league id, latest odds capture timestamp, and iteration count so the panel does not change randomly on every render.
 
 The output exposes:
 
 - Team code
+- Team name when available
 - Decimal odds
 - Raw implied probability
 - Normalized market probability
@@ -47,6 +50,7 @@ Important boundaries:
 - It does not persist simulation snapshots.
 - It does not replace `WinnerPrediction`.
 - It does not use match prediction points.
+- Participant-facing display is controlled by `showOdds`; admin display remains available for odds maintenance.
 
 If no champion outright odds exist, the simulation is unavailable and shows:
 

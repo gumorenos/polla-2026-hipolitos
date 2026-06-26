@@ -8,6 +8,7 @@ import {
   getChampionSurvivorAdminState,
 } from '../../../lib/actions/champion-survivor';
 import { normalizeTeamStatus } from '../../../lib/champion-survivor';
+import { calculateWorldCupQualification } from '../../../lib/fifa-qualification';
 import { AdminChampionSurvivorClient, type ChampionSurvivorLeagueData } from './AdminChampionSurvivorClient';
 
 export const dynamic = 'force-dynamic';
@@ -43,10 +44,16 @@ export default async function AdminChampionSurvivorPage() {
     orderBy: { createdAt: 'desc' },
   });
 
-  const teams = await prisma.team.findMany({
-    orderBy: { name: 'asc' },
-    select: { code: true, name: true },
-  });
+  const [teams, matches] = await Promise.all([
+    prisma.team.findMany({
+      orderBy: { name: 'asc' },
+      select: { code: true, name: true },
+    }),
+    prisma.match.findMany({
+      orderBy: { kickoffUtc: 'asc' },
+    }),
+  ]);
+  const qualification = calculateWorldCupQualification(matches, teams);
 
   const leagueData = await Promise.all(
     leagues.map(async (league) => {
@@ -71,7 +78,7 @@ export default async function AdminChampionSurvivorPage() {
         return {
           league: serializeLeague(league),
           error: adminStateResult.error,
-          teams: serializeTeamRows(teams, teamStatuses),
+          teams: serializeTeamRows(teams, teamStatuses, qualification.teamTournamentStatusSuggestions),
           odds: [],
           picks: [],
           summary: null,
@@ -107,7 +114,7 @@ export default async function AdminChampionSurvivorPage() {
       return {
         league: serializeLeague(league),
         error: null,
-        teams: serializeTeamRows(teams, teamStatuses),
+        teams: serializeTeamRows(teams, teamStatuses, qualification.teamTournamentStatusSuggestions),
         odds: oddsData.map((row) => ({
           team: row.team,
           latestSnapshot: row.latestSnapshot
@@ -209,7 +216,8 @@ function serializeTeamRows(
     finalRank: number | null;
     notes: string | null;
     updatedAt: Date;
-  }>
+  }>,
+  qualificationSuggestions: Record<string, string>
 ) {
   const statusByTeam = new Map(teamStatuses.map((status) => [status.teamCode, status]));
 
@@ -223,6 +231,7 @@ function serializeTeamRows(
       finalRank: status?.finalRank || null,
       notes: status?.notes || null,
       updatedAt: status?.updatedAt ? status.updatedAt.toISOString() : null,
+      qualificationSuggestion: qualificationSuggestions[team.code] || 'pending',
     };
   });
 }

@@ -4,6 +4,7 @@ import { getCurrentSession } from '../../../lib/auth-helpers';
 export const dynamic = "force-dynamic";
 import MatchesAdminClient from './MatchesAdminClient';
 import Link from 'next/link';
+import { calculateWorldCupQualification } from '../../../lib/fifa-qualification';
 
 export const metadata = {
   title: 'Admin - Resultados | La Polla 2026',
@@ -20,9 +21,17 @@ export default async function AdminResultadosPage() {
     redirect('/competencia');
   }
 
-  const matches = await prisma.match.findMany({
-    orderBy: { kickoffUtc: 'asc' },
-  });
+  const [matches, teams] = await Promise.all([
+    prisma.match.findMany({
+      orderBy: { kickoffUtc: 'asc' },
+    }),
+    prisma.team.findMany({
+      orderBy: { name: 'asc' },
+      select: { code: true, name: true },
+    }),
+  ]);
+
+  const qualification = calculateWorldCupQualification(matches, teams);
 
   return (
     <div className="w-full space-y-6">
@@ -38,7 +47,7 @@ export default async function AdminResultadosPage() {
           Ingresa los marcadores finales de los partidos. Al guardar un resultado, las predicciones de los usuarios serán calificadas automáticamente y las tablas de posiciones se recalcularán de forma global.
         </p>
 
-        <MatchesAdminClient matches={matches} />
+        <MatchesAdminClient matches={matches} qualification={qualification} />
       </div>
     </div>
   );

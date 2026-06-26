@@ -7,6 +7,7 @@ import { Match } from '@prisma/client';
 import { AlertCircle, CheckCircle, RefreshCw, PauseCircle, XCircle, Upload, Download, ChevronDown } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { getComputedMatchStatus, getComputedStatusDisplay } from '../../../lib/utils/matchStatus';
+import type { QualificationStatus, WorldCupQualification } from '../../../lib/fifa-qualification';
 function parseCSV(text: string): Record<string, string>[] {
   const result: Record<string, string>[] = [];
   const lines: string[][] = [];
@@ -265,7 +266,13 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onM
 // CSV template columns
 const CSV_COLUMNS = ['matchId', 'homeTeamCode', 'awayTeamCode', 'status', 'homeScore', 'awayScore', 'wentToExtraTime', 'wentToPenalties', 'homePenaltyScore', 'awayPenaltyScore', 'winnerTeamCode', 'resultNotes'];
 
-export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
+export default function MatchesAdminClient({
+  matches,
+  qualification,
+}: {
+  matches: Match[];
+  qualification: WorldCupQualification;
+}) {
   const [loadingMatchId, setLoadingMatchId] = useState<string | null>(null);
   const [actionLoadingMatchId, setActionLoadingMatchId] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
@@ -489,6 +496,8 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
         </div>
       )}
 
+      <QualificationPanel qualification={qualification} />
+
       {/* Match Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
@@ -632,5 +641,159 @@ export default function MatchesAdminClient({ matches }: { matches: Match[] }) {
         )}
       </div>
     </div>
+  );
+}
+
+function QualificationPanel({ qualification }: { qualification: WorldCupQualification }) {
+  if (qualification.groups.length === 0) {
+    return (
+      <div className="border border-border-subtle bg-background/35 rounded-lg p-4">
+        <h3 className="font-display text-lg text-gold tracking-wide uppercase">Clasificación FIFA 2026</h3>
+        <p className="text-xs text-text-muted mt-1">Todavía no hay partidos de fase de grupos para calcular tablas.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-border-subtle bg-background/35 rounded-lg p-4 space-y-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="font-display text-lg text-gold tracking-wide uppercase">Clasificación FIFA 2026</h3>
+          <p className="text-xs text-text-muted">
+            Tabla actual de grupos, mejores terceros y desempates pendientes según datos disponibles.
+          </p>
+        </div>
+        <div className="text-[10px] text-text-muted font-mono uppercase">
+          {qualification.qualifiedTeamCodes.length} clasificados calculados
+        </div>
+      </div>
+
+      {qualification.unresolvedTies.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          {qualification.unresolvedTies[0]}
+          {qualification.unresolvedTies.length > 1 ? ` +${qualification.unresolvedTies.length - 1} desempate(s) pendiente(s)` : ''}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {qualification.groups.map((group) => (
+          <div key={group.group} className="rounded-lg border border-border-subtle overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-surface/60 border-b border-border-subtle">
+              <p className="font-display text-sm uppercase tracking-wide text-text-primary">Grupo {group.group}</p>
+              <p className="text-[10px] font-mono text-text-muted">
+                {group.playedMatches}/{group.totalMatches} partidos
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs whitespace-nowrap">
+                <thead className="text-[10px] font-mono uppercase text-text-muted">
+                  <tr>
+                    <th className="px-2 py-2 text-left">#</th>
+                    <th className="px-2 py-2 text-left">Equipo</th>
+                    <th className="px-2 py-2 text-right">Pts</th>
+                    <th className="px-2 py-2 text-right">DG</th>
+                    <th className="px-2 py-2 text-right">GF</th>
+                    <th className="px-2 py-2 text-left">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle/40">
+                  {group.entries.map((entry) => (
+                    <tr key={entry.teamCode} className={entry.status === 'eliminated' ? 'opacity-60' : ''}>
+                      <td className="px-2 py-2 font-mono text-text-muted">{entry.rank}</td>
+                      <td className="px-2 py-2">
+                        <span className="font-semibold text-text-primary">{entry.teamName}</span>
+                        <span className="ml-1 text-[10px] text-text-muted font-mono">({entry.teamCode})</span>
+                      </td>
+                      <td className="px-2 py-2 text-right font-mono text-text-primary">{entry.points}</td>
+                      <td className="px-2 py-2 text-right font-mono text-text-secondary">{entry.goalDifference}</td>
+                      <td className="px-2 py-2 text-right font-mono text-text-secondary">{entry.goalsFor}</td>
+                      <td className="px-2 py-2">
+                        <QualificationBadge status={entry.status} unresolved={entry.unresolvedTiebreaker} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-border-subtle overflow-hidden">
+        <div className="px-3 py-2 bg-surface/60 border-b border-border-subtle">
+          <p className="font-display text-sm uppercase tracking-wide text-text-primary">Mejores terceros</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs whitespace-nowrap">
+            <thead className="text-[10px] font-mono uppercase text-text-muted">
+              <tr>
+                <th className="px-2 py-2 text-left">#</th>
+                <th className="px-2 py-2 text-left">Equipo</th>
+                <th className="px-2 py-2 text-right">Pts</th>
+                <th className="px-2 py-2 text-right">DG</th>
+                <th className="px-2 py-2 text-right">GF</th>
+                <th className="px-2 py-2 text-left">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-subtle/40">
+              {qualification.thirdPlacedTeams.map((entry, index) => (
+                <tr key={`${entry.group}-${entry.teamCode}`} className={index >= 8 ? 'opacity-60' : ''}>
+                  <td className="px-2 py-2 font-mono text-text-muted">{index + 1}</td>
+                  <td className="px-2 py-2">
+                    <span className="font-semibold text-text-primary">{entry.teamName}</span>
+                    <span className="ml-1 text-[10px] text-text-muted font-mono">({entry.teamCode})</span>
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono text-text-primary">{entry.points}</td>
+                  <td className="px-2 py-2 text-right font-mono text-text-secondary">{entry.goalDifference}</td>
+                  <td className="px-2 py-2 text-right font-mono text-text-secondary">{entry.goalsFor}</td>
+                  <td className="px-2 py-2">
+                    <QualificationBadge status={entry.status} unresolved={entry.unresolvedTiebreaker} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QualificationBadge({
+  status,
+  unresolved,
+}: {
+  status: QualificationStatus;
+  unresolved?: boolean;
+}) {
+  if (unresolved) {
+    return (
+      <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono uppercase text-amber-200">
+        Desempate pendiente
+      </span>
+    );
+  }
+
+  const styles: Record<QualificationStatus, string> = {
+    group_winner: 'border-green-500/30 bg-green-500/10 text-green-300',
+    group_runner_up: 'border-green-500/30 bg-green-500/10 text-green-300',
+    third_place_qualified: 'border-gold/40 bg-gold/10 text-gold',
+    third_place_pending: 'border-blue-500/30 bg-blue-500/10 text-blue-300',
+    eliminated: 'border-red-500/30 bg-red-500/10 text-red-300',
+    pending: 'border-border-subtle bg-surface/50 text-text-muted',
+  };
+  const labels: Record<QualificationStatus, string> = {
+    group_winner: '1ro clasifica',
+    group_runner_up: '2do clasifica',
+    third_place_qualified: '3ro clasifica',
+    third_place_pending: '3ro pendiente',
+    eliminated: 'Eliminado',
+    pending: 'Pendiente',
+  };
+
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase ${styles[status]}`}>
+      {labels[status]}
+    </span>
   );
 }

@@ -71,6 +71,7 @@ export interface ChampionSurvivorLeagueData {
     finalRank: number | null;
     notes: string | null;
     updatedAt: string | null;
+    qualificationSuggestion: string;
   }>;
   odds: Array<{
     team: { code: string; name: string };
@@ -729,6 +730,9 @@ function TeamStatusPanel({
                   Estado actual: <span className="font-mono uppercase">{statusLabel(row.status)}</span>
                   {row.eliminatedAt ? ` · Eliminado: ${formatDateTime(row.eliminatedAt)}` : ''}
                 </p>
+                <p className="text-[10px] text-text-muted">
+                  Sugerencia FIFA: <span className="font-mono uppercase">{qualificationSuggestionLabel(row.qualificationSuggestion)}</span>
+                </p>
                 {row.notes && <p className="text-[10px] text-text-muted italic mt-1">{row.notes}</p>}
               </div>
             </div>
@@ -955,6 +959,12 @@ function statusLabel(status: string) {
   if (status === 'runner_up') return 'Subcampeón';
   if (status === 'champion') return 'Campeón';
   return 'Desconocido';
+}
+
+function qualificationSuggestionLabel(status: string) {
+  if (status === 'active') return 'Vivo';
+  if (status === 'eliminated') return 'Eliminado';
+  return 'Pendiente';
 }
 
 function formatProbability(value: number | null | undefined) {

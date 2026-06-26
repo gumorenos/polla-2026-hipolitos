@@ -153,6 +153,23 @@ describe('FIFA 2026 qualification engine', () => {
     expect(qualification.thirdPlacedTeams.slice(8).every((entry) => entry.status === 'eliminated')).toBe(true);
   });
 
+  it('keeps third-place cutoff pending when the eighth and ninth teams need unavailable tiebreakers', () => {
+    const groups = Array.from({ length: 12 }, (_, index) => {
+      const group = String.fromCharCode(65 + index);
+      const teams = [`${group}1`, `${group}2`, `${group}3`, `${group}4`];
+      return completeGroup(group, teams, index < 9);
+    }).flat();
+    const teams = Array.from({ length: 12 }, (_, index) => {
+      const group = String.fromCharCode(65 + index);
+      return [1, 2, 3, 4].map((slot) => ({ code: `${group}${slot}`, name: `${group}${slot}` }));
+    }).flat();
+
+    const qualification = calculateWorldCupQualification(groups, teams);
+
+    expect(qualification.thirdPlacedTeams[7].status).toBe('third_place_pending');
+    expect(qualification.thirdPlacedTeams[8].status).toBe('third_place_pending');
+  });
+
   it('keeps partial groups pending instead of overclaiming qualification', () => {
     const standings = calculateGroupStandings(
       [

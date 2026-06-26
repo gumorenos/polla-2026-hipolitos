@@ -478,13 +478,20 @@ function isThirdPlaceBoundaryUnresolved(entries: ThirdPlaceEntry[]): boolean {
   const eighth = entries[7];
   const ninth = entries[8];
   if (!eighth || !ninth) return false;
-  return eighth.unresolvedTiebreaker || ninth.unresolvedTiebreaker || compareThirdPlaceCore(eighth, ninth) === 0;
+  return compareThirdPlaceQualificationCriteria(eighth, ninth) === 0;
 }
 
-function compareThirdPlaceCore(left: ThirdPlaceEntry, right: ThirdPlaceEntry): number {
+function compareThirdPlaceQualificationCriteria(left: ThirdPlaceEntry, right: ThirdPlaceEntry): number {
   if (left.points !== right.points) return right.points - left.points;
   if (left.goalDifference !== right.goalDifference) return right.goalDifference - left.goalDifference;
-  return right.goalsFor - left.goalsFor;
+  if (left.goalsFor !== right.goalsFor) return right.goalsFor - left.goalsFor;
+  if (left.fairPlayScore !== null && right.fairPlayScore !== null && left.fairPlayScore !== right.fairPlayScore) {
+    return left.fairPlayScore - right.fairPlayScore;
+  }
+  if (left.fifaRanking !== null && right.fifaRanking !== null && left.fifaRanking !== right.fifaRanking) {
+    return left.fifaRanking - right.fifaRanking;
+  }
+  return 0;
 }
 
 function isNearThirdPlaceCutoff(index: number): boolean {

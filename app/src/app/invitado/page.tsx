@@ -87,6 +87,14 @@ function isFinishedMatch(match: { resultStatus: string | null; status: string; h
   );
 }
 
+function getRequestNowMs(now: Date = new Date()): number {
+  return now.getTime();
+}
+
+function getUpcomingPublicMatches(matches: PublicMatch[], nowMs: number): PublicMatch[] {
+  return matches.filter((match) => !isFinishedMatch(match) && match.kickoffUtc.getTime() > nowMs);
+}
+
 function getTournamentStatusLabel(status?: string | null): string {
   if (status === 'active') return 'Vivo';
   if (status === 'eliminated') return 'Eliminado';
@@ -164,9 +172,10 @@ export default async function GuestPage() {
     }),
   ]);
 
+  const requestNowMs = getRequestNowMs();
   const publicMatches = await buildPublicMatches(matches, league.showOdds, league.showH2H);
   const playedMatches = publicMatches.filter(isFinishedMatch);
-  const upcomingMatches = publicMatches.filter((match) => !isFinishedMatch(match) && match.kickoffUtc.getTime() > Date.now());
+  const upcomingMatches = getUpcomingPublicMatches(publicMatches, requestNowMs);
   const prizePool = calculatePrizePool(league, approvedParticipants);
 
   const isChampionSurvivor = league.competitionType === 'champion_survivor';

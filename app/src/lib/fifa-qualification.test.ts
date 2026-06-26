@@ -44,7 +44,7 @@ function completeGroup(group: string, teams: string[], thirdWins = true): Qualif
     match(`${group}-3`, group, first, fourth, 2, 0),
     match(`${group}-4`, group, second, third, 1, 0),
     match(`${group}-5`, group, second, fourth, 2, 0),
-    match(`${group}-6`, group, third, fourth, thirdWins ? 1 : 0, thirdWins ? 0 : 1),
+    match(`${group}-6`, group, third, fourth, thirdWins ? 1 : 0, 0),
   ];
 }
 

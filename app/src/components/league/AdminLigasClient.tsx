@@ -571,7 +571,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                    Competencia Principal (Predeterminada)
+                    Competencia principal
                   </label>
                   <select
                     name="isDefault"
@@ -581,6 +581,9 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     <option value="true">Sí (Principal)</option>
                     <option value="false">No (Secundaria)</option>
                   </select>
+                  <p className="text-[10px] text-text-muted">
+                    La competencia principal se muestra en la vista pública de invitado.
+                  </p>
                 </div>
 
                 <div className="space-y-1">

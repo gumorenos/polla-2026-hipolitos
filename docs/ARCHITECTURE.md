@@ -257,6 +257,12 @@ Champion Survivor also includes aggregate social and market panels for participa
 - `Mapa de supervivencia` shows survival counts, pick distribution by team, exclusive picks, and combined alive probability when all alive teams have champion odds.
 - Social counts and distribution are aggregate-only; participant names are not exposed in these panels. Simulations remain pending.
 
+### Public Guest View
+
+`/invitado` is a public read-only route for guests. It does not require authentication and shows the active competition marked as `League.isDefault = true`, reusing the existing single-principal competition rule. If no active principal competition exists, the page shows `Aún no hay una competencia principal configurada.` plus an `Iniciar sesión` button linking to `/login`.
+
+The guest route never exposes forms, Server Actions, admin links, prediction inputs, or private user-management data. For `full_prediction` it shows public ranking, match results, upcoming matches, and aggregate champion pick distribution. For `champion_survivor` it shows aggregate survival counts, pick distribution, exclusive picks, recent results, and upcoming matches without the pick form. `showOdds` and `showH2H` still control whether public match odds and H2H context are displayed.
+
 ```
 Admin or superadmin manages Champion Survivor
   → Server Action validates superadmin or league owner/admin role

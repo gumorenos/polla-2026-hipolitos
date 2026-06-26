@@ -316,4 +316,11 @@ We implement the following 6 tie-breakers sequentially:
 - `/pronosticos` includes the explicit champion-pick flow plus read-only informational panels for the selected champion and competition context. Match odds/H2H are contextual aids only, champion odds remain separate from match odds, and `showOdds`/`showH2H` are respected for participant display.
 - `/pronosticos` also includes aggregate Champion Survivor social and market insights: pick versus market, social risk, popular versus differential classification, survival map, pick distribution, exclusive picks, and combined alive probability when champion market odds are complete.
 - `showOdds` controls champion probability, decimal odds, expected value, individual EV, combined alive probability, and probability-based classifications. Aggregate social counts remain available when market aids are disabled.
+
+### Public Guest Access
+
+- `/invitado` provides public read-only access to the main competition dashboard. It uses the existing `League.isDefault` principal competition setting instead of adding a second main-competition flag.
+- Admin settings label this field as `Competencia principal` and explain that it is shown in the guest view. Existing update logic keeps only one principal competition enabled.
+- The guest route links to `/login` with `Iniciar sesión`, does not require authentication, and does not expose write actions, prediction inputs, pick forms, admin actions, API keys, or user-management data.
+- `showOdds` and `showH2H` continue to control public odds and H2H display.
 - The advanced simulation dashboard, match-by-match model, hybrid model, and admin/participant visual mode remain pending.

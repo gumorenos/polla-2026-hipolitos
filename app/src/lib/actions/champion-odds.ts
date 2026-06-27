@@ -2,12 +2,23 @@
 
 import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
-import { fetchChampionOutrights, listTheOddsApiOutrightSports, identifyCandidateSports, NormalizedChampionOdds } from '../odds/the-odds-api';
+import { fetchChampionOutrights, listTheOddsApiOutrightSports, identifyCandidateSports } from '../odds/the-odds-api';
 import { resolveProviderTeamAlias, recordProviderTeamNames } from '../team-alias-service';
 import { revalidatePath } from 'next/cache';
 
-function checkSuperadmin(session: any) {
-  if (!session || !session.user || !session.user.isSuperadmin) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function checkSuperadmin(
+  session: unknown,
+): asserts session is { user: { id: string; isSuperadmin: true } } {
+  if (
+    !isRecord(session)
+    || !isRecord(session.user)
+    || typeof session.user.id !== 'string'
+    || session.user.isSuperadmin !== true
+  ) {
     throw new Error('Unauthorized');
   }
 }

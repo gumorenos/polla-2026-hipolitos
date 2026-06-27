@@ -116,7 +116,7 @@ export interface NormalizedChampionOdds {
   outcomeName: string;
   decimalOdds: number;
   lastUpdate: Date;
-  raw: any;
+  raw: OutrightOutcome;
 }
 
 export async function fetchChampionOutrights(

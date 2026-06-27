@@ -24,6 +24,7 @@ import {
   seedSuggestedTeamAliasesAction,
 } from '../../../lib/actions/team-aliases';
 import { adminDetectChampionMarkets, adminImportChampionOdds } from '../../../lib/actions/champion-odds';
+import type { TheOddsApiSport } from '../../../lib/odds/the-odds-api';
 
 interface ProviderAdminInfo {
   provider: 'the-odds-api' | 'odds-api-io' | 'football-data' | 'api-football';
@@ -168,7 +169,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [mappingSelection, setMappingSelection] = useState<Record<string, string>>({});
 
   const [championLoading, setChampionLoading] = useState<boolean>(false);
-  const [championCandidates, setChampionCandidates] = useState<any[]>([]);
+  const [championCandidates, setChampionCandidates] = useState<TheOddsApiSport[]>([]);
   const [selectedSport, setSelectedSport] = useState<string>('');
 
   const runProviderAction = async (
@@ -245,8 +246,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         }
         setStatusMsg({ type: 'success', text: `Detectados ${res.sports?.length} deportes, ${res.candidates?.length} candidatos.` });
       }
-    } catch (e: any) {
-      setStatusMsg({ type: 'error', text: e.message || String(e) });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusMsg({ type: 'error', text: message });
     }
     setChampionLoading(false);
   };
@@ -268,8 +270,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           text: `Éxito. Coincidencias: ${res.matchedCount}, Sin coincidir: ${res.unmatchedCount}, Snapshots guardados: ${res.savedSnapshots}. ${res.unmatchedNames?.length ? `Nuevos sin coincidir: ${res.unmatchedNames.join(', ')}` : ''}`
         });
       }
-    } catch (e: any) {
-      setStatusMsg({ type: 'error', text: e.message || String(e) });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusMsg({ type: 'error', text: message });
     }
     setChampionLoading(false);
   };
@@ -952,7 +955,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
       <div className="card-base p-5 border-border-default/60 space-y-4">
         <h4 className="font-semibold text-sm text-gold-400 uppercase tracking-wider font-mono">Cuotas de Campeón (Outrights)</h4>
         <p className="text-xs text-text-secondary">
-          Detecta mercados de "Ganador Final" y descarga las cuotas del torneo para Champion Survivor.
+          Detecta mercados de “Ganador Final” y descarga las cuotas del torneo para Champion Survivor.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

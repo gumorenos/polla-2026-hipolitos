@@ -23,8 +23,16 @@ import {
   linkProviderTeamOutcomeAction,
   seedSuggestedTeamAliasesAction,
 } from '../../../lib/actions/team-aliases';
-import { adminDetectChampionMarkets, adminImportChampionOdds } from '../../../lib/actions/champion-odds';
+import {
+  adminDetectChampionMarkets,
+  adminImportChampionOdds,
+  adminPreviewChampionOdds,
+} from '../../../lib/actions/champion-odds';
 import type { TheOddsApiSport } from '../../../lib/odds/the-odds-api';
+import {
+  classifyChampionSport,
+  INVALID_CHAMPION_SPORT_MESSAGE,
+} from '../../../lib/odds/champion-sport-guardrails';
 
 interface ProviderAdminInfo {
   provider: 'the-odds-api' | 'odds-api-io' | 'football-data' | 'api-football';
@@ -87,6 +95,16 @@ interface MatchAdminInfo {
     draws: number;
     awayWins: number;
   } | null;
+}
+
+interface ChampionOddsPreview {
+  sportKey: string;
+  outcomeCount: number;
+  sampleOutcomes: Array<{
+    name: string;
+    decimalOdds: number;
+    bookmaker: string;
+  }>;
 }
 
 interface OddsAdminClientProps {
@@ -170,7 +188,20 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
 
   const [championLoading, setChampionLoading] = useState<boolean>(false);
   const [championCandidates, setChampionCandidates] = useState<TheOddsApiSport[]>([]);
+  const [championOtherSports, setChampionOtherSports] = useState<TheOddsApiSport[]>([]);
   const [selectedSport, setSelectedSport] = useState<string>('');
+  const [championPreview, setChampionPreview] = useState<ChampionOddsPreview | null>(null);
+
+  const normalizedSelectedSport = selectedSport.trim().toLowerCase();
+  const selectedSportInfo = [...championCandidates, ...championOtherSports]
+    .find((sport) => sport.key === normalizedSelectedSport);
+  const selectedSportClassification = classifyChampionSport(selectedSportInfo ?? {
+    key: normalizedSelectedSport,
+    has_outrights: true,
+  });
+  const canPreviewChampionOdds = normalizedSelectedSport.length > 0
+    && selectedSportClassification.recommended;
+  const hasCurrentChampionPreview = championPreview?.sportKey === normalizedSelectedSport;
 
   const runProviderAction = async (
     provider: ProviderAdminInfo,
@@ -237,14 +268,21 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setStatusMsg(null);
     try {
       const res = await adminDetectChampionMarkets();
-      if (res.error) {
-        setStatusMsg({ type: 'error', text: res.error });
+      if ('error' in res) {
+        setStatusMsg({ type: 'error', text: res.error ?? 'No se pudieron detectar mercados de campeón.' });
       } else {
         setChampionCandidates(res.candidates || []);
+        setChampionOtherSports(res.otherSports || []);
+        setChampionPreview(null);
         if (res.candidates && res.candidates.length > 0) {
           setSelectedSport(res.candidates[0].key);
+        } else {
+          setSelectedSport('');
         }
-        setStatusMsg({ type: 'success', text: `Detectados ${res.sports?.length} deportes, ${res.candidates?.length} candidatos.` });
+        setStatusMsg({
+          type: 'success',
+          text: `Detectados ${res.sports?.length ?? 0} mercados outright; ${res.candidates?.length ?? 0} recomendados para FIFA World Cup.`,
+        });
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -253,22 +291,60 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setChampionLoading(false);
   };
 
+  const handlePreviewChampionOdds = async () => {
+    if (!canPreviewChampionOdds) {
+      setChampionPreview(null);
+      setStatusMsg({ type: 'error', text: INVALID_CHAMPION_SPORT_MESSAGE });
+      return;
+    }
+
+    setChampionLoading(true);
+    setStatusMsg(null);
+    try {
+      const res = await adminPreviewChampionOdds(normalizedSelectedSport);
+      if ('error' in res) {
+        setChampionPreview(null);
+        setStatusMsg({ type: 'error', text: res.error ?? 'No se pudo previsualizar el mercado de campeón.' });
+      } else {
+        setChampionPreview({
+          sportKey: res.sportKey,
+          outcomeCount: res.outcomeCount,
+          sampleOutcomes: res.sampleOutcomes,
+        });
+        setStatusMsg({
+          type: 'success',
+          text: `Previsualización lista: ${res.outcomeCount} cuotas encontradas. Todavía no se guardó ningún dato.`,
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setChampionPreview(null);
+      setStatusMsg({ type: 'error', text: message });
+    }
+    setChampionLoading(false);
+  };
+
   const handleImportChampionOdds = async () => {
-    if (!selectedSport) {
-      setStatusMsg({ type: 'error', text: 'Seleccione un deporte primero.' });
+    if (!canPreviewChampionOdds) {
+      setStatusMsg({ type: 'error', text: INVALID_CHAMPION_SPORT_MESSAGE });
+      return;
+    }
+    if (!hasCurrentChampionPreview) {
+      setStatusMsg({ type: 'error', text: 'Previsualiza este sport key antes de importar sus cuotas.' });
       return;
     }
     setChampionLoading(true);
     setStatusMsg(null);
     try {
-      const res = await adminImportChampionOdds(selectedSport);
-      if (res.error) {
-        setStatusMsg({ type: 'error', text: res.error });
+      const res = await adminImportChampionOdds(normalizedSelectedSport);
+      if ('error' in res) {
+        setStatusMsg({ type: 'error', text: res.error ?? 'No se pudieron importar las cuotas de campeón.' });
       } else {
         setStatusMsg({ 
           type: 'success', 
           text: `Éxito. Coincidencias: ${res.matchedCount}, Sin coincidir: ${res.unmatchedCount}, Snapshots guardados: ${res.savedSnapshots}. ${res.unmatchedNames?.length ? `Nuevos sin coincidir: ${res.unmatchedNames.join(', ')}` : ''}`
         });
+        router.refresh();
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -955,7 +1031,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
       <div className="card-base p-5 border-border-default/60 space-y-4">
         <h4 className="font-semibold text-sm text-gold-400 uppercase tracking-wider font-mono">Cuotas de Campeón (Outrights)</h4>
         <p className="text-xs text-text-secondary">
-          Detecta mercados de “Ganador Final” y descarga las cuotas del torneo para Champion Survivor.
+          Detecta mercados outright, previsualiza sus equipos y guarda únicamente cuotas del Mundial FIFA de fútbol para Champion Survivor.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -971,37 +1047,120 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             
             {championCandidates.length > 0 && (
               <div className="mt-2 space-y-2 p-2 border border-border-subtle rounded-lg bg-black/10 text-xs">
-                <span className="font-semibold text-text-primary mb-1 block">Candidatos sugeridos:</span>
+                <span className="font-semibold text-text-primary mb-1 block">Recomendados para FIFA World Cup:</span>
                 {championCandidates.map(c => (
-                  <div key={c.key} className="flex flex-col">
-                    <span className="text-gold-400 font-mono">{c.key}</span>
-                    <span className="text-text-muted">{c.title} - {c.description}</span>
-                  </div>
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSport(c.key);
+                      setChampionPreview(null);
+                    }}
+                    className={`w-full text-left p-2 rounded border transition-colors ${
+                      normalizedSelectedSport === c.key
+                        ? 'border-gold-500/50 bg-gold-500/10'
+                        : 'border-border-subtle hover:border-gold-500/30'
+                    }`}
+                  >
+                    <span className="text-gold-400 font-mono block">{c.key}</span>
+                    <span className="text-text-muted block">{c.group} · {c.title}</span>
+                    <span className="text-text-muted block">{c.description}</span>
+                    <span className="text-green-400 block">Outrights: {c.has_outrights ? 'Sí' : 'No'}</span>
+                  </button>
                 ))}
               </div>
+            )}
+
+            {championOtherSports.length > 0 && (
+              <details className="mt-2 border border-border-subtle rounded-lg bg-black/10 text-xs">
+                <summary className="cursor-pointer p-2 text-yellow-300 font-semibold">
+                  Otros mercados outright no recomendados ({championOtherSports.length})
+                </summary>
+                <div className="p-2 pt-0 space-y-2 max-h-56 overflow-y-auto">
+                  {championOtherSports.map((sport) => (
+                    <div key={sport.key} className="p-2 border border-red-500/20 rounded bg-red-500/5">
+                      <span className="text-red-300 font-mono block">{sport.key}</span>
+                      <span className="text-text-muted block">{sport.group} · {sport.title}</span>
+                      <span className="text-text-muted block">{sport.description}</span>
+                      <span className="text-red-300 block">No recomendado: {classifyChampionSport(sport).reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
 
           <div className="space-y-2">
-            <span className="text-xs text-text-secondary font-semibold block">Deporte Key (ej. soccer_fifa_world_cup)</span>
+            <span className="text-xs text-text-secondary font-semibold block">Sport key (ej. soccer_fifa_world_cup_winner)</span>
             <input
               type="text"
               value={selectedSport}
-              onChange={(e) => setSelectedSport(e.target.value)}
+              onChange={(e) => {
+                setSelectedSport(e.target.value);
+                setChampionPreview(null);
+              }}
               className="w-full px-3 py-1.5 bg-bg-tertiary border border-border-default rounded-lg text-sm text-text-primary focus:outline-none focus:border-gold-500/50"
               placeholder="Ej: soccer_fifa_world_cup_winner"
             />
-            
+
+            {selectedSportInfo && (
+              <div className="p-3 border border-border-subtle rounded-lg bg-bg-secondary/40 text-xs space-y-1">
+                <p><span className="text-text-muted">Grupo:</span> {selectedSportInfo.group}</p>
+                <p><span className="text-text-muted">Título:</span> {selectedSportInfo.title}</p>
+                <p><span className="text-text-muted">Descripción:</span> {selectedSportInfo.description}</p>
+                <p><span className="text-text-muted">Outrights:</span> {selectedSportInfo.has_outrights ? 'Sí' : 'No'}</p>
+              </div>
+            )}
+
+            {normalizedSelectedSport && !canPreviewChampionOdds && (
+              <p className="text-xs text-red-300 border border-red-500/20 bg-red-500/10 rounded-lg p-2">
+                {INVALID_CHAMPION_SPORT_MESSAGE}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handlePreviewChampionOdds}
+              disabled={championLoading || !canPreviewChampionOdds}
+              className="px-3 py-1.5 w-full bg-bg-secondary hover:bg-bg-hover border border-border-default text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-1 transition-all disabled:opacity-50"
+            >
+              <Play className="w-3 h-3" /> Previsualizar outcomes sin guardar
+            </button>
+
             <button
               type="button"
               onClick={handleImportChampionOdds}
-              disabled={championLoading || !selectedSport}
+              disabled={championLoading || !canPreviewChampionOdds || !hasCurrentChampionPreview}
               className="px-3 py-1.5 w-full bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/20 text-gold-400 rounded-lg text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-1 transition-all disabled:opacity-50 mt-2"
             >
               <Database className="w-3 h-3" /> Importar Cuotas de Campeón
             </button>
+
+            <p className="text-[10px] text-text-muted">
+              Si un equipo nacional queda sin coincidencia, crea su alias en el mapeo de proveedores y vuelve a importar.
+            </p>
           </div>
         </div>
+
+        {championPreview && (
+          <div className="border border-green-500/25 bg-green-500/5 rounded-lg p-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-mono text-green-300">{championPreview.sportKey}</span>
+              <span className="text-text-secondary">{championPreview.outcomeCount} cuotas encontradas</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {championPreview.sampleOutcomes.map((outcome, index) => (
+                <div key={`${outcome.bookmaker}:${outcome.name}:${index}`} className="border border-border-subtle rounded p-2 text-xs">
+                  <p className="font-semibold text-text-primary">{outcome.name}</p>
+                  <p className="text-text-muted">{outcome.bookmaker} · cuota {outcome.decimalOdds}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-yellow-200">
+              Verifica que la muestra contenga selecciones nacionales del Mundial antes de importar.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Matches Grid */}

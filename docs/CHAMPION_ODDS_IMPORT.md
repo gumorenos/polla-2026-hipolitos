@@ -6,23 +6,43 @@ Esta guía explica el flujo de importación de cuotas de campeón ("Outrights") 
 
 1. **Client API (`app/src/lib/odds/the-odds-api.ts`)**:
    - `listTheOddsApiOutrightSports()`: Se comunica con `/v4/sports` para encontrar qué deportes tienen mercados de ganador final (outrights).
-   - `fetchChampionOutrights()`: Obtiene todas las cuotas de un deporte específico para el mercado `outrights` y normaliza la salida.
+   - `fetchChampionOutrights()`: Obtiene todas las cuotas de un sport key FIFA World Cup validado para el mercado `outrights` y normaliza la salida.
    
 2. **Server Actions (`app/src/lib/actions/champion-odds.ts`)**:
-   - `adminDetectChampionMarkets()`: Expone la detección de deportes y filtra posibles candidatos basados en palabras clave como "world cup", "fifa", "soccer".
+   - `adminDetectChampionMarkets()`: Separa los candidatos recomendados de Soccer/FIFA World Cup del resto de mercados outright.
+   - `adminPreviewChampionOdds()`: Muestra una muestra de outcomes sin escribir aliases, diagnósticos ni snapshots.
    - `adminImportChampionOdds()`: Procesa la importación calculando la mediana de todas las bookmakers por equipo, y actualizando el `ChampionOddsSnapshot` para todas las ligas de tipo `champion_survivor`.
 
 3. **Admin UI (`/admin/odds`)**:
    - La sección **Cuotas de Campeón (Outrights)** permite al administrador:
      - Detectar candidatos en vivo.
-     - Importar las cuotas de un `sportKey` seleccionado.
+     - Revisar grupo, título, descripción y soporte de outrights.
+     - Previsualizar una muestra de selecciones antes de guardar.
+     - Importar las cuotas de un `sportKey` FIFA World Cup validado.
+
+## Guardrails del Sport Key
+
+La primera importación operativa seleccionó accidentalmente un mercado outright ajeno al Mundial y produjo nombres universitarios de Estados Unidos como diagnósticos `unmatched`. El importador ahora bloquea el flujo antes de llamar al endpoint de cuotas o escribir datos cuando el sport key no cumple todos estos criterios:
+
+- Tiene `has_outrights=true`.
+- Está identificado como `soccer_*`.
+- Contiene señales de FIFA World Cup.
+- No corresponde a clasificatorias, Mundial de Clubes, torneos juveniles o femeninos.
+- No contiene señales de NCAA, NFL, NBA, NCAAB, MLB, NHL u otros deportes.
+
+No seleccione sport keys de NCAA, NFL, NBA, college u otras ligas aunque indiquen `winner`, `champion` u `outright`. Esos términos por sí solos no convierten un mercado en cuotas de campeón del Mundial.
+
+Antes de importar, confirme que la muestra contiene selecciones nacionales esperadas. La previsualización no persiste `ChampionOddsSnapshot`, `provider_team_outcome` ni `team_alias`; únicamente puede actualizar el estado operativo y la cuota disponible del proveedor.
 
 ## Manejo de Aliases de Equipos
 
 Cuando se importa una cuota, el nombre raw de The Odds API (ej. "Bosnia-Herzegovina") se pasa por el flujo de **TeamAlias**:
-- **Si existe el alias**: La cuota se asocia inmediatamente a nuestro código interno de equipo.
+- **Si existe un alias para `the-odds-api`**: Se aplica con prioridad.
+- **Si existe un alias global con `provider='*'`**: Se aplica sin exigir un alias duplicado para The Odds API. Por ejemplo, `Bosnia Herzegovina` puede resolver a `BIH` mediante el alias global existente.
 - **Si NO existe**: La cuota entra como `unmatched` y se guarda en la tabla `provider_team_outcome`.
-  - El administrador puede ir a la sección "Mapeo de Outcomes de Proveedores" para emparejarlo, y volver a intentar la importación de cuotas.
+  - El administrador puede ir a la sección "Mapeo de Equipos por Proveedor" para emparejarlo.
+  - La asignación crea o actualiza `team_alias` y marca el `provider_team_outcome` como `matched`.
+  - Después debe volver a ejecutar la importación para crear el snapshot correspondiente.
 
 ## Modelo de Datos
 
@@ -33,3 +53,5 @@ Cuando se importa una cuota, el nombre raw de The Odds API (ej. "Bosnia-Herzegov
 - The Odds API cobra las peticiones de Outrights igual que un mercado estándar.
 - Dado que las cuotas de campeón cambian lentamente, se recomienda importar sólo una o dos veces por día para reducir el consumo de la cuota.
 - Al igual que las cuotas de partidos, las llamadas fallidas por cuota (HTTP 429) actualizarán la tabla `ProviderStatus` para prevenir bloqueos y penalizaciones.
+- El identificador canónico del proveedor en credenciales, aliases, diagnósticos e importación es `the-odds-api`.
+- Si una importación errónea dejó únicamente diagnósticos claramente ajenos al fútbol, se pueden eliminar de producción las filas `provider='the-odds-api'`, `marketType='outrights'`, `status='unmatched'` después de crear un backup. Esta limpieza no debe borrar aliases ni `ChampionOddsSnapshot` válidos.

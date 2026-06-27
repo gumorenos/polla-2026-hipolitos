@@ -50,19 +50,7 @@ export async function linkProviderTeamOutcomeAction(
     return { success: false, message: 'Resultado o equipo no encontrado.' };
   }
 
-  const normalizedAlias = normalizeTeamAlias(outcome.rawName);
-  const existingAlias = await prisma.teamAlias.findUnique({
-    where: {
-      provider_normalizedAlias: { provider: outcome.provider, normalizedAlias },
-    },
-    select: { teamCode: true },
-  });
-  if (existingAlias && existingAlias.teamCode !== team.code) {
-    return {
-      success: false,
-      message: `Ese alias ya está vinculado a ${existingAlias.teamCode}.`,
-    };
-  }
+  const normalizedAlias = outcome.normalizedName || normalizeTeamAlias(outcome.rawName);
 
   await prisma.$transaction([
     prisma.teamAlias.upsert({
@@ -79,7 +67,9 @@ export async function linkProviderTeamOutcomeAction(
         createdByUserId: userId,
       },
       update: {
+        teamCode: team.code,
         alias: outcome.rawName,
+        normalizedAlias,
         confidence: 1,
         source: 'manual',
         createdByUserId: userId,
@@ -92,6 +82,7 @@ export async function linkProviderTeamOutcomeAction(
         confidence: 1,
         reason: 'Alias vinculado manualmente por un superadministrador.',
         status: 'matched',
+        lastSeenAt: new Date(),
       },
     }),
   ]);

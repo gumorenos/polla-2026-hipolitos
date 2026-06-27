@@ -1,5 +1,11 @@
 import { setProviderCooldown } from './providers';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+import {
+  INVALID_CHAMPION_SPORT_MESSAGE,
+  isRecommendedChampionSport,
+  isRecommendedChampionSportKey,
+  THE_ODDS_API_PROVIDER,
+} from './champion-sport-guardrails';
 
 function redactApiKey(msg: string, keys: string[]): string {
   let redacted = msg;
@@ -38,14 +44,14 @@ export interface TheOddsApiSport {
 
 export async function listTheOddsApiOutrightSports(): Promise<{ success: boolean; sports: TheOddsApiSport[]; error?: string }> {
   try {
-    const cred = await resolveProviderApiKey('the-odds-api');
+    const cred = await resolveProviderApiKey(THE_ODDS_API_PROVIDER);
     if (!cred.apiKey) {
       return { success: false, sports: [], error: 'The Odds API key is missing.' };
     }
 
     const url = `https://api.the-odds-api.com/v4/sports/?all=true&apiKey=${cred.apiKey}`;
     const res = await fetchWithTimeout(url, {}, 8000);
-    await recordProviderResponseDiagnostic('the-odds-api', res);
+    await recordProviderResponseDiagnostic(THE_ODDS_API_PROVIDER, res);
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
@@ -53,7 +59,7 @@ export async function listTheOddsApiOutrightSports(): Promise<{ success: boolean
       msg = redactApiKey(msg, [cred.apiKey]);
       
       if (res.status === 429) {
-        await setProviderCooldown('the-odds-api', 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [cred.apiKey]));
+        await setProviderCooldown(THE_ODDS_API_PROVIDER, 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [cred.apiKey]));
       }
       return { success: false, sports: [], error: msg };
     }
@@ -72,11 +78,7 @@ export async function listTheOddsApiOutrightSports(): Promise<{ success: boolean
 }
 
 export function identifyCandidateSports(sports: TheOddsApiSport[]): TheOddsApiSport[] {
-  const keywords = ['world cup', 'fifa', 'soccer', 'winner', 'outright'];
-  return sports.filter(s => {
-    const searchString = `${s.title} ${s.description} ${s.key}`.toLowerCase();
-    return keywords.some(kw => searchString.includes(kw));
-  });
+  return sports.filter(isRecommendedChampionSport);
 }
 
 export interface OutrightOutcome {
@@ -125,18 +127,23 @@ export async function fetchChampionOutrights(
   bookmakers?: string
 ): Promise<{ success: boolean; outcomes: NormalizedChampionOdds[]; error?: string }> {
   try {
-    const cred = await resolveProviderApiKey('the-odds-api');
+    const normalizedSportKey = sportKey.trim().toLowerCase();
+    if (!isRecommendedChampionSportKey(normalizedSportKey)) {
+      return { success: false, outcomes: [], error: INVALID_CHAMPION_SPORT_MESSAGE };
+    }
+
+    const cred = await resolveProviderApiKey(THE_ODDS_API_PROVIDER);
     if (!cred.apiKey) {
       return { success: false, outcomes: [], error: 'The Odds API key is missing.' };
     }
 
-    let url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${cred.apiKey}&regions=${regions}&markets=outrights&oddsFormat=decimal`;
+    let url = `https://api.the-odds-api.com/v4/sports/${normalizedSportKey}/odds/?apiKey=${cred.apiKey}&regions=${regions}&markets=outrights&oddsFormat=decimal`;
     if (bookmakers) {
       url += `&bookmakers=${bookmakers}`;
     }
 
     const res = await fetchWithTimeout(url, {}, 8000);
-    await recordProviderResponseDiagnostic('the-odds-api', res);
+    await recordProviderResponseDiagnostic(THE_ODDS_API_PROVIDER, res);
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
@@ -144,7 +151,7 @@ export async function fetchChampionOutrights(
       msg = redactApiKey(msg, [cred.apiKey]);
       
       if (res.status === 429) {
-        await setProviderCooldown('the-odds-api', 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [cred.apiKey]));
+        await setProviderCooldown(THE_ODDS_API_PROVIDER, 3600, 429, redactApiKey(errorText || 'Rate limit exceeded', [cred.apiKey]));
       }
       return { success: false, outcomes: [], error: msg };
     }
@@ -163,7 +170,7 @@ export async function fetchChampionOutrights(
           if (market.key !== 'outrights') continue;
           for (const outcome of market.outcomes || []) {
             normalizedOutcomes.push({
-              provider: 'the-odds-api',
+              provider: THE_ODDS_API_PROVIDER,
               sportKey: event.sport_key,
               bookmakerKey: bookmaker.key,
               bookmakerTitle: bookmaker.title,

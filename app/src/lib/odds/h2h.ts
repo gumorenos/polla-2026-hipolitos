@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { getProviderCooldown, setProviderCooldown } from './providers';
+import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -163,6 +164,7 @@ export async function lookupTeamId(code: string, apiKey: string): Promise<number
         'Accept': 'application/json',
       },
     }, 8000);
+    await recordProviderResponseDiagnostic('api-football', res);
     if (res.status === 429) {
       await setProviderCooldown('api-football', 3600, 429, 'Rate limit exceeded');
       throw new Error('HTTP 429');
@@ -210,8 +212,9 @@ export async function getHeadToHeadStats(matchId: string, bypassCooldown = false
     throw new Error(`Match with ID ${matchId} not found`);
   }
 
-  const isEnabled = process.env.API_FOOTBALL_ENABLED === 'true';
-  const apiKey = process.env.API_FOOTBALL_KEY;
+  const credential = await resolveProviderApiKey('api-football');
+  const isEnabled = credential.configured;
+  const apiKey = credential.apiKey;
   const allowSimulation = process.env.NODE_ENV !== 'production' && process.env.ODDS_ALLOW_SIMULATED_DATA === 'true';
 
   if (!isEnabled || !apiKey) {
@@ -267,6 +270,7 @@ export async function getHeadToHeadStats(matchId: string, bypassCooldown = false
         'Accept': 'application/json',
       },
     }, 8000);
+    await recordProviderResponseDiagnostic('api-football', res);
 
     if (res.status === 429) {
       await setProviderCooldown('api-football', 3600, 429, 'Rate limit exceeded');

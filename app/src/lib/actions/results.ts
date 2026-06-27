@@ -6,6 +6,7 @@ import { updateMatchResultInternal } from './admin';
 import { FIFA_TO_APIFOOTBALL_IDS, lookupTeamId } from '../odds/h2h';
 import { getProviderCooldown } from '../odds/providers';
 import { fetchMatchResultFromFootballData, ProviderDiagnostic, ProviderResultDetails } from '../odds/football-data';
+import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
 
 interface ApiFootballFixture {
   fixture: {
@@ -40,8 +41,9 @@ async function fetchFromApiFootball(
   },
   options: { force?: boolean }
 ): Promise<{ result?: ProviderResultDetails; error?: string; diagnostic: ProviderDiagnostic }> {
-  const apiKey = process.env.API_FOOTBALL_KEY;
-  const isEnabled = process.env.API_FOOTBALL_ENABLED === 'true';
+  const credential = await resolveProviderApiKey('api-football');
+  const apiKey = credential.apiKey;
+  const isEnabled = credential.configured;
   const kickoffDate = new Date(match.kickoffUtc);
   const dateStr = kickoffDate.toISOString().slice(0, 10);
   const timestamp = new Date().toISOString();
@@ -89,6 +91,7 @@ async function fetchFromApiFootball(
       headers: { 'x-apisports-key': apiKey, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(10000),
     });
+    await recordProviderResponseDiagnostic('api-football', res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Network error';
     return {

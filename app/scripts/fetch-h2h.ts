@@ -4,6 +4,7 @@ import { prisma } from '../src/lib/db';
 import { Prisma } from '@prisma/client';
 import { getHeadToHeadStats, saveHeadToHeadSnapshot } from '../src/lib/odds/h2h';
 import { getProviderCooldown } from '../src/lib/odds/providers';
+import { resolveProviderApiKey } from '../src/lib/provider-credentials';
 
 function isConcreteTeamCode(code: string): boolean {
   if (!code) return false;
@@ -13,6 +14,7 @@ function isConcreteTeamCode(code: string): boolean {
 
 async function main() {
   console.log('Running fetch-h2h script to populate H2H data...');
+  const apiFootballCredential = await resolveProviderApiKey('api-football');
 
   // Argument parsing
   const matchIdArg = process.argv.find((arg) => arg.startsWith('--matchId='));
@@ -101,7 +103,7 @@ async function main() {
       console.log(`Successfully saved H2H for match ${match.id} using ${stats.provider}`);
       
       // Delay to respect API limits if real provider is enabled
-      if (process.env.API_FOOTBALL_ENABLED === 'true') {
+      if (apiFootballCredential.configured) {
         console.log(`Waiting ${delayMs}ms...`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }

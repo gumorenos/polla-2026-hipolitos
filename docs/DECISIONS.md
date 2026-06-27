@@ -324,3 +324,10 @@ We implement the following 6 tie-breakers sequentially:
 - The guest route links to `/login` with `Iniciar sesión`, does not require authentication, and does not expose write actions, prediction inputs, pick forms, admin actions, API keys, or user-management data.
 - `showOdds` and `showH2H` continue to control public odds and H2H display.
 - The advanced simulation dashboard, match-by-match model, hybrid model, and admin/participant visual mode remain pending.
+
+# Provider credential storage
+
+- Provider API keys may be stored in SQLite only as AES-256-GCM ciphertext plus a masked display value.
+- `API_KEYS_ENCRYPTION_SECRET` remains outside Git and is required to save or decrypt database credentials.
+- Provider clients resolve an active database credential first and preserve enabled environment variables as fallback.
+- Connection tests are explicit superadmin actions; provider APIs are not contacted during admin page load.

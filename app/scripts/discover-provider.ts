@@ -1,5 +1,6 @@
 import { loadEnvConfig } from '@next/env';
 loadEnvConfig(process.cwd());
+import { resolveProviderApiKey } from '../src/lib/provider-credentials';
 
 function maskKey(key?: string): string {
   if (!key) return 'NOT_CONFIGURED';
@@ -30,14 +31,16 @@ async function main() {
     process.exit(1);
   }
 
-  const apiKey = process.env.ODDS_API_IO_KEY;
+  const credential = await resolveProviderApiKey('odds-api-io');
+  const apiKey = credential.apiKey;
   if (!apiKey) {
-    console.error('Error: ODDS_API_IO_KEY is not defined in the environment.');
+    console.error('Error: Odds-API.io is not configured in the database or environment.');
     process.exit(1);
   }
 
   console.log(`Target Provider:  ${provider}`);
   console.log(`API Key:          ${maskKey(apiKey)}`);
+  console.log(`Credential Source:${credential.source}`);
   console.log('');
 
   // Candidate sports to test

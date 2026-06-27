@@ -394,3 +394,7 @@ APP_URL="https://lapolla.example.com"
 NODE_ENV=production
 PORT=3030
 ```
+
+# Provider credential boundary
+
+`/admin/odds` receives only masked provider metadata. Server actions enforce superadmin access, encrypt new keys with AES-256-GCM, and persist quota/status metadata separately from the ciphertext. Runtime clients resolve credentials through the server-only provider credential layer before using the existing environment fallback.

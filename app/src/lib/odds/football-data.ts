@@ -1,3 +1,5 @@
+import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+
 /**
  * football-data.org result provider
  * Docs: https://www.football-data.org/documentation/quickstart
@@ -110,8 +112,9 @@ export async function fetchMatchResultFromFootballData(
   },
   options: { force?: boolean; dryRun?: boolean } = {}
 ): Promise<{ result?: ProviderResultDetails; error?: string; diagnostic: ProviderDiagnostic }> {
-  const apiKey = process.env.FOOTBALL_DATA_API_KEY;
-  const enabled = process.env.FOOTBALL_DATA_ENABLED === 'true';
+  const credential = await resolveProviderApiKey('football-data');
+  const apiKey = credential.apiKey;
+  const enabled = credential.configured;
   const baseUrl = process.env.FOOTBALL_DATA_BASE_URL ?? 'https://api.football-data.org/v4';
   const competitionCode = process.env.FOOTBALL_DATA_COMPETITION_CODE ?? 'WC';
 
@@ -128,7 +131,7 @@ export async function fetchMatchResultFromFootballData(
 
   if (!enabled) {
     return {
-      error: 'football-data.org no está habilitado (FOOTBALL_DATA_ENABLED != true)',
+      error: 'football-data.org no está habilitado o no está configurado',
       diagnostic: { ...baseDiag, success: false, errorMessage: 'Provider disabled' },
     };
   }
@@ -152,6 +155,7 @@ export async function fetchMatchResultFromFootballData(
       },
       signal: AbortSignal.timeout(10000),
     });
+    await recordProviderResponseDiagnostic('football-data', res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Network error';
     return {

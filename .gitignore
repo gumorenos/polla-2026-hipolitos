@@ -2,6 +2,8 @@ node_modules
 .next
 .env
 .env.local
+.env.*
+!.env.example
 .env.*.local
 .DS_Store
 dist
@@ -16,6 +18,8 @@ reference/LAPOLLA2026/
 *.db-shm
 *.sqlite
 *.sqlite3
+prod.db
+/app/package-lock.json
 
 # Explicit development SQLite database files
 app/prisma/dev.db

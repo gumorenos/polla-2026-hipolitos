@@ -290,8 +290,8 @@ export async function refreshGlobalOddsAction(options?: {
           }
           matchesProcessed++;
 
-          // Sleep slightly if real APIs are enabled
-          if (process.env.ODDS_API_IO_ENABLED === 'true' || process.env.THE_ODDS_API_ENABLED === 'true') {
+          // Pace real provider calls regardless of whether the key came from DB or env.
+          if (odds?.sourceType === 'api') {
             await new Promise((resolve) => setTimeout(resolve, 500));
           }
         } catch (e) {
@@ -440,7 +440,7 @@ export async function fetchMissingH2HAction(options?: {
           skipped++;
         }
 
-        if (process.env.API_FOOTBALL_ENABLED === 'true') {
+        if (stats?.provider !== 'simulator') {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
       } catch (err) {

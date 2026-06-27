@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
 
 export async function getProviderCooldown(provider: string): Promise<Date | null> {
   try {
@@ -465,6 +466,7 @@ async function discoverOddsApiIoLeagues(
       console.log(`[Odds-API.io] URL: https://api.odds-api.io/v3/leagues?apiKey=REDACTED&sport=${sport}`);
     }
     const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
+    await recordProviderResponseDiagnostic('odds-api-io', res);
     if (debugMatch) {
       console.log(`[Odds-API.io] Leagues discovery HTTP Status: ${res.status} ${res.statusText}`);
     }
@@ -555,6 +557,7 @@ async function fetchOddsApiIo(
         console.log(`[Odds-API.io] URL: https://api.odds-api.io/v3/odds?apiKey=REDACTED&sport=${sport}&league=${leagueSlug}`);
       }
       const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 8000);
+      await recordProviderResponseDiagnostic('odds-api-io', res);
       if (matchInfo.debugMatch) {
         console.log(`[Odds-API.io] HTTP Status: ${res.status} ${res.statusText}`);
       }
@@ -752,6 +755,7 @@ async function verifyTheOddsApiSportKey(apiKey: string, sportKey: string): Promi
   try {
     const url = `https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`;
     const res = await fetchWithTimeout(url, {}, 8000);
+    await recordProviderResponseDiagnostic('the-odds-api', res);
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       const msg = `The Odds API sports list request failed with status ${res.status}: ${errorText}`;
@@ -807,6 +811,7 @@ async function fetchTheOddsApi(
       console.log(`[The Odds API] URL: https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=REDACTED&regions=${regions}&markets=${markets}`);
     }
     const res = await fetchWithTimeout(url, {}, 8000);
+    await recordProviderResponseDiagnostic('the-odds-api', res);
     if (matchInfo.debugMatch) {
       console.log(`[The Odds API] HTTP Status: ${res.status} ${res.statusText}`);
     }
@@ -1002,10 +1007,12 @@ export async function getMatchWinnerOdds(
   const primaryProvider = process.env.ODDS_PRIMARY_PROVIDER || 'odds-api-io';
   const fallbackProvider = process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api';
 
-  const isPrimaryEnabled = process.env.ODDS_API_IO_ENABLED === 'true';
-  const primaryKey = process.env.ODDS_API_IO_KEY;
-  const isFallbackEnabled = process.env.THE_ODDS_API_ENABLED === 'true';
-  const fallbackKey = process.env.THE_ODDS_API_KEY;
+  const oddsApiIoCredential = await resolveProviderApiKey('odds-api-io');
+  const theOddsApiCredential = await resolveProviderApiKey('the-odds-api');
+  const isPrimaryEnabled = oddsApiIoCredential.configured;
+  const primaryKey = oddsApiIoCredential.apiKey;
+  const isFallbackEnabled = theOddsApiCredential.configured;
+  const fallbackKey = theOddsApiCredential.apiKey;
 
   if (debugMatch) {
     console.log(`[Odds Discovery] Provider Chain: Primary = "${primaryProvider}", Fallback = "${fallbackProvider}"`);

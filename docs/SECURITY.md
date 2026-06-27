@@ -35,7 +35,7 @@ Client-provided parameters are never trusted. All access control checks are vali
 
 ## 4. API Key Protection and Rate Limiting
 
-- **Server-Only API Keys:** All third-party API keys (`ODDS_API_IO_KEY`, `THE_ODDS_API_KEY`, `API_FOOTBALL_KEY`) are kept strictly server-side in `.env.local`. They are never prefixed with `NEXT_PUBLIC_` or logged.
+- **Server-Only API Keys:** Las API keys pueden almacenarse cifradas en `ProviderCredential` usando `API_KEYS_ENCRYPTION_SECRET`, con variables de entorno como respaldo. Nunca se exponen con prefijo `NEXT_PUBLIC_`, al cliente o en logs.
 - **Concurrency Rate-Limiting Protection:** Manual user odds refreshes are locked to 1 request per local day per user (America/Lima timezone). To prevent race conditions or double-click bypasses, this rate limit check and usage logging is executed in a single atomic database transaction.
 
 ---

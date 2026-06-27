@@ -479,6 +479,27 @@ model ReminderLog {
   @@map("reminder_log")
 }
 
+model ProviderCredential {
+  id                    String    @id @default(cuid())
+  provider              String    @unique
+  encryptedApiKey       String?
+  maskedApiKey          String?
+  isActive              Boolean   @default(false)
+  lastStatus            String?
+  lastCheckedAt         DateTime?
+  lastError             String?
+  lastRequestsRemaining Int?
+  lastRequestsUsed      Int?
+  lastRequestCost       Int?
+  lastResetAt           DateTime?
+  lastResetInSeconds    Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  updatedByUserId       String?
+
+  @@map("provider_credential")
+}
+
 model ProviderStatus {
   provider         String   @id // "odds-api-io", "the-odds-api", "api-football"
   cooldownUntil    DateTime

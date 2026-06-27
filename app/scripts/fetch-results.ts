@@ -3,6 +3,7 @@ import { prisma } from '../src/lib/db';
 import { Prisma } from '@prisma/client';
 import { fetchAndSaveMatchResultInternal } from '../src/lib/actions/results';
 import { getProviderCooldown } from '../src/lib/odds/providers';
+import { resolveProviderApiKey } from '../src/lib/provider-credentials';
 
 function isConcreteTeamCode(code: string): boolean {
   if (!code) return false;
@@ -16,17 +17,13 @@ async function main() {
   console.log('==================================================\n');
 
   // Diagnostics (never log API keys)
-  const apiKey = process.env.API_FOOTBALL_KEY;
-  const isEnabled = process.env.API_FOOTBALL_ENABLED === 'true';
-  const fdEnabled = process.env.FOOTBALL_DATA_ENABLED === 'true';
-  const fdKey = process.env.FOOTBALL_DATA_API_KEY;
+  const apiFootballCredential = await resolveProviderApiKey('api-football');
+  const footballDataCredential = await resolveProviderApiKey('football-data');
   const resultsFetchEnabled = process.env.RESULTS_FETCH_ENABLED !== 'false';
 
   console.log(`RESULTS_FETCH_ENABLED:   ${resultsFetchEnabled ? 'yes' : 'no (usa --dryRun para testear de todas formas)'}`);
-  console.log(`API-Football Enabled:    ${isEnabled ? 'yes' : 'no'}`);
-  console.log(`API-Football Key:        ${apiKey ? 'present' : 'MISSING'}`);
-  console.log(`Football-Data Enabled:   ${fdEnabled ? 'yes' : 'no'}`);
-  console.log(`Football-Data Key:       ${fdKey ? 'present' : 'MISSING'}`);
+  console.log(`API-Football Configured: ${apiFootballCredential.configured ? `yes (${apiFootballCredential.source})` : 'no'}`);
+  console.log(`Football-Data Configured:${footballDataCredential.configured ? ` yes (${footballDataCredential.source})` : ' no'}`);
   console.log(`RESULTS_PROVIDER_CHAIN:  ${process.env.RESULTS_PROVIDER_CHAIN ?? 'api-football,football-data'}`);
   console.log('');
 

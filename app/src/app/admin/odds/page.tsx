@@ -7,6 +7,7 @@ import { ArrowLeft, BarChart2 } from 'lucide-react';
 import Link from 'next/link';
 import { lastOddsError } from '../../../lib/odds/providers';
 import { lastH2hError } from '../../../lib/odds/h2h';
+import { getProviderAdminSummaries } from '../../../lib/provider-credentials';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -171,10 +172,14 @@ export default async function AdminOddsPage() {
   const oddsDisplayEnabled = process.env.ODDS_DISPLAY_ENABLED === 'true';
   const oddsManualUserRefreshEnabled = process.env.ODDS_MANUAL_USER_REFRESH_ENABLED === 'true';
 
+  const providerConfiguration = await getProviderAdminSummaries();
+  const providerConfigured = new Map(
+    providerConfiguration.providers.map((provider) => [provider.provider, provider.configured]),
+  );
   const apiStatus = {
-    oddsApiIo: process.env.ODDS_API_IO_ENABLED === 'true' && !!process.env.ODDS_API_IO_KEY,
-    theOddsApi: process.env.THE_ODDS_API_ENABLED === 'true' && !!process.env.THE_ODDS_API_KEY,
-    apiFootball: process.env.API_FOOTBALL_ENABLED === 'true' && !!process.env.API_FOOTBALL_KEY,
+    oddsApiIo: providerConfigured.get('odds-api-io') ?? false,
+    theOddsApi: providerConfigured.get('the-odds-api') ?? false,
+    apiFootball: providerConfigured.get('api-football') ?? false,
     simulatedAllowed: process.env.ODDS_ALLOW_SIMULATED_DATA === 'true',
   };
 
@@ -274,6 +279,8 @@ export default async function AdminOddsPage() {
           futureMatchesWithoutH2HCount={futureMatchesWithoutH2HCount}
           cooldownMap={cooldownMap}
           lastFallbackSuccessTime={lastFallbackSuccessTime}
+          providerConfigs={providerConfiguration.providers}
+          encryptionConfigured={providerConfiguration.encryptionConfigured}
         />
       </div>
     </>

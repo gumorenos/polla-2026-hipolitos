@@ -2,6 +2,7 @@ import { loadEnvConfig } from '@next/env';
 loadEnvConfig(process.cwd());
 
 import { prisma } from '../src/lib/db';
+import { resolveProviderApiKey } from '../src/lib/provider-credentials';
 
 function maskKey(key?: string): string {
   if (!key) return 'NOT_CONFIGURED';
@@ -41,14 +42,18 @@ async function main() {
     console.log(`${k}: ${v === undefined ? 'UNDEFINED' : `"${v}"`}`);
   }
 
+  const oddsApiIoCredential = await resolveProviderApiKey('odds-api-io');
+  const theOddsApiCredential = await resolveProviderApiKey('the-odds-api');
   const keys = {
-    ODDS_API_IO_KEY: process.env.ODDS_API_IO_KEY,
-    THE_ODDS_API_KEY: process.env.THE_ODDS_API_KEY,
+    ODDS_API_IO_KEY: oddsApiIoCredential.apiKey ?? undefined,
+    THE_ODDS_API_KEY: theOddsApiCredential.apiKey ?? undefined,
   };
 
   for (const [k, v] of Object.entries(keys)) {
     console.log(`${k}: ${maskKey(v)}`);
   }
+  console.log(`ODDS_API_IO_KEY source: ${oddsApiIoCredential.source}`);
+  console.log(`THE_ODDS_API_KEY source: ${theOddsApiCredential.source}`);
   console.log('');
 
   const secretList = [keys.ODDS_API_IO_KEY, keys.THE_ODDS_API_KEY];
@@ -76,7 +81,7 @@ async function main() {
   console.log('--- 3. External Provider Connectivity & Discovery ---');
 
   // Odds-API.io Connectivity & Discovery Detail
-  if (keys.ODDS_API_IO_KEY && process.env.ODDS_API_IO_ENABLED === 'true') {
+  if (keys.ODDS_API_IO_KEY) {
     const sport = process.env.ODDS_API_IO_SPORT || 'football';
     const url = `https://api.odds-api.io/v3/leagues?apiKey=${keys.ODDS_API_IO_KEY}&sport=${sport}`;
     console.log(`Checking Odds-API.io leagues endpoint...`);
@@ -138,7 +143,7 @@ async function main() {
   console.log('');
 
   // The Odds API Connectivity check
-  if (keys.THE_ODDS_API_KEY && process.env.THE_ODDS_API_ENABLED === 'true') {
+  if (keys.THE_ODDS_API_KEY) {
     try {
       const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
       const url = `https://api.the-odds-api.com/v4/sports/?apiKey=${keys.THE_ODDS_API_KEY}`;

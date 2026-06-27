@@ -250,3 +250,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 
 The hybrid approach gives us the best of both: the reference's production-quality UI and correct FIFA data, combined with a clean, correct, fully server-backed architecture built for SQLite + RPi5.
 ```
+
+# Provider operations
+
+- [x] Add encrypted provider credential management, environment fallback, manual connection tests, and quota diagnostics in `/admin/odds`.

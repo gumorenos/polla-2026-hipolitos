@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play } from 'lucide-react';
+import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
 import {
@@ -10,6 +11,30 @@ import {
   fetchMissingH2HAction,
   cleanupSimulatedDataAction,
 } from '../../../lib/actions/odds';
+import {
+  deactivateProviderCredentialAction,
+  deleteProviderCredentialAction,
+  saveProviderCredentialAction,
+  testProviderConnectionAction,
+} from '../../../lib/actions/provider-credentials';
+
+interface ProviderAdminInfo {
+  provider: 'the-odds-api' | 'odds-api-io' | 'football-data' | 'api-football';
+  name: string;
+  configured: boolean;
+  maskedApiKey: string | null;
+  source: 'db' | 'env' | 'not_configured';
+  isActive: boolean;
+  hasStoredCredential: boolean;
+  lastStatus: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  lastRequestsRemaining: number | null;
+  lastRequestsUsed: number | null;
+  lastRequestCost: number | null;
+  lastResetAt: string | null;
+  lastResetInSeconds: number | null;
+}
 
 interface MatchAdminInfo {
   id: string;
@@ -72,6 +97,8 @@ interface OddsAdminClientProps {
     updatedAt: string;
   }>;
   lastFallbackSuccessTime: string | null;
+  providerConfigs: ProviderAdminInfo[];
+  encryptionConfigured: boolean;
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -93,12 +120,45 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   futureMatchesWithoutH2HCount,
   cooldownMap,
   lastFallbackSuccessTime,
+  providerConfigs,
+  encryptionConfigured,
 }) => {
+  const router = useRouter();
   const [now] = useState(() => Date.now());
   const [filter, setFilter] = useState<'all' | 'today' | 'future' | 'noOdds' | 'noH2H' | 'groups' | 'knockouts' | 'error'>('all');
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
   const [globalLoading, setGlobalLoading] = useState<'odds' | 'h2h' | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+  const [providerLoading, setProviderLoading] = useState<string | null>(null);
+
+  const runProviderAction = async (
+    provider: ProviderAdminInfo,
+    action: 'save' | 'test' | 'deactivate' | 'delete',
+  ) => {
+    if (action === 'delete' && !confirm(`¿Eliminar la API key almacenada de ${provider.name}?`)) {
+      return;
+    }
+
+    setProviderLoading(`${provider.provider}:${action}`);
+    setStatusMsg(null);
+    const result = action === 'save'
+      ? await saveProviderCredentialAction(provider.provider, providerKeys[provider.provider] ?? '')
+      : action === 'test'
+        ? await testProviderConnectionAction(provider.provider)
+        : action === 'deactivate'
+          ? await deactivateProviderCredentialAction(provider.provider)
+          : await deleteProviderCredentialAction(provider.provider);
+
+    setStatusMsg({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) {
+      if (action === 'save') {
+        setProviderKeys((current) => ({ ...current, [provider.provider]: '' }));
+      }
+      router.refresh();
+    }
+    setProviderLoading(null);
+  };
 
   const filteredMatches = matches.filter((m) => {
     if (filter === 'all') return true;
@@ -267,6 +327,175 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
 
   return (
     <div className="space-y-6">
+      <section className="space-y-3" aria-labelledby="provider-configuration-title">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 id="provider-configuration-title" className="font-display text-xl text-text-primary flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-gold-400" />
+              CONFIGURACIÓN DE PROVEEDORES
+            </h3>
+            <p className="text-xs text-text-secondary">Credenciales cifradas, estado y consumo de API.</p>
+          </div>
+          <span className={`text-[10px] font-mono font-bold px-2 py-1 rounded border ${
+            encryptionConfigured
+              ? 'bg-green-500/10 text-green-400 border-green-500/30'
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}>
+            CIFRADO {encryptionConfigured ? 'ACTIVO' : 'NO CONFIGURADO'}
+          </span>
+        </div>
+
+        {!encryptionConfigured && (
+          <div className="border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 flex items-start gap-2 rounded">
+            <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Configura API_KEYS_ENCRYPTION_SECRET en el servidor para guardar o reemplazar API keys.</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {providerConfigs.map((provider) => {
+            const sourceLabel = provider.source === 'db'
+              ? 'Base de datos cifrada'
+              : provider.source === 'env'
+                ? 'Variable de entorno'
+                : 'No configurado';
+            const isBusy = providerLoading?.startsWith(`${provider.provider}:`) ?? false;
+            const hasQuota = provider.lastRequestsRemaining !== null
+              || provider.lastRequestsUsed !== null
+              || provider.lastRequestCost !== null
+              || provider.lastResetInSeconds !== null
+              || provider.lastResetAt !== null;
+
+            return (
+              <article key={provider.provider} className="card-base p-4 border-border-default/70 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-text-primary">{provider.name}</h4>
+                    <p className="text-[11px] text-text-secondary font-mono">{sourceLabel}</p>
+                  </div>
+                  <span className={`text-[9px] font-mono font-bold px-2 py-1 rounded border ${
+                    provider.configured
+                      ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                      : 'bg-red-500/10 text-red-400 border-red-500/30'
+                  }`}>
+                    {provider.configured ? 'CONFIGURADO' : 'SIN CONFIGURAR'}
+                  </span>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                  <div>
+                    <dt className="text-text-secondary">Estado efectivo</dt>
+                    <dd className="font-mono text-text-primary">{provider.isActive ? 'Activo' : 'Inactivo'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">API key</dt>
+                    <dd className="font-mono text-text-primary">{provider.maskedApiKey ?? 'No disponible'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">Último estado</dt>
+                    <dd className="font-mono text-text-primary">{provider.lastStatus ?? 'Sin comprobar'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">Peticiones restantes</dt>
+                    <dd className="font-mono text-text-primary">{provider.lastRequestsRemaining ?? 'No disponible'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">Peticiones usadas</dt>
+                    <dd className="font-mono text-text-primary">{provider.lastRequestsUsed ?? 'No disponible'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">Costo última petición</dt>
+                    <dd className="font-mono text-text-primary">{provider.lastRequestCost ?? 'No disponible'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary">Reinicio</dt>
+                    <dd className="font-mono text-text-primary">
+                      {provider.lastResetInSeconds !== null
+                        ? `${provider.lastResetInSeconds} s`
+                        : provider.lastResetAt
+                          ? new Date(provider.lastResetAt).toLocaleString('es-PE')
+                          : 'No disponible'}
+                    </dd>
+                  </div>
+                </dl>
+
+                {!hasQuota && provider.lastCheckedAt && (
+                  <p className="text-[10px] text-text-secondary">No disponible por este proveedor.</p>
+                )}
+                {provider.lastCheckedAt && (
+                  <p className="text-[10px] text-text-secondary">
+                    Última comprobación: {new Date(provider.lastCheckedAt).toLocaleString('es-PE')}
+                  </p>
+                )}
+                {provider.lastError && (
+                  <p className="text-[10px] text-red-300 border-l-2 border-red-500/50 pl-2 break-words">
+                    {provider.lastError}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={providerKeys[provider.provider] ?? ''}
+                    onChange={(event) => setProviderKeys((current) => ({
+                      ...current,
+                      [provider.provider]: event.target.value,
+                    }))}
+                    placeholder="Nueva API key"
+                    aria-label={`API key de ${provider.name}`}
+                    autoComplete="new-password"
+                    disabled={!encryptionConfigured || isBusy}
+                    className="min-w-0 flex-1 bg-bg-elevated border border-border-default rounded px-3 py-2 text-xs text-text-primary disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => runProviderAction(provider, 'save')}
+                    disabled={!encryptionConfigured || !(providerKeys[provider.provider] ?? '').trim() || isBusy}
+                    className="btn-primary px-3 py-2 text-xs disabled:opacity-50"
+                  >
+                    {provider.hasStoredCredential ? 'Reemplazar' : 'Configurar'}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => runProviderAction(provider, 'test')}
+                    disabled={!provider.configured || isBusy}
+                    className="btn-secondary px-3 py-2 text-xs flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <PlugZap className="w-3.5 h-3.5" />
+                    Probar conexión
+                  </button>
+                  {provider.hasStoredCredential && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => runProviderAction(provider, 'deactivate')}
+                        disabled={isBusy || !provider.isActive}
+                        className="btn-secondary px-3 py-2 text-xs flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        Desactivar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runProviderAction(provider, 'delete')}
+                        disabled={isBusy}
+                        className="px-3 py-2 text-xs text-red-300 border border-red-500/30 rounded hover:bg-red-500/10 flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Eliminar key
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
       {/* API Providers Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {renderProviderStatus('Odds-API.io (Primary)', apiStatus.oddsApiIo, 'odds-api-io')}

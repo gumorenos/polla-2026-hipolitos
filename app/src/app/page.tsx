@@ -751,6 +751,13 @@ function ChampionSurvivorTeamsTable({
         <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Análisis de Equipos y Mercado</h3>
         <span className="text-[10px] text-text-muted font-mono uppercase">Solo campeón</span>
       </div>
+      
+      {showOdds && teamsReport.length > 0 && teamsReport.every(t => t.marketProbability === null) && (
+        <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-xs">
+          Aún no hay cuotas de campeón cargadas. Un administrador puede importarlas desde Admin &gt; Odds &gt; Cuotas de campeón.
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left whitespace-nowrap">
           <thead className="text-[9px] font-mono uppercase text-text-muted bg-black/10 border-b border-border-subtle/50">

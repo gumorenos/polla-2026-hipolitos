@@ -23,6 +23,7 @@ import {
   linkProviderTeamOutcomeAction,
   seedSuggestedTeamAliasesAction,
 } from '../../../lib/actions/team-aliases';
+import { adminDetectChampionMarkets, adminImportChampionOdds } from '../../../lib/actions/champion-odds';
 
 interface ProviderAdminInfo {
   provider: 'the-odds-api' | 'odds-api-io' | 'football-data' | 'api-football';
@@ -166,6 +167,10 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [aliasLoading, setAliasLoading] = useState<string | null>(null);
   const [mappingSelection, setMappingSelection] = useState<Record<string, string>>({});
 
+  const [championLoading, setChampionLoading] = useState<boolean>(false);
+  const [championCandidates, setChampionCandidates] = useState<any[]>([]);
+  const [selectedSport, setSelectedSport] = useState<string>('');
+
   const runProviderAction = async (
     provider: ProviderAdminInfo,
     action: 'save' | 'test' | 'deactivate' | 'delete',
@@ -224,6 +229,49 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setStatusMsg({ type: result.success ? 'success' : 'error', text: result.message });
     if (result.success) router.refresh();
     setAliasLoading(null);
+  };
+
+  const handleDetectChampionMarkets = async () => {
+    setChampionLoading(true);
+    setStatusMsg(null);
+    try {
+      const res = await adminDetectChampionMarkets();
+      if (res.error) {
+        setStatusMsg({ type: 'error', text: res.error });
+      } else {
+        setChampionCandidates(res.candidates || []);
+        if (res.candidates && res.candidates.length > 0) {
+          setSelectedSport(res.candidates[0].key);
+        }
+        setStatusMsg({ type: 'success', text: `Detectados ${res.sports?.length} deportes, ${res.candidates?.length} candidatos.` });
+      }
+    } catch (e: any) {
+      setStatusMsg({ type: 'error', text: e.message || String(e) });
+    }
+    setChampionLoading(false);
+  };
+
+  const handleImportChampionOdds = async () => {
+    if (!selectedSport) {
+      setStatusMsg({ type: 'error', text: 'Seleccione un deporte primero.' });
+      return;
+    }
+    setChampionLoading(true);
+    setStatusMsg(null);
+    try {
+      const res = await adminImportChampionOdds(selectedSport);
+      if (res.error) {
+        setStatusMsg({ type: 'error', text: res.error });
+      } else {
+        setStatusMsg({ 
+          type: 'success', 
+          text: `Éxito. Coincidencias: ${res.matchedCount}, Sin coincidir: ${res.unmatchedCount}, Snapshots guardados: ${res.savedSnapshots}. ${res.unmatchedNames?.length ? `Nuevos sin coincidir: ${res.unmatchedNames.join(', ')}` : ''}`
+        });
+      }
+    } catch (e: any) {
+      setStatusMsg({ type: 'error', text: e.message || String(e) });
+    }
+    setChampionLoading(false);
   };
 
   const filteredMatches = matches.filter((m) => {
@@ -899,6 +947,59 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           <span>{statusMsg.text}</span>
         </div>
       )}
+
+      {/* Champion Odds Section */}
+      <div className="card-base p-5 border-border-default/60 space-y-4">
+        <h4 className="font-semibold text-sm text-gold-400 uppercase tracking-wider font-mono">Cuotas de Campeón (Outrights)</h4>
+        <p className="text-xs text-text-secondary">
+          Detecta mercados de "Ganador Final" y descarga las cuotas del torneo para Champion Survivor.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleDetectChampionMarkets}
+              disabled={championLoading}
+              className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${championLoading ? 'animate-spin' : ''}`} /> Detectar Mercados
+            </button>
+            
+            {championCandidates.length > 0 && (
+              <div className="mt-2 space-y-2 p-2 border border-border-subtle rounded-lg bg-black/10 text-xs">
+                <span className="font-semibold text-text-primary mb-1 block">Candidatos sugeridos:</span>
+                {championCandidates.map(c => (
+                  <div key={c.key} className="flex flex-col">
+                    <span className="text-gold-400 font-mono">{c.key}</span>
+                    <span className="text-text-muted">{c.title} - {c.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-xs text-text-secondary font-semibold block">Deporte Key (ej. soccer_fifa_world_cup)</span>
+            <input
+              type="text"
+              value={selectedSport}
+              onChange={(e) => setSelectedSport(e.target.value)}
+              className="w-full px-3 py-1.5 bg-bg-tertiary border border-border-default rounded-lg text-sm text-text-primary focus:outline-none focus:border-gold-500/50"
+              placeholder="Ej: soccer_fifa_world_cup_winner"
+            />
+            
+            <button
+              type="button"
+              onClick={handleImportChampionOdds}
+              disabled={championLoading || !selectedSport}
+              className="px-3 py-1.5 w-full bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/20 text-gold-400 rounded-lg text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-1 transition-all disabled:opacity-50 mt-2"
+            >
+              <Database className="w-3 h-3" /> Importar Cuotas de Campeón
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Matches Grid */}
       <div className="space-y-4">

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power, Tags, Link2, Ban } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
+import { MatchOddsBar } from '../../../components/ui/MatchOddsBar';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
 import {
   refreshGlobalOddsAction,
@@ -1003,36 +1004,15 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
                       )}
                     </div>
                     {hasOdds && m.globalOdds ? (
-                      <div className="space-y-2">
-                        <div className="font-mono flex gap-4 text-text-primary">
-                          <span>L: <strong className="text-gold-400">{m.globalOdds.homeOdds.toFixed(2)}</strong></span>
-                          <span>E: <strong className="text-gold-400">{m.globalOdds.drawOdds.toFixed(2)}</strong></span>
-                          <span>V: <strong className="text-gold-400">{m.globalOdds.awayOdds.toFixed(2)}</strong></span>
-                        </div>
-                        {/* Implied Probability Stacked Bar */}
-                        <div className="space-y-1 pt-1 border-t border-border-subtle/30">
-                          <div className="flex justify-between text-[9px] text-text-muted font-mono">
-                            <span>Probabilidad:</span>
-                            <span>{homeProb.toFixed(0)}% / {drawProb.toFixed(0)}% / {awayProb.toFixed(0)}%</span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40">
-                            <div 
-                              className="h-full bg-blue-500" 
-                              style={{ width: `${homeProb}%` }} 
-                              title={`Local: ${homeProb.toFixed(1)}%`} 
-                            />
-                            <div 
-                              className="h-full bg-yellow-500" 
-                              style={{ width: `${drawProb}%` }} 
-                              title={`Empate: ${drawProb.toFixed(1)}%`} 
-                            />
-                            <div 
-                              className="h-full bg-red-500" 
-                              style={{ width: `${awayProb}%` }} 
-                              title={`Visitante: ${awayProb.toFixed(1)}%`} 
-                            />
-                          </div>
-                        </div>
+                      <div className="pt-2">
+                        <MatchOddsBar
+                          homeOdds={m.globalOdds.homeOdds}
+                          drawOdds={m.globalOdds.drawOdds}
+                          awayOdds={m.globalOdds.awayOdds}
+                          homeProbability={homeProb / 100}
+                          drawProbability={drawProb / 100}
+                          awayProbability={awayProb / 100}
+                        />
                       </div>
                     ) : (
                       <p className="text-text-muted text-[10px] italic">No hay registros globales para este partido.</p>

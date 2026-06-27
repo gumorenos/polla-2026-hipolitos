@@ -224,7 +224,7 @@ export function PerfilClient({ user, stats }: { user: UserData; stats: UserStats
   const handleLogout = async () => {
     try {
       await authClient.signOut();
-      router.push('/login');
+      router.push('/');
       router.refresh();
     } catch (err) {
       console.error('Error al cerrar sesión:', err);

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
-import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award, Crown } from 'lucide-react';
+import { Shield, Settings, Trophy, Users, Calendar, ClipboardList, ShieldAlert, CheckCircle, AlertCircle, Award, Crown, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { RecalculateButton } from './RecalculateButton';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
@@ -113,8 +113,17 @@ export default async function AdminDashboardPage() {
               </div>
             </div>
           </div>
-          
-          <RecalculateButton />
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/pronosticos?view=participant"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15 text-amber-300 text-xs font-mono font-semibold uppercase tracking-wider transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+              Ver como participante
+            </Link>
+            <RecalculateButton />
+          </div>
         </div>
 
         {/* Global Statistics Grid */}

@@ -5,17 +5,21 @@ import { BottomNav } from './BottomNav';
 import { SidebarNav } from './SidebarNav';
 import { Shield } from 'lucide-react';
 import { authClient } from '../../lib/auth-client';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { ParticipantViewBanner } from './ParticipantViewBanner';
+import { Suspense } from 'react';
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ children }) => {
+function AppShellInner({ children }: AppShellProps) {
   const { data: session } = authClient.useSession();
   const isSuperadmin = session?.user?.isSuperadmin === true;
   const pathname = usePathname();
-  const isAdminArea = pathname === '/admin' || pathname.startsWith('/admin/');
+  const searchParams = useSearchParams();
+  const isParticipantView = searchParams.get('view') === 'participant';
+  const isAdminArea = (pathname === '/admin' || pathname.startsWith('/admin/')) && !isParticipantView;
   const mainClassName = isAdminArea
     ? 'flex-1 overflow-y-auto w-full max-w-[1600px] 2xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8'
     : 'flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto';
@@ -27,6 +31,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Main Page Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
+        {/* Participant View Banner — sticky at top, shown to superadmins in view=participant mode */}
+        <ParticipantViewBanner />
+
         {/* Mobile Header Bar */}
         <header className="md:hidden h-14 bg-bg-tertiary border-b border-border-default flex items-center justify-between px-4 sticky top-0 z-40 shadow-md">
           <div className="flex items-center gap-2">
@@ -37,7 +44,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </div>
 
           <div className="flex items-center gap-2">
-            {isSuperadmin && (
+            {isSuperadmin && !isParticipantView && (
               <span className="text-[10px] bg-gold-400/15 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
                 <Shield className="w-2.5 h-2.5" /> Superadmin
               </span>
@@ -55,5 +62,20 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       <BottomNav />
     </div>
   );
-};
+}
 
+export const AppShell: React.FC<AppShellProps> = ({ children }) => {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen bg-bg-primary text-text-primary">
+        <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
+          <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+            {children}
+          </main>
+        </div>
+      </div>
+    }>
+      <AppShellInner>{children}</AppShellInner>
+    </Suspense>
+  );
+};

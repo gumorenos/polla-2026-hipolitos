@@ -398,3 +398,5 @@ PORT=3030
 # Provider credential boundary
 
 `/admin/odds` receives only masked provider metadata. Server actions enforce superadmin access, encrypt new keys with AES-256-GCM, and persist quota/status metadata separately from the ciphertext. Runtime clients resolve credentials through the server-only provider credential layer before using the existing environment fallback.
+
+Provider team identity is resolved through `TeamAlias`. `ProviderTeamOutcome` stores observed external names and their matched, unmatched, ambiguous, or ignored status. The odds pipeline loads provider-specific aliases before mapping events; result providers retain their code/ID matching and use exact aliases only as a conservative fallback.

@@ -7,6 +7,7 @@ import { FIFA_TO_APIFOOTBALL_IDS, lookupTeamId } from '../odds/h2h';
 import { getProviderCooldown } from '../odds/providers';
 import { fetchMatchResultFromFootballData, ProviderDiagnostic, ProviderResultDetails } from '../odds/football-data';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+import { recordProviderTeamNames, resolveProviderTeamAlias } from '../team-alias-service';
 
 interface ApiFootballFixture {
   fixture: {
@@ -25,6 +26,10 @@ interface ApiFootballFixture {
       home: number | null;
       away: number | null;
     };
+  };
+  teams?: {
+    home: { id: number; name: string };
+    away: { id: number; name: string };
   };
 }
 
@@ -131,13 +136,42 @@ async function fetchFromApiFootball(
     };
   }
 
+  await recordProviderTeamNames(
+    'api-football',
+    'result_fixture',
+    data.response.flatMap((fixture) => fixture.teams
+      ? [fixture.teams.home.name, fixture.teams.away.name]
+      : []),
+  ).catch(() => undefined);
+
   // Find fixture matching our kickoff (within 24h window)
   const matchKickoffDate = new Date(match.kickoffUtc);
-  const targetFixture = (data.response as ApiFootballFixture[]).find((f) => {
+  let targetFixture: ApiFootballFixture | undefined;
+  let idFilteredDateFallback: ApiFootballFixture | undefined;
+  for (const fixture of data.response) {
+    const f = fixture as ApiFootballFixture;
     const fDate = new Date(f.fixture.date);
     const diffMs = Math.abs(fDate.getTime() - matchKickoffDate.getTime());
-    return diffMs < 24 * 60 * 60 * 1000;
-  });
+    if (diffMs >= 24 * 60 * 60 * 1000) continue;
+    idFilteredDateFallback ??= f;
+    if (!f.teams) {
+      continue;
+    }
+    const [homeResolution, awayResolution] = await Promise.all([
+      resolveProviderTeamAlias('api-football', f.teams.home.name),
+      resolveProviderTeamAlias('api-football', f.teams.away.name),
+    ]);
+    if (
+      homeResolution.matched
+      && awayResolution.matched
+      && homeResolution.teamCode === match.homeTeamCode
+      && awayResolution.teamCode === match.awayTeamCode
+    ) {
+      targetFixture = f;
+      break;
+    }
+  }
+  targetFixture ??= idFilteredDateFallback;
 
   if (!targetFixture) {
     return {

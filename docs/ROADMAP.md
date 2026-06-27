@@ -254,3 +254,4 @@ The hybrid approach gives us the best of both: the reference's production-qualit
 # Provider operations
 
 - [x] Add encrypted provider credential management, environment fallback, manual connection tests, and quota diagnostics in `/admin/odds`.
+- [x] Add persistent provider team aliases, unmatched outcome diagnostics, and conservative manual mapping in `/admin/odds`.

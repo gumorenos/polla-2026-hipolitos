@@ -123,6 +123,8 @@ model Team {
   oddsSnapshots     OddsSnapshot[]
   h2hHomeSnapshots  HeadToHeadSnapshot[] @relation("H2HHomeTeam")
   h2hAwaySnapshots  HeadToHeadSnapshot[] @relation("H2HAwayTeam")
+  aliases           TeamAlias[]
+  suggestedProviderOutcomes ProviderTeamOutcome[] @relation("SuggestedProviderTeam")
 
   @@map("team")
 }
@@ -498,6 +500,47 @@ model ProviderCredential {
   updatedByUserId       String?
 
   @@map("provider_credential")
+}
+
+model TeamAlias {
+  id              String   @id @default(cuid())
+  teamCode        String
+  provider        String
+  alias           String
+  normalizedAlias String
+  confidence      Float?
+  source          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdByUserId String?
+
+  team Team @relation(fields: [teamCode], references: [code], onDelete: Cascade)
+
+  @@unique([provider, normalizedAlias])
+  @@index([teamCode])
+  @@map("team_alias")
+}
+
+model ProviderTeamOutcome {
+  id                String   @id @default(cuid())
+  provider          String
+  marketType        String
+  rawName           String
+  normalizedName    String
+  samplePayload     String?
+  firstSeenAt       DateTime @default(now())
+  lastSeenAt        DateTime @default(now())
+  suggestedTeamCode String?
+  confidence        Float?
+  reason            String?
+  status            String   @default("unmatched")
+
+  suggestedTeam Team? @relation("SuggestedProviderTeam", fields: [suggestedTeamCode], references: [code], onDelete: SetNull)
+
+  @@unique([provider, marketType, normalizedName])
+  @@index([status, lastSeenAt])
+  @@index([suggestedTeamCode])
+  @@map("provider_team_outcome")
 }
 
 model ProviderStatus {

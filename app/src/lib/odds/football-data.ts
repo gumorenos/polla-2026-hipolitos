@@ -1,4 +1,5 @@
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+import { recordProviderTeamNames, resolveProviderTeamAlias } from '../team-alias-service';
 
 /**
  * football-data.org result provider
@@ -202,12 +203,41 @@ export async function fetchMatchResultFromFootballData(
     };
   }
 
+  await recordProviderTeamNames(
+    'football-data',
+    'result_fixture',
+    data.matches.flatMap((candidate) => [
+      candidate.homeTeam.name,
+      candidate.homeTeam.shortName,
+      candidate.awayTeam.name,
+      candidate.awayTeam.shortName,
+    ]),
+  ).catch(() => undefined);
+
   // Find the matching fixture by team codes
-  const fdMatch = data.matches.find((m) => {
+  let fdMatch = data.matches.find((m) => {
     const fdHome = normalizeTla(m.homeTeam.tla);
     const fdAway = normalizeTla(m.awayTeam.tla);
     return fdHome === match.homeTeamCode && fdAway === match.awayTeamCode;
   });
+
+  if (!fdMatch) {
+    for (const candidate of data.matches) {
+      const [homeResolution, awayResolution] = await Promise.all([
+        resolveProviderTeamAlias('football-data', candidate.homeTeam.name),
+        resolveProviderTeamAlias('football-data', candidate.awayTeam.name),
+      ]);
+      if (
+        homeResolution.matched
+        && awayResolution.matched
+        && homeResolution.teamCode === match.homeTeamCode
+        && awayResolution.teamCode === match.awayTeamCode
+      ) {
+        fdMatch = candidate;
+        break;
+      }
+    }
+  }
 
   if (!fdMatch) {
     return {

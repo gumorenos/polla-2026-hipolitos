@@ -182,6 +182,34 @@ export default async function AdminOddsPage() {
     apiFootball: providerConfigured.get('api-football') ?? false,
     simulatedAllowed: process.env.ODDS_ALLOW_SIMULATED_DATA === 'true',
   };
+  const [mappingTeams, teamAliasCount, providerTeamOutcomes] = await Promise.all([
+    prisma.team.findMany({
+      orderBy: { name: 'asc' },
+      select: { code: true, name: true },
+    }),
+    prisma.teamAlias.count(),
+    prisma.providerTeamOutcome.findMany({
+      orderBy: { lastSeenAt: 'desc' },
+      take: 100,
+      include: {
+        suggestedTeam: { select: { code: true, name: true } },
+      },
+    }),
+  ]);
+  const serializedProviderTeamOutcomes = providerTeamOutcomes.map((outcome) => ({
+    id: outcome.id,
+    provider: outcome.provider,
+    marketType: outcome.marketType,
+    rawName: outcome.rawName,
+    normalizedName: outcome.normalizedName,
+    status: outcome.status,
+    confidence: outcome.confidence,
+    reason: outcome.reason,
+    suggestedTeamCode: outcome.suggestedTeamCode,
+    suggestedTeamName: outcome.suggestedTeam?.name ?? null,
+    firstSeenAt: outcome.firstSeenAt.toISOString(),
+    lastSeenAt: outcome.lastSeenAt.toISOString(),
+  }));
 
   // Compute future matches count and next future match details
   const now = new Date();
@@ -281,6 +309,9 @@ export default async function AdminOddsPage() {
           lastFallbackSuccessTime={lastFallbackSuccessTime}
           providerConfigs={providerConfiguration.providers}
           encryptionConfigured={providerConfiguration.encryptionConfigured}
+          mappingTeams={mappingTeams}
+          teamAliasCount={teamAliasCount}
+          providerTeamOutcomes={serializedProviderTeamOutcomes}
         />
       </div>
     </>

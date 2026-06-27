@@ -331,3 +331,10 @@ We implement the following 6 tie-breakers sequentially:
 - `API_KEYS_ENCRYPTION_SECRET` remains outside Git and is required to save or decrypt database credentials.
 - Provider clients resolve an active database credential first and preserve enabled environment variables as fallback.
 - Connection tests are explicit superadmin actions; provider APIs are not contacted during admin page load.
+
+# Provider team identity mapping
+
+- Provider team names are normalized and persisted separately from canonical `Team` records.
+- Exact provider aliases override global aliases; code and normalized local name are fallback criteria.
+- Ambiguous or weak matches are diagnostic-only and cannot silently create mappings.
+- Provider observations are collected only during existing fetch operations, never during normal page load.

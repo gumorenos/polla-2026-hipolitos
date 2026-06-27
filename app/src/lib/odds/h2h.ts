@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { getProviderCooldown, setProviderCooldown } from './providers';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+import { recordProviderTeamNames } from '../team-alias-service';
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -39,8 +40,8 @@ export interface HeadToHeadStats {
 
 interface ApiFootballFixture {
   teams: {
-    home: { id: number; winner: boolean | null };
-    away: { id: number; winner: boolean | null };
+    home: { id: number; name: string; winner: boolean | null };
+    away: { id: number; name: string; winner: boolean | null };
   };
   goals: {
     home: number | null;
@@ -179,6 +180,13 @@ export async function lookupTeamId(code: string, apiKey: string): Promise<number
       }
     }
     if (data && data.response && data.response.length > 0) {
+      await recordProviderTeamNames(
+        'api-football',
+        'team_lookup',
+        data.response
+          .map((entry: { team?: { name?: string } }) => entry.team?.name ?? '')
+          .filter(Boolean),
+      ).catch(() => undefined);
       await setProviderCooldown('api-football', 0, 200, null); // Clear cooldown
       return data.response[0].team.id;
     }
@@ -307,6 +315,11 @@ export async function getHeadToHeadStats(matchId: string, bypassCooldown = false
     }
 
     const fixtures = data.response as ApiFootballFixture[];
+    await recordProviderTeamNames(
+      'api-football',
+      'h2h_fixture',
+      fixtures.flatMap((fixture) => [fixture.teams.home.name, fixture.teams.away.name]),
+    ).catch(() => undefined);
     
     // Parse fixtures relative to homeId
     const parsedFixtures = fixtures.map((f) => {

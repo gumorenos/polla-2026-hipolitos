@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power } from 'lucide-react';
+import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power, Tags, Link2, Ban } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
@@ -17,6 +17,11 @@ import {
   saveProviderCredentialAction,
   testProviderConnectionAction,
 } from '../../../lib/actions/provider-credentials';
+import {
+  ignoreProviderTeamOutcomeAction,
+  linkProviderTeamOutcomeAction,
+  seedSuggestedTeamAliasesAction,
+} from '../../../lib/actions/team-aliases';
 
 interface ProviderAdminInfo {
   provider: 'the-odds-api' | 'odds-api-io' | 'football-data' | 'api-football';
@@ -34,6 +39,26 @@ interface ProviderAdminInfo {
   lastRequestCost: number | null;
   lastResetAt: string | null;
   lastResetInSeconds: number | null;
+}
+
+interface MappingTeamInfo {
+  code: string;
+  name: string;
+}
+
+interface ProviderTeamOutcomeInfo {
+  id: string;
+  provider: string;
+  marketType: string;
+  rawName: string;
+  normalizedName: string;
+  status: string;
+  confidence: number | null;
+  reason: string | null;
+  suggestedTeamCode: string | null;
+  suggestedTeamName: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
 }
 
 interface MatchAdminInfo {
@@ -99,6 +124,9 @@ interface OddsAdminClientProps {
   lastFallbackSuccessTime: string | null;
   providerConfigs: ProviderAdminInfo[];
   encryptionConfigured: boolean;
+  mappingTeams: MappingTeamInfo[];
+  teamAliasCount: number;
+  providerTeamOutcomes: ProviderTeamOutcomeInfo[];
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -122,6 +150,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   lastFallbackSuccessTime,
   providerConfigs,
   encryptionConfigured,
+  mappingTeams,
+  teamAliasCount,
+  providerTeamOutcomes,
 }) => {
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -131,6 +162,8 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [providerLoading, setProviderLoading] = useState<string | null>(null);
+  const [aliasLoading, setAliasLoading] = useState<string | null>(null);
+  const [mappingSelection, setMappingSelection] = useState<Record<string, string>>({});
 
   const runProviderAction = async (
     provider: ProviderAdminInfo,
@@ -158,6 +191,38 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
       router.refresh();
     }
     setProviderLoading(null);
+  };
+
+  const handleSeedAliases = async () => {
+    setAliasLoading('seed');
+    setStatusMsg(null);
+    const result = await seedSuggestedTeamAliasesAction();
+    setStatusMsg({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) router.refresh();
+    setAliasLoading(null);
+  };
+
+  const handleLinkOutcome = async (outcome: ProviderTeamOutcomeInfo) => {
+    const teamCode = mappingSelection[outcome.id] ?? outcome.suggestedTeamCode ?? '';
+    if (!teamCode) {
+      setStatusMsg({ type: 'error', text: 'Selecciona un equipo local.' });
+      return;
+    }
+    setAliasLoading(outcome.id);
+    setStatusMsg(null);
+    const result = await linkProviderTeamOutcomeAction(outcome.id, teamCode);
+    setStatusMsg({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) router.refresh();
+    setAliasLoading(null);
+  };
+
+  const handleIgnoreOutcome = async (outcomeId: string) => {
+    setAliasLoading(outcomeId);
+    setStatusMsg(null);
+    const result = await ignoreProviderTeamOutcomeAction(outcomeId);
+    setStatusMsg({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) router.refresh();
+    setAliasLoading(null);
   };
 
   const filteredMatches = matches.filter((m) => {
@@ -494,6 +559,132 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             );
           })}
         </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="team-mapping-title">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 id="team-mapping-title" className="font-display text-xl text-text-primary flex items-center gap-2">
+              <Tags className="w-5 h-5 text-gold-400" />
+              MAPEO DE EQUIPOS POR PROVEEDOR
+            </h3>
+            <p className="text-xs text-text-secondary">
+              {teamAliasCount} aliases guardados · {providerTeamOutcomes.length} nombres observados
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSeedAliases}
+            disabled={aliasLoading !== null}
+            className="btn-secondary px-3 py-2 text-xs flex items-center gap-2 disabled:opacity-50"
+          >
+            <Tags className="w-4 h-4" />
+            Crear aliases sugeridos
+          </button>
+        </div>
+
+        {providerTeamOutcomes.length === 0 ? (
+          <div className="border border-border-default bg-bg-elevated p-4 rounded text-xs text-text-secondary">
+            Todavía no hay nombres de equipos observados en respuestas de proveedores.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {providerTeamOutcomes.map((outcome) => {
+              const statusClass = outcome.status === 'matched'
+                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                : outcome.status === 'ambiguous'
+                  ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30'
+                  : outcome.status === 'ignored'
+                    ? 'bg-slate-500/10 text-slate-300 border-slate-500/30'
+                    : 'bg-red-500/10 text-red-300 border-red-500/30';
+              const selectedTeam = mappingSelection[outcome.id] ?? outcome.suggestedTeamCode ?? '';
+              const busy = aliasLoading === outcome.id;
+
+              return (
+                <article key={outcome.id} className="card-base p-4 border-border-default/70 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-primary break-words">{outcome.rawName}</p>
+                      <p className="text-[10px] text-text-secondary font-mono break-words">{outcome.normalizedName}</p>
+                    </div>
+                    <span className={`text-[9px] font-mono font-bold px-2 py-1 rounded border ${statusClass}`}>
+                      {outcome.status.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <dl className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <dt className="text-text-secondary">Proveedor</dt>
+                      <dd className="font-mono text-text-primary">{outcome.provider}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-text-secondary">Contexto</dt>
+                      <dd className="font-mono text-text-primary">{outcome.marketType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-text-secondary">Equipo local</dt>
+                      <dd className="font-mono text-text-primary">
+                        {outcome.suggestedTeamCode
+                          ? `${outcome.suggestedTeamCode} · ${outcome.suggestedTeamName ?? ''}`
+                          : 'Sin vincular'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-text-secondary">Confianza</dt>
+                      <dd className="font-mono text-text-primary">
+                        {outcome.confidence !== null ? `${Math.round(outcome.confidence * 100)}%` : 'No disponible'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {outcome.reason && (
+                    <p className="text-[10px] text-text-secondary border-l-2 border-border-default pl-2">
+                      {outcome.reason}
+                    </p>
+                  )}
+
+                  {outcome.status !== 'ignored' && (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        value={selectedTeam}
+                        onChange={(event) => setMappingSelection((current) => ({
+                          ...current,
+                          [outcome.id]: event.target.value,
+                        }))}
+                        disabled={busy}
+                        aria-label={`Equipo local para ${outcome.rawName}`}
+                        className="min-w-0 flex-1 bg-bg-elevated border border-border-default rounded px-3 py-2 text-xs text-text-primary disabled:opacity-50"
+                      >
+                        <option value="">Seleccionar equipo</option>
+                        {mappingTeams.map((team) => (
+                          <option key={team.code} value={team.code}>{team.code} · {team.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleLinkOutcome(outcome)}
+                        disabled={busy || !selectedTeam}
+                        className="btn-primary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        Vincular / crear alias
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleIgnoreOutcome(outcome.id)}
+                        disabled={busy}
+                        className="btn-secondary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        Ignorar
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* API Providers Status Cards */}

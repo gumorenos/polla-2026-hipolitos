@@ -1,5 +1,10 @@
 import { prisma } from '../db';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
+import {
+  getProviderAliasLookup,
+  recordProviderTeamNames,
+  type ProviderAliasLookup,
+} from '../team-alias-service';
 
 export async function getProviderCooldown(provider: string): Promise<Date | null> {
   try {
@@ -97,6 +102,7 @@ export interface OddsMatchInfo {
   homeTeamName: string;
   awayTeamName: string;
   debugMatch?: boolean;
+  aliasLookup?: ProviderAliasLookup;
 }
 
 interface DiagnosticRecord {
@@ -112,6 +118,33 @@ interface DiagnosticRecord {
   scoreHome?: number;
   scoreAway?: number;
   reason: string;
+}
+
+function getAliasesForProvider(
+  matchInfo: OddsMatchInfo,
+  provider: string,
+): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const code of [matchInfo.homeTeamCode, matchInfo.awayTeamCode]) {
+    result[code] = [
+      ...(matchInfo.aliasLookup?.['*']?.[code] ?? []),
+      ...(matchInfo.aliasLookup?.[provider]?.[code] ?? []),
+    ];
+  }
+  return result;
+}
+
+function collectProviderTeamNames(events: ProviderEvent[]): string[] {
+  const names: string[] = [];
+  for (const event of events) {
+    names.push(event.home_team, event.away_team);
+    for (const bookmaker of event.bookmakers ?? []) {
+      for (const market of bookmaker.markets ?? []) {
+        for (const outcome of market.outcomes ?? []) names.push(outcome.name);
+      }
+    }
+  }
+  return names;
 }
 
 // Map of team codes to common English/Spanish names for matching API data
@@ -220,13 +253,13 @@ export function normalizeTeamName(name: string): string {
 }
 
 // Check if a team name matches a team code using exact alias matching
-export function matchTeamName(teamName: string, code: string): boolean {
+export function matchTeamName(teamName: string, code: string, extraAliases: string[] = []): boolean {
   if (!teamName || !code) return false;
   const normInput = normalizeTeamName(teamName);
   const normCode = normalizeTeamName(code);
   if (normInput === normCode) return true;
 
-  const allowedNames = TEAM_NAMES_MAP[code] || [];
+  const allowedNames = [...(TEAM_NAMES_MAP[code] || []), ...extraAliases];
   return allowedNames.some(name => normalizeTeamName(name) === normInput);
 }
 
@@ -277,7 +310,8 @@ export function matchEventToFixture(
   event: ProviderEvent,
   homeCode: string,
   awayCode: string,
-  matchKickoffUtc: Date | number
+  matchKickoffUtc: Date | number,
+  aliasesByCode: Record<string, string[]> = {},
 ): { 
   matches: boolean; 
   reason?: string; 
@@ -290,11 +324,11 @@ export function matchEventToFixture(
   const eventAway = event.away_team;
 
   // 1. Try Exact Alias Matching first
-  const homeMatchesExactDirect = matchTeamName(eventHome, homeCode);
-  const awayMatchesExactDirect = matchTeamName(eventAway, awayCode);
+  const homeMatchesExactDirect = matchTeamName(eventHome, homeCode, aliasesByCode[homeCode]);
+  const awayMatchesExactDirect = matchTeamName(eventAway, awayCode, aliasesByCode[awayCode]);
 
-  const homeMatchesExactReverse = matchTeamName(eventHome, awayCode);
-  const awayMatchesExactReverse = matchTeamName(eventAway, homeCode);
+  const homeMatchesExactReverse = matchTeamName(eventHome, awayCode, aliasesByCode[awayCode]);
+  const awayMatchesExactReverse = matchTeamName(eventAway, homeCode, aliasesByCode[homeCode]);
 
   if (homeMatchesExactDirect && awayMatchesExactDirect) {
     return { matches: true, isFuzzy: false, isReverse: false };
@@ -316,14 +350,14 @@ export function matchEventToFixture(
     return { matches: false, reason: `Kickoff time difference is too large (${timeDiffHours.toFixed(1)} hours, max 12 hours)` };
   }
 
-  const threshold = 0.65;
+  const threshold = 0.75;
 
   const getMaxSimilarity = (name: string, code: string): number => {
     const normName = normalizeTeamName(name);
     const normCode = normalizeTeamName(code);
     let maxScore = getSimilarityScore(normName, normCode);
 
-    const aliases = TEAM_NAMES_MAP[code] || [];
+    const aliases = [...(TEAM_NAMES_MAP[code] || []), ...(aliasesByCode[code] || [])];
     for (const alias of aliases) {
       const score = getSimilarityScore(normName, normalizeTeamName(alias));
       if (score > maxScore) {
@@ -342,6 +376,14 @@ export function matchEventToFixture(
   const isDirectMatch = simHomeDirect >= threshold && simAwayDirect >= threshold;
   const isReverseMatch = simHomeReverse >= threshold && simAwayReverse >= threshold;
 
+  if (isDirectMatch && isReverseMatch) {
+    return {
+      matches: false,
+      reason: 'Coincidencia difusa ambigua entre orden directo e inverso.',
+      scoreHome: Math.max(simHomeDirect, simHomeReverse),
+      scoreAway: Math.max(simAwayDirect, simAwayReverse),
+    };
+  }
   if (isDirectMatch) {
     return {
       matches: true,
@@ -368,6 +410,12 @@ export function matchEventToFixture(
     scoreHome: Math.max(simHomeDirect, simHomeReverse),
     scoreAway: Math.max(simAwayDirect, simAwayReverse)
   };
+}
+
+function isSafeProviderMatchForSnapshot(match: ReturnType<typeof matchEventToFixture>): boolean {
+  if (!match.matches) return false;
+  if (!match.isFuzzy) return true;
+  return (match.scoreHome ?? 0) >= 0.9 && (match.scoreAway ?? 0) >= 0.9;
 }
 
 // Generate mock odds for simulation fallback
@@ -508,6 +556,7 @@ async function fetchOddsApiIo(
 ): Promise<MatchOdds | null> {
   const sport = process.env.ODDS_API_IO_SPORT || 'football';
   const leagueConf = process.env.ODDS_API_IO_LEAGUE || '';
+  const aliasesByCode = getAliasesForProvider(matchInfo, 'odds-api-io');
 
   if (tracker) {
     tracker.attempted.add('odds-api-io');
@@ -585,6 +634,11 @@ async function fetchOddsApiIo(
       }
 
       const events = data.data as ProviderEvent[];
+      await recordProviderTeamNames(
+        'odds-api-io',
+        'match_winner',
+        collectProviderTeamNames(events),
+      ).catch(() => undefined);
       if (matchInfo.debugMatch) {
         console.log(`[Odds-API.io] Event count returned for league "${leagueSlug}": ${events.length}`);
       }
@@ -598,7 +652,8 @@ async function fetchOddsApiIo(
           e,
           matchInfo.homeTeamCode,
           matchInfo.awayTeamCode,
-          matchInfo.kickoffUtc
+          matchInfo.kickoffUtc,
+          aliasesByCode,
         );
 
         if (matchInfo.debugMatch) {
@@ -618,7 +673,7 @@ async function fetchOddsApiIo(
           });
         }
 
-        if (matchResult.matches) {
+        if (isSafeProviderMatchForSnapshot(matchResult)) {
           matchedEvent = e;
           matchedIsReverse = !!matchResult.isReverse;
           break;
@@ -651,11 +706,11 @@ async function fetchOddsApiIo(
 
       for (const outcome of market.outcomes) {
         const isHome = matchedIsReverse
-          ? (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.away_team)
-          : (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.home_team);
+          ? (matchTeamName(outcome.name, matchInfo.homeTeamCode, aliasesByCode[matchInfo.homeTeamCode]) || outcome.name === matchedEvent.away_team)
+          : (matchTeamName(outcome.name, matchInfo.homeTeamCode, aliasesByCode[matchInfo.homeTeamCode]) || outcome.name === matchedEvent.home_team);
         const isAway = matchedIsReverse
-          ? (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.home_team)
-          : (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.away_team);
+          ? (matchTeamName(outcome.name, matchInfo.awayTeamCode, aliasesByCode[matchInfo.awayTeamCode]) || outcome.name === matchedEvent.home_team)
+          : (matchTeamName(outcome.name, matchInfo.awayTeamCode, aliasesByCode[matchInfo.awayTeamCode]) || outcome.name === matchedEvent.away_team);
 
         if (isHome) {
           homeOdds = outcome.price;
@@ -787,6 +842,7 @@ async function fetchTheOddsApi(
   const sportKey = process.env.THE_ODDS_API_SPORT_KEY || 'soccer_fifa_world_cup';
   const regions = process.env.THE_ODDS_API_REGIONS || 'eu,uk,us';
   const markets = process.env.THE_ODDS_API_MARKETS || 'h2h';
+  const aliasesByCode = getAliasesForProvider(matchInfo, 'the-odds-api');
 
   if (tracker) {
     tracker.attempted.add('the-odds-api');
@@ -838,6 +894,11 @@ async function fetchTheOddsApi(
     }
 
     const events = data as ProviderEvent[];
+    await recordProviderTeamNames(
+      'the-odds-api',
+      'match_winner',
+      collectProviderTeamNames(events),
+    ).catch(() => undefined);
     if (matchInfo.debugMatch) {
       console.log(`[The Odds API] Event count returned: ${events.length}`);
     }
@@ -850,7 +911,8 @@ async function fetchTheOddsApi(
         e,
         matchInfo.homeTeamCode,
         matchInfo.awayTeamCode,
-        matchInfo.kickoffUtc
+        matchInfo.kickoffUtc,
+        aliasesByCode,
       );
 
       if (matchInfo.debugMatch) {
@@ -869,7 +931,7 @@ async function fetchTheOddsApi(
         });
       }
 
-      if (matchResult.matches) {
+      if (isSafeProviderMatchForSnapshot(matchResult)) {
         matchedEvent = e;
         matchedIsReverse = !!matchResult.isReverse;
         break;
@@ -940,11 +1002,11 @@ async function fetchTheOddsApi(
 
     for (const outcome of market.outcomes) {
       const isHome = matchedIsReverse
-        ? (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.away_team)
-        : (matchTeamName(outcome.name, matchInfo.homeTeamCode) || outcome.name === matchedEvent.home_team);
+        ? (matchTeamName(outcome.name, matchInfo.homeTeamCode, aliasesByCode[matchInfo.homeTeamCode]) || outcome.name === matchedEvent.away_team)
+        : (matchTeamName(outcome.name, matchInfo.homeTeamCode, aliasesByCode[matchInfo.homeTeamCode]) || outcome.name === matchedEvent.home_team);
       const isAway = matchedIsReverse
-        ? (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.home_team)
-        : (matchTeamName(outcome.name, matchInfo.awayTeamCode) || outcome.name === matchedEvent.away_team);
+        ? (matchTeamName(outcome.name, matchInfo.awayTeamCode, aliasesByCode[matchInfo.awayTeamCode]) || outcome.name === matchedEvent.home_team)
+        : (matchTeamName(outcome.name, matchInfo.awayTeamCode, aliasesByCode[matchInfo.awayTeamCode]) || outcome.name === matchedEvent.away_team);
 
       if (isHome) {
         homeOdds = outcome.price;
@@ -1026,6 +1088,7 @@ export async function getMatchWinnerOdds(
     homeTeamName: match.homeTeam.name,
     awayTeamName: match.awayTeam.name,
     debugMatch,
+    aliasLookup: await getProviderAliasLookup([match.homeTeamCode, match.awayTeamCode]),
   };
 
   let result: MatchOdds | null = null;

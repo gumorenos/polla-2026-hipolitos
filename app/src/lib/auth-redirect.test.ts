@@ -30,4 +30,9 @@ describe('Auth Redirect Logic', () => {
     expect(determineLoginRedirect(null, false, 'pending')).toBe('/');
     expect(determineLoginRedirect(null, false, 'rejected')).toBe('/');
   });
+
+  it('handles undefined or null status gracefully', () => {
+    // If status is undefined, they go to the fallback /
+    expect(determineLoginRedirect(null, false, undefined)).toBe('/');
+  });
 });

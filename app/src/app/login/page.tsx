@@ -105,7 +105,7 @@ function LoginFormInner() {
           // Check for valid 'next' param
           const nextUrl = searchParams.get('next');
           const isSuperadmin = data?.user?.isSuperadmin === true;
-          const status = data?.user?.status;
+          const status = data?.user?.status ?? undefined;
           
           const targetUrl = determineLoginRedirect(nextUrl, isSuperadmin, status);
           router.push(targetUrl);

@@ -1,15 +1,14 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useViewMode } from '../components/layout/ViewModeProvider';
 
 /**
- * Returns true when the superadmin has activated participant-view mode
- * by navigating to any page with ?view=participant in the URL.
+ * Returns true when the authenticated superadmin has activated the persistent
+ * participant preview.
  *
  * This is a UI-only mode. The authenticated user and their server-side
  * permissions remain completely unchanged.
  */
 export function useParticipantView(): boolean {
-  const searchParams = useSearchParams();
-  return searchParams.get('view') === 'participant';
+  return useViewMode().isParticipantPreview;
 }

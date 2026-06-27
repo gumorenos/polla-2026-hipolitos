@@ -5,6 +5,8 @@ import { getCurrentSession } from '../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
 import { Trophy, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { getEffectiveViewMode, shouldShowAdminUi, VIEW_MODE_COOKIE_NAME } from '../../lib/view-mode';
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,12 @@ export default async function RankingPage({
 
   const userId = session.user.id;
   const sParams = await searchParams;
+  const cookieStore = await cookies();
+  const viewMode = getEffectiveViewMode(
+    session.user.isSuperadmin === true,
+    cookieStore.get(VIEW_MODE_COOKIE_NAME)?.value,
+  );
+  const showAdminControls = shouldShowAdminUi(session.user.isSuperadmin === true, viewMode);
 
   // Fetch all leagues user is in
   const memberships = await prisma.leagueMember.findMany({
@@ -62,7 +70,7 @@ export default async function RankingPage({
   const selectedLeagueId = sParams.league || defaultLeague.id;
   const selectedLeague = memberships.find(m => m.league.id === selectedLeagueId)?.league || defaultLeague;
 
-  const showDisabled = sParams.showDisabled === 'true' && session.user.isSuperadmin;
+  const showDisabled = sParams.showDisabled === 'true' && showAdminControls;
 
   // Fetch standings for selected league
   const standings = await prisma.standing.findMany({
@@ -174,7 +182,7 @@ export default async function RankingPage({
           ))}
         </div>
 
-        {session.user.isSuperadmin && (
+        {showAdminControls && (
           <div className="flex justify-end pt-1">
             <Link
               href={`/ranking?league=${selectedLeague.id}&showDisabled=${!showDisabled}`}

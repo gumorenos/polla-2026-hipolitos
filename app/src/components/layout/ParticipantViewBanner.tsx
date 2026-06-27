@@ -1,9 +1,9 @@
 'use client';
 
-import React, { Suspense } from 'react';
-import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Eye, ArrowLeft, Shield } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Eye } from 'lucide-react';
+import { useViewMode } from './ViewModeProvider';
+import { ViewModeSwitchButton } from './ViewModeSwitchButton';
 
 /**
  * Banner shown when a superadmin is browsing in participant-view mode.
@@ -12,17 +12,17 @@ import { Eye, ArrowLeft, Shield } from 'lucide-react';
  * This is purely a UI mode — the authenticated user and server-side permissions
  * remain unchanged.
  */
-function ParticipantViewBannerInner() {
-  const searchParams = useSearchParams();
+export function ParticipantViewBanner() {
   const pathname = usePathname();
+  const { isParticipantPreview } = useViewMode();
 
-  if (searchParams.get('view') !== 'participant') {
+  if (!isParticipantPreview) {
     return null;
   }
 
-  // Build back-to-admin URL: strip the ?view=participant param from the current URL
-  // and redirect to /admin
-  const backHref = '/admin';
+  const description = pathname.startsWith('/admin')
+    ? 'Las herramientas administrativas siguen disponibles porque eres superadmin.'
+    : 'Estás viendo la app con la interfaz de un participante. Tus permisos reales no cambian.';
 
   return (
     <div
@@ -37,27 +37,16 @@ function ParticipantViewBannerInner() {
             Vista de participante activa
           </span>
           <span className="hidden sm:inline text-amber-200/70 font-normal normal-case tracking-normal">
-            — Estás viendo la app como participante. Tus permisos de administrador siguen activos.
+            {description}
           </span>
         </div>
 
-        <Link
-          href={backHref}
+        <ViewModeSwitchButton
+          targetMode="admin"
+          redirectTo="/admin"
           className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1 rounded-lg transition-colors whitespace-nowrap"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <Shield className="w-3.5 h-3.5" />
-          Volver a vista admin
-        </Link>
+        />
       </div>
     </div>
-  );
-}
-
-export function ParticipantViewBanner() {
-  return (
-    <Suspense fallback={null}>
-      <ParticipantViewBannerInner />
-    </Suspense>
   );
 }

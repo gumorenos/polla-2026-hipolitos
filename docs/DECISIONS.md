@@ -338,3 +338,15 @@ We implement the following 6 tie-breakers sequentially:
 - Exact provider aliases override global aliases; code and normalized local name are fallback criteria.
 - Ambiguous or weak matches are diagnostic-only and cannot silently create mappings.
 - Provider observations are collected only during existing fetch operations, never during normal page load.
+
+## ADR-018 — Persistent Superadmin Participant Preview
+
+**Date:** 2026-06-27
+**Status:** Accepted
+
+**Decision:** Persist the superadmin visual mode in a `viewMode` cookie and derive the effective interface from that value plus the authenticated session. The cookie is presentation state only and is never used to grant access.
+
+**Rationale:**
+- Navigation must preserve the preview without adding query parameters to every link.
+- Normal users cannot expose admin UI by changing the cookie because their effective mode is always participant.
+- Server-rendered participant pages can hide administrative presentation controls while continuing to authorize actions from the real session.

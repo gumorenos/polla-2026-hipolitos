@@ -4,14 +4,18 @@ import React from 'react';
 import { usePathname } from 'next/navigation';
 import { AppShell } from './AppShell';
 import { authClient } from '../../lib/auth-client';
+import type { ViewMode } from '../../lib/view-mode';
+import { ViewModeProvider } from './ViewModeProvider';
 
 interface AppLayoutWrapperProps {
   children: React.ReactNode;
+  storedViewMode: ViewMode | null;
 }
 
-export const AppLayoutWrapper: React.FC<AppLayoutWrapperProps> = ({ children }) => {
+export const AppLayoutWrapper: React.FC<AppLayoutWrapperProps> = ({ children, storedViewMode }) => {
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
+  const isSuperadmin = session?.user?.isSuperadmin === true;
 
   // Exclude login and API endpoints from the persistent shell
   const isAuthPage = pathname === '/login' || pathname.startsWith('/api/');
@@ -27,5 +31,9 @@ export const AppLayoutWrapper: React.FC<AppLayoutWrapperProps> = ({ children }) 
     return <>{children}</>;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <ViewModeProvider isSuperadmin={isSuperadmin} storedViewMode={storedViewMode}>
+      <AppShell>{children}</AppShell>
+    </ViewModeProvider>
+  );
 };

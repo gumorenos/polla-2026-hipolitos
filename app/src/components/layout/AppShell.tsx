@@ -1,23 +1,19 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React from 'react';
 import { BottomNav } from './BottomNav';
 import { SidebarNav } from './SidebarNav';
 import { Shield } from 'lucide-react';
-import { authClient } from '../../lib/auth-client';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { ParticipantViewBanner } from './ParticipantViewBanner';
+import { useViewMode } from './ViewModeProvider';
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 function MobileHeader() {
-  const searchParams = useSearchParams();
-  const { data: session } = authClient.useSession();
-  
-  const isSuperadmin = session?.user?.isSuperadmin === true;
-  const isParticipantView = searchParams.get('view') === 'participant';
+  const { showAdminUi } = useViewMode();
 
   return (
     <header className="md:hidden h-14 bg-bg-tertiary border-b border-border-default flex items-center justify-between px-4 sticky top-0 z-40 shadow-md">
@@ -29,7 +25,7 @@ function MobileHeader() {
       </div>
 
       <div className="flex items-center gap-2">
-        {isSuperadmin && !isParticipantView && (
+        {showAdminUi && (
           <span className="text-[10px] bg-gold-400/15 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
             <Shield className="w-2.5 h-2.5" /> Superadmin
           </span>
@@ -55,22 +51,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Main Page Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
-        {/* Participant View Banner — sticky at top, shown to superadmins in view=participant mode */}
+        {/* Participant preview is visual only; authorization continues to use the real session. */}
         <ParticipantViewBanner />
 
         {/* Mobile Header Bar */}
-        <Suspense fallback={
-          <header className="md:hidden h-14 bg-bg-tertiary border-b border-border-default flex items-center justify-between px-4 sticky top-0 z-40 shadow-md">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gold-400/10 border border-gold-500 flex items-center justify-center text-gold-400 font-bold font-display text-lg tracking-wider">
-                P
-              </div>
-              <span className="font-display text-xl tracking-wider text-text-primary">LA POLLA 2026</span>
-            </div>
-          </header>
-        }>
-          <MobileHeader />
-        </Suspense>
+        <MobileHeader />
 
         {/* Dynamic Page Scroll Content */}
         <main className={mainClassName}>

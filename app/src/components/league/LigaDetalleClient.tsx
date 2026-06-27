@@ -16,6 +16,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
+import { useParticipantView } from '../../hooks/useParticipantView';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -119,6 +120,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
   winnerPredictionHistories = [],
   teams = [],
 }) => {
+  const isParticipantPreview = useParticipantView();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'standings' | 'members' | 'settings' | 'history'>('standings');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -165,8 +167,8 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
     }
   };
 
-  const canManage = isSuperadmin || currentUserRole === 'owner' || currentUserRole === 'admin';
-  const isOwner = isSuperadmin || currentUserRole === 'owner';
+  const canManage = !isParticipantPreview && (isSuperadmin || currentUserRole === 'owner' || currentUserRole === 'admin');
+  const isOwner = !isParticipantPreview && (isSuperadmin || currentUserRole === 'owner');
 
   const handleCopyLink = () => {
     const inviteLink = `${window.location.origin}/join/${league.inviteCode}`;
@@ -581,7 +583,7 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
 
                           <div className="flex gap-2 flex-wrap items-center">
                             {/* Superadmin correction tools */}
-                            {isSuperadmin && (
+                            {isSuperadmin && !isParticipantPreview && (
                               <>
                                 <button
                                   type="button"

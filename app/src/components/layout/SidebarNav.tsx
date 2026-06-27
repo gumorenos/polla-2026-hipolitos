@@ -1,17 +1,17 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings, Shield, Eye } from 'lucide-react';
 import { authClient } from '../../lib/auth-client';
+import { useViewMode } from './ViewModeProvider';
+import { ViewModeSwitchButton } from './ViewModeSwitchButton';
 
-function SidebarNavInner() {
+export const SidebarNav: React.FC = () => {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = authClient.useSession();
-  const isSuperadmin = session?.user?.isSuperadmin === true;
-  const isParticipantView = searchParams.get('view') === 'participant';
+  const { isParticipantPreview, showAdminUi } = useViewMode();
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
@@ -25,13 +25,10 @@ function SidebarNavInner() {
   // In participant-view mode, hide the admin nav item
   const visibleNavItems = navItems.filter((item) => {
     if (item.adminOnly) {
-      return isSuperadmin && !isParticipantView;
+      return showAdminUi;
     }
     return true;
   });
-
-  // Build participant-view URL for the current page or default to /pronosticos
-  const participantViewHref = '/pronosticos?view=participant';
 
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen bg-bg-tertiary border-r border-border-default sticky top-0 p-4">
@@ -54,7 +51,7 @@ function SidebarNavInner() {
           return (
             <Link
               key={item.path}
-              href={isParticipantView ? `${item.path}?view=participant` : item.path}
+              href={item.path}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-gold-400/10 text-gold-400 border-l-4 border-gold-400'
@@ -68,14 +65,12 @@ function SidebarNavInner() {
         })}
 
         {/* Ver como participante — visible to superadmin when NOT in participant-view mode */}
-        {isSuperadmin && !isParticipantView && (
-          <Link
-            href={participantViewHref}
+        {showAdminUi && (
+          <ViewModeSwitchButton
+            targetMode="participant"
+            redirectTo="/pronosticos"
             className="mt-2 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-amber-400/80 hover:text-amber-300 hover:bg-amber-500/10 border border-dashed border-amber-500/30 hover:border-amber-500/50"
-          >
-            <Eye className="w-5 h-5 flex-shrink-0" />
-            <span>Ver como participante</span>
-          </Link>
+          />
         )}
       </nav>
 
@@ -90,11 +85,11 @@ function SidebarNavInner() {
               {session.user.displayName || session.user.name}
             </p>
             <span className="text-[10px] text-text-secondary flex items-center gap-1">
-              {isSuperadmin && !isParticipantView ? (
+              {showAdminUi ? (
                 <>
                   <Shield className="w-3 h-3 text-gold-400" /> Superadmin
                 </>
-              ) : isSuperadmin && isParticipantView ? (
+              ) : isParticipantPreview ? (
                 <>
                   <Eye className="w-3 h-3 text-amber-400" /> Vista participante
                 </>
@@ -106,15 +101,5 @@ function SidebarNavInner() {
         </div>
       )}
     </aside>
-  );
-}
-
-export const SidebarNav: React.FC = () => {
-  return (
-    <Suspense fallback={
-      <aside className="hidden md:flex flex-col w-64 h-screen bg-bg-tertiary border-r border-border-default sticky top-0 p-4" />
-    }>
-      <SidebarNavInner />
-    </Suspense>
   );
 };

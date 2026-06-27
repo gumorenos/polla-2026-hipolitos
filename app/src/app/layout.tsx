@@ -3,6 +3,7 @@ import { DM_Sans, IBM_Plex_Mono, Bebas_Neue } from "next/font/google";
 import "./globals.css";
 import { AppLayoutWrapper } from "../components/layout/AppLayoutWrapper";
 import { cookies } from "next/headers";
+import { parseViewMode, VIEW_MODE_COOKIE_NAME } from "../lib/view-mode";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -50,6 +51,7 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const themeMode = cookieStore.get('themeMode')?.value || 'black';
+  const storedViewMode = parseViewMode(cookieStore.get(VIEW_MODE_COOKIE_NAME)?.value);
 
   return (
     <html
@@ -57,7 +59,7 @@ export default async function RootLayout({
       className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased theme-${themeMode}`}
     >
       <body className="min-h-full flex flex-col">
-        <AppLayoutWrapper>{children}</AppLayoutWrapper>
+        <AppLayoutWrapper storedViewMode={storedViewMode}>{children}</AppLayoutWrapper>
       </body>
     </html>
   );

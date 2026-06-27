@@ -43,3 +43,11 @@ Every critical administrative action is recorded in the `AdminActionLog` databas
 - `refresh_global_odds`: Logged when global odds are refreshed.
 - `refresh_h2h`: Logged when Head-to-Head stats are populated.
 
+---
+
+## 4. Participant Preview
+
+Superadmins can select **Ver como participante** from `/admin` or the desktop navigation. The selected visual mode is persisted in the `viewMode` cookie, so it remains active while navigating between participant pages.
+
+Participant preview hides global admin navigation, superadmin badges, ranking controls for disabled users, and competition-management tools. A persistent banner identifies the preview and provides **Volver a vista admin**. This mode changes presentation only: the authenticated account and all server-side authorization checks remain unchanged.
+

@@ -22,7 +22,7 @@ export const PublicDashboardTabs: React.FC<PublicDashboardTabsProps> = ({ tabs, 
     <div className="space-y-6">
       {/* Tabs list */}
       <div className="flex border-b border-border-subtle overflow-x-auto scrollbar-thin">
-        {tabs.map((tab, idx) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}

@@ -13,6 +13,7 @@ import {
   calculateIndividualExpectedValue,
   classifyChampionPick,
   simulateChampionOdds,
+  ChampionOddsSimulationEntry,
 } from '../lib/champion-survivor';
 import { formatLeagueCurrency } from '../lib/utils/currency';
 import { calculateWorldCupQualification } from '../lib/fifa-qualification';
@@ -20,6 +21,7 @@ import { MatchOddsBar } from '../components/ui/MatchOddsBar';
 import { FifaClassificationEngine } from '../components/match/FifaClassificationEngine';
 import { PublicDashboardTabs } from '../components/ui/PublicDashboardTabs';
 import { FlagDisc } from '../components/ui/FlagDisc';
+import type { TeamTournamentStatus, ChampionOddsSnapshot } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +42,90 @@ type PublicStanding = {
   predictionsSubmitted: number;
   champPoints: number;
   matchPoints: number;
+};
+
+type PublicSession = {
+  user: {
+    id: string;
+    name: string;
+    displayName?: string | null;
+    status?: string | null;
+    isSuperadmin?: boolean | null;
+  };
+} | null;
+
+type PublicChampionPrediction = {
+  id: string;
+  userId: string;
+  teamCode: string;
+  user: {
+    id: string;
+    name: string;
+    displayName: string | null;
+  };
+  team: {
+    name: string;
+  };
+};
+
+type PublicMatchPrediction = {
+  id: string;
+  userId: string;
+  matchId: string;
+  homePrediction: number;
+  awayPrediction: number;
+  pointsEarned: number | null;
+  user: {
+    id: string;
+    name: string;
+    displayName: string | null;
+  };
+};
+
+type PublicPrizePool = {
+  amount: number;
+  estimated: boolean;
+  currency: string;
+};
+
+type ChampionSurvivorStateSummary = {
+  totalParticipants: number;
+  alive: number;
+  eliminated: number;
+  pending: number;
+  winners: number;
+  combinedAliveProbability: number | null;
+  combinedAliveProbabilityAvailable: boolean;
+};
+
+type PublicChampionRow = {
+  teamCode: string;
+  teamName: string;
+  status: string;
+  pickCount: number;
+  pickPercentage: number;
+  classificationLabel: string;
+  classificationKey: string;
+  marketProbability: number | null;
+  decimalOdds: number | null;
+  simulatedProbability: number | null;
+  expectedValue: number | null;
+  individualExpectedValue: number | null;
+};
+
+type PublicChampionPick = {
+  id: string;
+  userId: string;
+  teamCode: string;
+  submittedAt: Date | null;
+  user: {
+    id: string;
+    name: string;
+    displayName: string | null;
+  };
+  team: {
+    name: string;
+  };
 };
 
 type PublicMatch = {
@@ -409,7 +495,7 @@ export default async function PublicHome() {
   );
 }
 
-function GuestHeader({ session }: { session: any }) {
+function GuestHeader({ session }: { session: PublicSession }) {
   return (
     <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border-subtle pb-4">
       <div className="flex items-center gap-3">
@@ -426,7 +512,7 @@ function GuestHeader({ session }: { session: any }) {
   );
 }
 
-function LoginButton({ session }: { session: any }) {
+function LoginButton({ session }: { session: PublicSession }) {
   if (session?.user) {
     return (
       <Link href="/pronosticos" className="btn-gold inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-mono uppercase tracking-wider">
@@ -458,7 +544,7 @@ function FullPredictionPublicDashboard({
 }: {
   standings: PublicStanding[];
   championDistribution: Array<{ teamCode: string; teamName: string; count: number; percentage: number }>;
-  championPredictions: any[];
+  championPredictions: PublicChampionPrediction[];
 }) {
   return (
     <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -545,7 +631,7 @@ function FullPredictionMatchPredictionsList({
   predictions,
 }: {
   matches: PublicMatch[];
-  predictions: any[];
+  predictions: PublicMatchPrediction[];
 }) {
   const predictionsByMatch = new Map<string, typeof predictions>();
   for (const pred of predictions) {
@@ -618,8 +704,8 @@ function ChampionSurvivorSummaryCards({
   prizePool,
   showOdds,
 }: {
-  state: any;
-  prizePool: any;
+  state: { summary: ChampionSurvivorStateSummary };
+  prizePool: PublicPrizePool;
   showOdds: boolean;
 }) {
   const summary = state.summary;
@@ -655,8 +741,8 @@ function ChampionSurvivorTeamsTable({
   prizePool,
   showOdds,
 }: {
-  teamsReport: any[];
-  prizePool: any;
+  teamsReport: PublicChampionRow[];
+  prizePool: PublicPrizePool;
   showOdds: boolean;
 }) {
   return (
@@ -746,8 +832,8 @@ function ChampionSurvivorPicksList({
   picks,
   statusByTeam,
 }: {
-  picks: any[];
-  statusByTeam: Map<string, any>;
+  picks: PublicChampionPick[];
+  statusByTeam: Map<string, TeamTournamentStatus>;
 }) {
   return (
     <div className="card-base overflow-hidden">
@@ -1009,9 +1095,9 @@ async function buildWinnerPredictionDistribution(leagueId: string) {
 async function buildChampionSurvivorState(
   league: { id: string; entryFee: number; currency: string; prizePoolOverride: number | null; showOdds: boolean },
   approvedParticipants: number,
-  teamStatuses: any[],
-  teams: any[],
-  championOddsSnapshots: any[],
+  teamStatuses: TeamTournamentStatus[],
+  teams: Array<{ code: string; name: string }>,
+  championOddsSnapshots: ChampionOddsSnapshot[],
   approvedUserIds: Set<string>
 ) {
   const teamNames = Object.fromEntries(teams.map((team) => [team.code, team.name]));
@@ -1037,7 +1123,7 @@ async function buildChampionSurvivorState(
   const picksToShow = picks.filter(p => approvedUserIds.has(p.userId));
   const pickByUser = new Map(picksToShow.map((pick) => [pick.userId, pick]));
 
-  const latestOddsByTeam = new Map<string, any>();
+  const latestOddsByTeam = new Map<string, ChampionOddsSnapshot>();
   for (const snapshot of championOddsSnapshots) {
     if (!latestOddsByTeam.has(snapshot.teamCode)) latestOddsByTeam.set(snapshot.teamCode, snapshot);
   }
@@ -1093,7 +1179,7 @@ async function buildChampionSurvivorState(
       })
     : null;
 
-  const simulationEntryByTeam = new Map<string, any>();
+  const simulationEntryByTeam = new Map<string, ChampionOddsSimulationEntry>();
   if (simulation?.entries) {
     for (const entry of simulation.entries) {
       simulationEntryByTeam.set(entry.teamCode, entry);

@@ -172,7 +172,7 @@ function QualificationBadge({
   status,
   unresolved,
 }: {
-  status: string;
+  status: QualificationStatus;
   unresolved?: boolean;
 }) {
   if (unresolved) {

@@ -23,7 +23,7 @@ import { PublicDashboardTabs } from '../components/ui/PublicDashboardTabs';
 import { FlagDisc } from '../components/ui/FlagDisc';
 import type { TeamTournamentStatus, ChampionOddsSnapshot } from '@prisma/client';
 import { TeamMarketAnalysisTable } from '../components/public/TeamMarketAnalysisTable';
-import { filterRealTeams } from '../lib/public-team-market-analysis';
+import { filterRealTeams, classifyTeamPickType } from '../lib/public-team-market-analysis';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,6 +179,49 @@ function getUpcomingPublicMatches(matches: PublicMatch[], nowMs: number): Public
   return matches.filter((match) => !isFinishedMatch(match) && match.kickoffUtc.getTime() > nowMs);
 }
 
+async function getRelevantTeamCodes(leagueId: string): Promise<Set<string>> {
+  const statuses = await prisma.teamTournamentStatus.findMany({
+    where: { leagueId },
+    select: { teamCode: true },
+  });
+  if (statuses.length > 0) {
+    return new Set(statuses.map((s) => s.teamCode));
+  }
+
+  const [snapshots, picks, winnerPreds, matches] = await Promise.all([
+    prisma.championOddsSnapshot.findMany({
+      where: { leagueId },
+      select: { teamCode: true },
+    }),
+    prisma.championPick.findMany({
+      where: { leagueId },
+      select: { teamCode: true },
+    }),
+    prisma.winnerPrediction.findMany({
+      where: { leagueId },
+      select: { teamCode: true },
+    }),
+    prisma.match.findMany({
+      select: { homeTeamCode: true, awayTeamCode: true },
+    }),
+  ]);
+
+  const codes = new Set<string>();
+  snapshots.forEach((s) => codes.add(s.teamCode));
+  picks.forEach((p) => codes.add(p.teamCode));
+  winnerPreds.forEach((w) => codes.add(w.teamCode));
+  matches.forEach((m) => {
+    if (classifyTeamPickType({ code: m.homeTeamCode, name: '' }) === 'real_team') {
+      codes.add(m.homeTeamCode);
+    }
+    if (classifyTeamPickType({ code: m.awayTeamCode, name: '' }) === 'real_team') {
+      codes.add(m.awayTeamCode);
+    }
+  });
+
+  return codes;
+}
+
 function matchPhaseLabel(phase: string): string {
   const labels: Record<string, string> = {
     groups: 'Grupos',
@@ -272,7 +315,8 @@ export default async function PublicHome() {
   );
 
   const requestNowMs = getRequestNowMs();
-  const realTeams = filterRealTeams(teams);
+  const relevantTeamCodes = await getRelevantTeamCodes(league.id);
+  const realTeams = filterRealTeams(teams).filter((t) => relevantTeamCodes.has(t.code));
   const publicMatches = await buildPublicMatches(matches, league.showOdds, league.showH2H);
   const playedMatches = publicMatches.filter(isFinishedMatch);
   const upcomingMatches = getUpcomingPublicMatches(publicMatches, requestNowMs);

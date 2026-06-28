@@ -111,7 +111,7 @@ export function TeamMarketAnalysisTable({
       <div className="px-4 py-3 bg-bg-secondary/60 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Análisis de Equipos y Mercado</h3>
-          <p className="text-[10px] text-text-muted font-mono uppercase">Solo selecciones nacionales reales</p>
+          <p className="text-[10px] text-text-muted font-mono uppercase">Equipos relevantes detectados</p>
         </div>
         <label className="flex items-center gap-2 text-xs text-text-secondary">
           <span className="font-mono uppercase text-[10px]">Filtrar</span>

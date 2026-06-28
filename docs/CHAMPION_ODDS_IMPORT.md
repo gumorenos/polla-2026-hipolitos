@@ -55,3 +55,20 @@ Cuando se importa una cuota, el nombre raw de The Odds API (ej. "Bosnia-Herzegov
 - Al igual que las cuotas de partidos, las llamadas fallidas por cuota (HTTP 429) actualizarán la tabla `ProviderStatus` para prevenir bloqueos y penalizaciones.
 - El identificador canónico del proveedor en credenciales, aliases, diagnósticos e importación es `the-odds-api`.
 - Si una importación errónea dejó únicamente diagnósticos claramente ajenos al fútbol, se pueden eliminar de producción las filas `provider='the-odds-api'`, `marketType='outrights'`, `status='unmatched'` después de crear un backup. Esta limpieza no debe borrar aliases ni `ChampionOddsSnapshot` válidos.
+
+## Clarificaciones Adicionales sobre Roster y Diagnósticos
+
+1. **Tabla Master `team` vs Roster del Torneo**:
+   - La tabla `team` actúa como un catálogo maestro de selecciones nacionales y puede contener más de 48 filas (por ejemplo, 112 filas). No asuma que el conteo de esta tabla representa el torneo activo.
+   - El roster oficial del torneo se deriva con prioridad de `TeamTournamentStatus`. Si está vacío, se determina dinámicamente reuniendo los códigos presentes en picks de usuarios, snapshots de cuotas y equipos de partidos reales del fixture, excluyendo marcadores de posición.
+
+2. **Inventario de Aliases Agrupado**:
+   - Un mismo código de equipo (por ejemplo, `USA`) puede tener múltiples aliases mapeados de forma global o específica de proveedores (muchos a uno). En la interfaz de administración, estos aliases deben mostrarse agrupados bajo el código de equipo para evitar duplicados visuales confusos.
+
+3. **Diagnósticos Raw Separados de la Cobertura**:
+   - Los nombres observados en respuestas raw (`provider_team_outcome`) de todos los proveedores y contextos (como partidos históricos H2H o equipos ajenos como Nigeria) son diagnósticos de soporte y no representan el roster del torneo actual.
+   - Estos diagnósticos deben filtrarse y presentarse de manera aislada en un panel de diagnóstico histórico/diagnóstico de nombres observados.
+
+4. **Flujo de Reimportación tras Mapeo**:
+   - Cuando un administrador mapea un alias (pasando un nombre observado de `unmatched` a `matched`), las cuotas históricas del snapshot no se recalculan inmediatamente. Es necesario ejecutar una nueva importación de cuotas de campeón desde el panel de control de administración para guardar snapshots de cuotas con los aliases recién mapeados.
+

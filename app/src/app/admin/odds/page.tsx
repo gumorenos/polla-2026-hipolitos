@@ -182,7 +182,16 @@ export default async function AdminOddsPage() {
     apiFootball: providerConfigured.get('api-football') ?? false,
     simulatedAllowed: process.env.ODDS_ALLOW_SIMULATED_DATA === 'true',
   };
-  const [mappingTeams, teamAliasCount, providerTeamOutcomes] = await Promise.all([
+  const [
+    mappingTeams,
+    teamAliasCount,
+    providerTeamOutcomes,
+    teamAliases,
+    distinctSnapshotTeams,
+    matchedOutrightsCount,
+    pendingOutrightsCount,
+    matchedOutrightTeams,
+  ] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: 'asc' },
       select: { code: true, name: true },
@@ -190,12 +199,57 @@ export default async function AdminOddsPage() {
     prisma.teamAlias.count(),
     prisma.providerTeamOutcome.findMany({
       orderBy: { lastSeenAt: 'desc' },
-      take: 100,
+      take: 1000,
       include: {
         suggestedTeam: { select: { code: true, name: true } },
       },
     }),
+    prisma.teamAlias.findMany({
+      select: {
+        id: true,
+        teamCode: true,
+        provider: true,
+        alias: true,
+      },
+      orderBy: { teamCode: 'asc' },
+    }),
+    prisma.championOddsSnapshot.findMany({
+      select: { teamCode: true },
+      distinct: ['teamCode'],
+    }),
+    prisma.providerTeamOutcome.count({
+      where: {
+        provider: 'the-odds-api',
+        marketType: 'outrights',
+        status: 'matched',
+      },
+    }),
+    prisma.providerTeamOutcome.count({
+      where: {
+        provider: 'the-odds-api',
+        marketType: 'outrights',
+        status: 'unmatched',
+      },
+    }),
+    prisma.providerTeamOutcome.findMany({
+      where: {
+        provider: 'the-odds-api',
+        marketType: 'outrights',
+        status: 'matched',
+        suggestedTeamCode: { not: null },
+      },
+      select: { suggestedTeamCode: true },
+      distinct: ['suggestedTeamCode'],
+    }),
   ]);
+
+  const snapshotTeamCodes = new Set(distinctSnapshotTeams.map((t) => t.teamCode));
+  const matchedOutrightTeamCodes = matchedOutrightTeams.map((t) => t.suggestedTeamCode as string);
+  const matchedOutrightsWithoutSnapshot = matchedOutrightTeamCodes.filter(
+    (code) => !snapshotTeamCodes.has(code)
+  );
+  const championOddsSavedCount = distinctSnapshotTeams.length;
+
   const serializedProviderTeamOutcomes = providerTeamOutcomes.map((outcome) => ({
     id: outcome.id,
     provider: outcome.provider,
@@ -312,6 +366,11 @@ export default async function AdminOddsPage() {
           mappingTeams={mappingTeams}
           teamAliasCount={teamAliasCount}
           providerTeamOutcomes={serializedProviderTeamOutcomes}
+          teamAliases={teamAliases}
+          championOddsSavedCount={championOddsSavedCount}
+          matchedOutrightsCount={matchedOutrightsCount}
+          pendingOutrightsCount={pendingOutrightsCount}
+          matchedOutrightsWithoutSnapshot={matchedOutrightsWithoutSnapshot}
         />
       </div>
     </>

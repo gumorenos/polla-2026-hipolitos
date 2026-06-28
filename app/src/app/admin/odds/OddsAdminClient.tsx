@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power, Tags, Link2, Ban } from 'lucide-react';
+import { RefreshCw, BarChart2, ShieldAlert, CheckCircle, Database, History, Trash2, ShieldCheck, Play, KeyRound, PlugZap, Power, Tags, Link2, Ban, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { MatchOddsBar } from '../../../components/ui/MatchOddsBar';
@@ -107,6 +107,13 @@ interface ChampionOddsPreview {
   }>;
 }
 
+interface SerializedTeamAlias {
+  id: string;
+  teamCode: string;
+  provider: string;
+  alias: string;
+}
+
 interface OddsAdminClientProps {
   matches: MatchAdminInfo[];
   apiStatus: {
@@ -148,6 +155,11 @@ interface OddsAdminClientProps {
   mappingTeams: MappingTeamInfo[];
   teamAliasCount: number;
   providerTeamOutcomes: ProviderTeamOutcomeInfo[];
+  teamAliases: SerializedTeamAlias[];
+  championOddsSavedCount: number;
+  matchedOutrightsCount: number;
+  pendingOutrightsCount: number;
+  matchedOutrightsWithoutSnapshot: string[];
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -174,6 +186,11 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   mappingTeams,
   teamAliasCount,
   providerTeamOutcomes,
+  teamAliases,
+  championOddsSavedCount,
+  matchedOutrightsCount,
+  pendingOutrightsCount,
+  matchedOutrightsWithoutSnapshot,
 }) => {
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -186,11 +203,110 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [aliasLoading, setAliasLoading] = useState<string | null>(null);
   const [mappingSelection, setMappingSelection] = useState<Record<string, string>>({});
 
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+  const [diagProvider, setDiagProvider] = useState<string>('the-odds-api');
+  const [diagMarketType, setDiagMarketType] = useState<string>('outrights');
+  const [diagStatus, setDiagStatus] = useState<string>('unmatched');
+
   const [championLoading, setChampionLoading] = useState<boolean>(false);
   const [championCandidates, setChampionCandidates] = useState<TheOddsApiSport[]>([]);
   const [championOtherSports, setChampionOtherSports] = useState<TheOddsApiSport[]>([]);
   const [selectedSport, setSelectedSport] = useState<string>('');
   const [championPreview, setChampionPreview] = useState<ChampionOddsPreview | null>(null);
+
+  const toggleTeamExpanded = (code: string) => {
+    setExpandedTeams((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
+  };
+
+  const distinctTeamsCount = React.useMemo(() => {
+    return new Set(teamAliases.map((a) => a.teamCode)).size;
+  }, [teamAliases]);
+
+  const globalAliasesCount = React.useMemo(() => {
+    return teamAliases.filter((a) => a.provider === '*').length;
+  }, [teamAliases]);
+
+  const theOddsApiAliasesCount = React.useMemo(() => {
+    return teamAliases.filter((a) => a.provider === 'the-odds-api').length;
+  }, [teamAliases]);
+
+  const footballDataAliasesCount = React.useMemo(() => {
+    return teamAliases.filter((a) => a.provider === 'football-data').length;
+  }, [teamAliases]);
+
+  const apiFootballAliasesCount = React.useMemo(() => {
+    return teamAliases.filter((a) => a.provider === 'api-football').length;
+  }, [teamAliases]);
+
+  const diagGroups = React.useMemo(() => {
+    const groups: Record<string, number> = {};
+    for (const outcome of providerTeamOutcomes) {
+      const key = `${outcome.provider} | ${outcome.marketType} | ${outcome.status}`;
+      groups[key] = (groups[key] || 0) + 1;
+    }
+    return Object.entries(groups).map(([name, count]) => ({ name, count }));
+  }, [providerTeamOutcomes]);
+
+  const groupedAliases = React.useMemo(() => {
+    const map: Record<
+      string,
+      {
+        teamCode: string;
+        teamName: string;
+        global: string[];
+        byProvider: Record<string, string[]>;
+        totalCount: number;
+      }
+    > = {};
+
+    for (const team of mappingTeams) {
+      map[team.code] = {
+        teamCode: team.code,
+        teamName: team.name,
+        global: [],
+        byProvider: {},
+        totalCount: 0,
+      };
+    }
+
+    for (const alias of teamAliases) {
+      if (!map[alias.teamCode]) {
+        map[alias.teamCode] = {
+          teamCode: alias.teamCode,
+          teamName: mappingTeams.find((t) => t.code === alias.teamCode)?.name || alias.teamCode,
+          global: [],
+          byProvider: {},
+          totalCount: 0,
+        };
+      }
+      map[alias.teamCode].totalCount++;
+      if (alias.provider === '*') {
+        map[alias.teamCode].global.push(alias.alias);
+      } else {
+        map[alias.teamCode].byProvider[alias.provider] ??= [];
+        map[alias.teamCode].byProvider[alias.provider].push(alias.alias);
+      }
+    }
+
+    return Object.values(map).filter((group) => group.totalCount > 0);
+  }, [teamAliases, mappingTeams]);
+
+  const filteredOutcomes = React.useMemo(() => {
+    return providerTeamOutcomes.filter((outcome) => {
+      if (diagProvider !== 'all' && outcome.provider !== diagProvider) return false;
+      if (diagMarketType !== 'all' && outcome.marketType !== diagMarketType) return false;
+      if (diagStatus !== 'all' && outcome.status !== diagStatus) return false;
+      return true;
+    });
+  }, [providerTeamOutcomes, diagProvider, diagMarketType, diagStatus]);
 
   const normalizedSelectedSport = selectedSport.trim().toLowerCase();
   const selectedSportInfo = [...championCandidates, ...championOtherSports]
@@ -689,15 +805,15 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
         </div>
       </section>
 
-      <section className="space-y-3" aria-labelledby="team-mapping-title">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+      <section className="space-y-6" aria-labelledby="team-mapping-title">
+        <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border-subtle pb-2">
           <div>
-            <h3 id="team-mapping-title" className="font-display text-xl text-text-primary flex items-center gap-2">
+            <h3 id="team-mapping-title" className="font-display text-2xl text-text-primary flex items-center gap-2">
               <Tags className="w-5 h-5 text-gold-400" />
-              MAPEO DE EQUIPOS POR PROVEEDOR
+              MAPEO DE EQUIPOS Y ALIASES
             </h3>
             <p className="text-xs text-text-secondary">
-              {teamAliasCount} aliases guardados · {providerTeamOutcomes.length} nombres observados
+              Gestiona cómo se traducen los nombres de proveedores externos a códigos internos de equipos.
             </p>
           </div>
           <button
@@ -711,108 +827,304 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           </button>
         </div>
 
-        {providerTeamOutcomes.length === 0 ? (
-          <div className="border border-border-default bg-bg-elevated p-4 rounded text-xs text-text-secondary">
-            Todavía no hay nombres de equipos observados en respuestas de proveedores.
+        {/* METRICS CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card A: Alias Inventory */}
+          <div className="card-base p-4 border-border-default/60 space-y-2">
+            <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Inventario de Aliases</h4>
+            <div className="space-y-1 text-xs text-text-secondary font-mono">
+              <p>Aliases guardados: <strong className="text-text-primary">{teamAliasCount}</strong></p>
+              <p>Equipos cubiertos: <strong className="text-text-primary">{distinctTeamsCount}</strong></p>
+              <p className="pt-1 border-t border-border-subtle/50 text-[10px]">Desglose por proveedor:</p>
+              <p className="text-[10px] pl-2">Globales (*): <span className="text-text-primary">{globalAliasesCount}</span></p>
+              <p className="text-[10px] pl-2">The Odds API: <span className="text-text-primary">{theOddsApiAliasesCount}</span></p>
+              <p className="text-[10px] pl-2">Football-Data: <span className="text-text-primary">{footballDataAliasesCount}</span></p>
+              <p className="text-[10px] pl-2">API-Football: <span className="text-text-primary">{apiFootballAliasesCount}</span></p>
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {providerTeamOutcomes.map((outcome) => {
-              const statusClass = outcome.status === 'matched'
-                ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                : outcome.status === 'ambiguous'
-                  ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30'
-                  : outcome.status === 'ignored'
-                    ? 'bg-slate-500/10 text-slate-300 border-slate-500/30'
-                    : 'bg-red-500/10 text-red-300 border-red-500/30';
-              const selectedTeam = mappingSelection[outcome.id] ?? outcome.suggestedTeamCode ?? '';
-              const busy = aliasLoading === outcome.id;
 
+          {/* Card B: Champion Odds Coverage */}
+          <div className="card-base p-4 border-border-default/60 space-y-2 flex flex-col justify-between">
+            <div>
+              <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Cobertura de Cuotas de Campeón</h4>
+              <div className="space-y-1 text-xs text-text-secondary font-mono">
+                <p>Cuotas guardadas: <strong className="text-text-primary">{championOddsSavedCount}</strong> equipos relevantes detectados</p>
+                <p>Outrights matcheados: <strong className="text-text-primary">{matchedOutrightsCount}</strong></p>
+                <p>Pendientes The Odds API: <strong className={pendingOutrightsCount > 0 ? "text-yellow-400 font-bold" : "text-text-muted"}>{pendingOutrightsCount}</strong></p>
+              </div>
+            </div>
+            {matchedOutrightsWithoutSnapshot.length > 0 && (
+              <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-[11px] rounded flex items-start gap-1.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-yellow-400" />
+                <div>
+                  <p className="font-semibold">Equipos matcheados sin snapshot guardado</p>
+                  <p className="text-[9px] text-text-secondary mt-0.5 leading-relaxed">
+                    Hay {matchedOutrightsWithoutSnapshot.length} equipos matcheados sin snapshot. Reimporta cuotas de campeón para guardar snapshots con los aliases actuales.
+                  </p>
+                  <p className="text-[9px] text-text-muted font-bold truncate mt-0.5">
+                    ({matchedOutrightsWithoutSnapshot.join(', ')})
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card C: Observed Diagnostics Summary */}
+          <div className="card-base p-4 border-border-default/60 space-y-2">
+            <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider font-mono text-gold-400">Resumen de Diagnósticos</h4>
+            <div className="max-h-[110px] overflow-y-auto pr-1 space-y-1 text-[10px] font-mono text-text-secondary">
+              {diagGroups.length === 0 ? (
+                <p className="text-text-muted italic">Sin diagnósticos registrados</p>
+              ) : (
+                diagGroups.map((g) => (
+                  <div key={g.name} className="flex justify-between border-b border-border-subtle/30 py-0.5">
+                    <span>{g.name}</span>
+                    <strong className="text-text-primary">{g.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ALIASES BY TEAMCODE GROUPING */}
+        <div className="space-y-2">
+          <h4 className="font-display text-lg text-text-primary uppercase tracking-wide">
+            Inventario de Aliases por Equipo
+          </h4>
+          <p className="text-xs text-text-secondary">
+            Los aliases se agrupan por código de equipo. Los duplicados visuales se muestran consolidados bajo el equipo correspondiente.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {groupedAliases.map((group) => {
+              const isExpanded = expandedTeams.has(group.teamCode);
+              const providers = Object.keys(group.byProvider);
               return (
-                <article key={outcome.id} className="card-base p-4 border-border-default/70 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-text-primary break-words">{outcome.rawName}</p>
-                      <p className="text-[10px] text-text-secondary font-mono break-words">{outcome.normalizedName}</p>
+                <div key={group.teamCode} className="card-base p-3 border-border-default/70 space-y-2 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FlagDisc code={group.teamCode} size={20} />
+                      <div>
+                        <span className="font-bold text-xs text-text-primary">{group.teamCode}</span>
+                        <span className="text-xs text-text-secondary ml-1">— {group.teamName}</span>
+                      </div>
                     </div>
-                    <span className={`text-[9px] font-mono font-bold px-2 py-1 rounded border ${statusClass}`}>
-                      {outcome.status.toUpperCase()}
+                    <span className="text-[10px] font-mono bg-bg-secondary border border-border-default/60 px-1.5 py-0.5 rounded text-text-secondary">
+                      {group.totalCount} aliases
                     </span>
                   </div>
 
-                  <dl className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                      <dt className="text-text-secondary">Proveedor</dt>
-                      <dd className="font-mono text-text-primary">{outcome.provider}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-text-secondary">Contexto</dt>
-                      <dd className="font-mono text-text-primary">{outcome.marketType}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-text-secondary">Equipo local</dt>
-                      <dd className="font-mono text-text-primary">
-                        {outcome.suggestedTeamCode
-                          ? `${outcome.suggestedTeamCode} · ${outcome.suggestedTeamName ?? ''}`
-                          : 'Sin vincular'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-text-secondary">Confianza</dt>
-                      <dd className="font-mono text-text-primary">
-                        {outcome.confidence !== null ? `${Math.round(outcome.confidence * 100)}%` : 'No disponible'}
-                      </dd>
-                    </div>
-                  </dl>
+                  <div className="text-[10px] text-text-muted">
+                    <p>Proveedores cubiertos: <span className="text-text-secondary font-mono">{providers.length > 0 ? providers.join(', ') : 'Ninguno (Solo global)'}</span></p>
+                  </div>
 
-                  {outcome.reason && (
-                    <p className="text-[10px] text-text-secondary border-l-2 border-border-default pl-2">
-                      {outcome.reason}
-                    </p>
+                  {isExpanded && (
+                    <div className="pt-2 border-t border-border-subtle/50 space-y-2 text-[10px]">
+                      {group.global.length > 0 && (
+                        <div>
+                          <strong className="text-gold-400 font-mono block uppercase">Globales (*):</strong>
+                          <ul className="list-disc pl-3 text-text-secondary">
+                            {group.global.map((a, i) => <li key={i}>{a}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {Object.entries(group.byProvider).map(([provider, list]) => (
+                        <div key={provider}>
+                          <strong className="text-text-primary font-mono block uppercase">{provider}:</strong>
+                          <ul className="list-disc pl-3 text-text-secondary">
+                            {list.map((a, i) => <li key={i}>{a}</li>)}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
-                  {outcome.status !== 'ignored' && (
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <select
-                        value={selectedTeam}
-                        onChange={(event) => setMappingSelection((current) => ({
-                          ...current,
-                          [outcome.id]: event.target.value,
-                        }))}
-                        disabled={busy}
-                        aria-label={`Equipo local para ${outcome.rawName}`}
-                        className="min-w-0 flex-1 bg-bg-elevated border border-border-default rounded px-3 py-2 text-xs text-text-primary disabled:opacity-50"
-                      >
-                        <option value="">Seleccionar equipo</option>
-                        {mappingTeams.map((team) => (
-                          <option key={team.code} value={team.code}>{team.code} · {team.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => handleLinkOutcome(outcome)}
-                        disabled={busy || !selectedTeam}
-                        className="btn-primary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      >
-                        <Link2 className="w-3.5 h-3.5" />
-                        Vincular / crear alias
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleIgnoreOutcome(outcome.id)}
-                        disabled={busy}
-                        className="btn-secondary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      >
-                        <Ban className="w-3.5 h-3.5" />
-                        Ignorar
-                      </button>
-                    </div>
-                  )}
-                </article>
+                  <button
+                    type="button"
+                    onClick={() => toggleTeamExpanded(group.teamCode)}
+                    className="text-center w-full text-[10px] text-gold-400 hover:text-gold-300 font-mono pt-1"
+                  >
+                    {isExpanded ? 'Ver menos ↑' : 'Ver aliases ↓'}
+                  </button>
+                </div>
               );
             })}
           </div>
-        )}
+        </div>
+
+        {/* OBSERVED NAMES DIAGNOSTICS */}
+        <div className="card-base p-4 border-border-default/60 space-y-4">
+          <div className="border-b border-border-subtle pb-2 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h4 className="font-display text-lg text-text-primary uppercase tracking-wide">
+                Diagnóstico de Nombres Observados
+              </h4>
+              <p className="text-xs text-text-secondary">
+                Nombres recibidos en las respuestas raw de los proveedores. Úsalos para vincular y crear nuevos aliases.
+              </p>
+            </div>
+            {/* Quick Filter Info */}
+            {diagProvider !== 'the-odds-api' || diagMarketType !== 'outrights' ? (
+              <span className="text-[10px] bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-0.5 rounded font-mono uppercase">
+                Diagnóstico histórico / no necesariamente participante del torneo actual
+              </span>
+            ) : null}
+          </div>
+
+          {/* Filters Bar */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
+              <span>Proveedor</span>
+              <select
+                value={diagProvider}
+                onChange={(e) => setDiagProvider(e.target.value)}
+                className="bg-bg-elevated border border-border-default rounded px-2.5 py-1.5 text-xs text-text-primary focus:outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="the-odds-api">the-odds-api</option>
+                <option value="api-football">api-football</option>
+                <option value="football-data">football-data</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
+              <span>Tipo de Mercado</span>
+              <select
+                value={diagMarketType}
+                onChange={(e) => setDiagMarketType(e.target.value)}
+                className="bg-bg-elevated border border-border-default rounded px-2.5 py-1.5 text-xs text-text-primary focus:outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="outrights">outrights</option>
+                <option value="h2h_fixture">h2h_fixture</option>
+                <option value="match_winner">match_winner</option>
+                <option value="result_fixture">result_fixture</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
+              <span>Estado del Mapeo</span>
+              <select
+                value={diagStatus}
+                onChange={(e) => setDiagStatus(e.target.value)}
+                className="bg-bg-elevated border border-border-default rounded px-2.5 py-1.5 text-xs text-text-primary focus:outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="matched">Matched (Vinculado)</option>
+                <option value="unmatched">Unmatched (Pendiente)</option>
+                <option value="ignored">Ignored (Ignorado)</option>
+              </select>
+            </label>
+          </div>
+
+          {filteredOutcomes.length === 0 ? (
+            <div className="border border-dashed border-border-default p-6 text-center text-xs text-text-muted italic">
+              {diagProvider === 'the-odds-api' && diagMarketType === 'outrights' && diagStatus === 'unmatched' ? (
+                <span>No hay nombres pendientes para The Odds API / cuotas de campeón.</span>
+              ) : (
+                <span>No se encontraron nombres observados para este filtro.</span>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+              {filteredOutcomes.map((outcome) => {
+                const statusClass = outcome.status === 'matched'
+                  ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                  : outcome.status === 'ambiguous'
+                    ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30'
+                    : outcome.status === 'ignored'
+                      ? 'bg-slate-500/10 text-slate-300 border-slate-500/30'
+                      : 'bg-red-500/10 text-red-300 border-red-500/30';
+                const selectedTeam = mappingSelection[outcome.id] ?? outcome.suggestedTeamCode ?? '';
+                const busy = aliasLoading === outcome.id;
+
+                return (
+                  <article key={outcome.id} className="card-base p-4 border-border-default/70 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-text-primary break-words">{outcome.rawName}</p>
+                        <p className="text-[10px] text-text-secondary font-mono break-words">{outcome.normalizedName}</p>
+                      </div>
+                      <span className={`text-[9px] font-mono font-bold px-2 py-1 rounded border ${statusClass}`}>
+                        {outcome.status.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <dl className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <dt className="text-text-secondary">Proveedor</dt>
+                        <dd className="font-mono text-text-primary">{outcome.provider}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Contexto</dt>
+                        <dd className="font-mono text-text-primary">{outcome.marketType}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Equipo local</dt>
+                        <dd className="font-mono text-text-primary">
+                          {outcome.suggestedTeamCode
+                            ? `${outcome.suggestedTeamCode} · ${outcome.suggestedTeamName ?? ''}`
+                            : 'Sin vincular'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Confianza</dt>
+                        <dd className="font-mono text-text-primary">
+                          {outcome.confidence !== null ? `${Math.round(outcome.confidence * 100)}%` : 'No disponible'}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {outcome.reason && (
+                      <p className="text-[10px] text-text-secondary border-l-2 border-border-default pl-2">
+                        {outcome.reason}
+                      </p>
+                    )}
+
+                    {outcome.status !== 'ignored' && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <select
+                          value={selectedTeam}
+                          onChange={(event) => setMappingSelection((current) => ({
+                            ...current,
+                            [outcome.id]: event.target.value,
+                          }))}
+                          disabled={busy}
+                          aria-label={`Equipo local para ${outcome.rawName}`}
+                          className="min-w-0 flex-1 bg-bg-elevated border border-border-default rounded px-3 py-2 text-xs text-text-primary disabled:opacity-50"
+                        >
+                          <option value="">Seleccionar equipo</option>
+                          {mappingTeams.map((team) => (
+                            <option key={team.code} value={team.code}>{team.code} · {team.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleLinkOutcome(outcome)}
+                          disabled={busy || !selectedTeam}
+                          className="btn-primary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          Vincular / crear alias
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleIgnoreOutcome(outcome.id)}
+                          disabled={busy}
+                          className="btn-secondary px-3 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Ignorar
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* API Providers Status Cards */}

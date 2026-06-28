@@ -5,7 +5,17 @@ import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { buildRoundOf32Resolution } from '../knockout-bracket';
 
-export async function applyRoundOf32ResolutionAction() {
+type ApplyRoundOf32ResolutionResult =
+  | {
+      error: string;
+      resolution?: ReturnType<typeof buildRoundOf32Resolution>;
+    }
+  | {
+      success: true;
+      changed: number;
+    };
+
+export async function applyRoundOf32ResolutionAction(): Promise<ApplyRoundOf32ResolutionResult> {
   const session = await getCurrentSession();
   if (!session?.user) return { error: 'No autorizado' };
 

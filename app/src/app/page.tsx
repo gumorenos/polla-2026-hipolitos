@@ -22,6 +22,8 @@ import { FifaClassificationEngine } from '../components/match/FifaClassification
 import { PublicDashboardTabs } from '../components/ui/PublicDashboardTabs';
 import { FlagDisc } from '../components/ui/FlagDisc';
 import type { TeamTournamentStatus, ChampionOddsSnapshot } from '@prisma/client';
+import { TeamMarketAnalysisTable } from '../components/public/TeamMarketAnalysisTable';
+import { filterRealTeams } from '../lib/public-team-market-analysis';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,21 +98,6 @@ type ChampionSurvivorStateSummary = {
   winners: number;
   combinedAliveProbability: number | null;
   combinedAliveProbabilityAvailable: boolean;
-};
-
-type PublicChampionRow = {
-  teamCode: string;
-  teamName: string;
-  status: string;
-  pickCount: number;
-  pickPercentage: number;
-  classificationLabel: string;
-  classificationKey: string;
-  marketProbability: number | null;
-  decimalOdds: number | null;
-  simulatedProbability: number | null;
-  expectedValue: number | null;
-  individualExpectedValue: number | null;
 };
 
 type PublicChampionPick = {
@@ -190,21 +177,6 @@ function getRequestNowMs(now: Date = new Date()): number {
 
 function getUpcomingPublicMatches(matches: PublicMatch[], nowMs: number): PublicMatch[] {
   return matches.filter((match) => !isFinishedMatch(match) && match.kickoffUtc.getTime() > nowMs);
-}
-
-function getTournamentStatusLabel(status?: string | null): string {
-  if (status === 'champion') return 'Campeón';
-  if (status === 'runner_up') return 'Subcampeón';
-  if (status === 'eliminated') return 'Eliminado';
-  if (status === 'active') return 'Vivo';
-  return 'Pendiente';
-}
-
-function statusTone(status?: string | null): string {
-  if (status === 'champion') return 'border-gold-500/50 bg-gold-400/10 text-gold-400';
-  if (status === 'eliminated' || status === 'runner_up') return 'border-red-500/30 bg-red-500/10 text-red-400 opacity-70';
-  if (status === 'active') return 'border-green-500/30 bg-green-500/10 text-green-400';
-  return 'border-border-subtle bg-bg-secondary/30 text-text-secondary';
 }
 
 function matchPhaseLabel(phase: string): string {
@@ -300,6 +272,7 @@ export default async function PublicHome() {
   );
 
   const requestNowMs = getRequestNowMs();
+  const realTeams = filterRealTeams(teams);
   const publicMatches = await buildPublicMatches(matches, league.showOdds, league.showH2H);
   const playedMatches = publicMatches.filter(isFinishedMatch);
   const upcomingMatches = getUpcomingPublicMatches(publicMatches, requestNowMs);
@@ -376,7 +349,7 @@ export default async function PublicHome() {
 
   // Champion Survivor State
   const championSurvivorState = isChampionSurvivor
-    ? await buildChampionSurvivorState(league, approvedParticipants, teamStatuses, teams, championOddsSnapshots, approvedUserIds)
+    ? await buildChampionSurvivorState(league, approvedParticipants, teamStatuses, realTeams, championOddsSnapshots, approvedUserIds)
     : null;
 
   // Tabs layout
@@ -427,7 +400,11 @@ export default async function PublicHome() {
           {/* Tab 1: Mapa de Supervivencia */}
           <div className="space-y-6">
             <ChampionSurvivorSummaryCards state={championSurvivorState} prizePool={prizePool} showOdds={league.showOdds} />
-            <ChampionSurvivorTeamsTable teamsReport={championSurvivorState.teamsReport} prizePool={prizePool} showOdds={league.showOdds} />
+            <TeamMarketAnalysisTable
+              teamsReport={championSurvivorState.teamsReport}
+              currency={prizePool.currency}
+              showOdds={league.showOdds}
+            />
           </div>
 
           {/* Tab 2: Picks por Participante */}
@@ -736,105 +713,6 @@ function ChampionSurvivorSummaryCards({
   );
 }
 
-function ChampionSurvivorTeamsTable({
-  teamsReport,
-  prizePool,
-  showOdds,
-}: {
-  teamsReport: PublicChampionRow[];
-  prizePool: PublicPrizePool;
-  showOdds: boolean;
-}) {
-  return (
-    <div className="card-base overflow-hidden">
-      <div className="px-4 py-3 bg-bg-secondary/60 border-b border-border-subtle flex justify-between items-center">
-        <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Análisis de Equipos y Mercado</h3>
-        <span className="text-[10px] text-text-muted font-mono uppercase">Solo campeón</span>
-      </div>
-      
-      {showOdds && teamsReport.length > 0 && teamsReport.every(t => t.marketProbability === null) && (
-        <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-xs">
-          Aún no hay cuotas de campeón cargadas. Un administrador puede importarlas desde Admin &gt; Odds &gt; Cuotas de campeón.
-        </div>
-      )}
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs text-left whitespace-nowrap">
-          <thead className="text-[9px] font-mono uppercase text-text-muted bg-black/10 border-b border-border-subtle/50">
-            <tr>
-              <th className="px-3 py-2">Equipo</th>
-              <th className="px-3 py-2 text-center w-24">Estado</th>
-              <th className="px-3 py-2 text-center w-20">Picks</th>
-              <th className="px-3 py-2 text-center w-20">% Picks</th>
-              <th className="px-3 py-2">Tipo de Pick</th>
-              {showOdds && (
-                <>
-                  <th className="px-3 py-2 text-center w-24">Prob. Mercado</th>
-                  <th className="px-3 py-2 text-center w-20">Cuota</th>
-                  <th className="px-3 py-2 text-center w-24">Prob. Simulada</th>
-                  <th className="px-3 py-2 text-center w-24">EV Estimado</th>
-                  <th className="px-3 py-2 text-center w-28">EV Indiv. Estimado</th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle/30">
-            {teamsReport.map((team) => (
-              <tr key={team.teamCode} className={`hover:bg-bg-hover/30 transition-colors ${team.status === 'eliminated' ? 'opacity-60' : ''}`}>
-                <td className="px-3 py-2.5">
-                  <span className="font-semibold text-text-primary">{team.teamName}</span>
-                  <span className="ml-1 text-[10px] text-text-muted font-mono uppercase">({team.teamCode})</span>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-mono uppercase ${statusTone(team.status)}`}>
-                    {getTournamentStatusLabel(team.status)}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-center font-mono text-text-primary">{team.pickCount}</td>
-                <td className="px-3 py-2.5 text-center font-mono text-text-secondary">{formatPercent(team.pickPercentage)}</td>
-                <td className="px-3 py-2.5">
-                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${
-                    team.classificationKey === 'favorite_popular'
-                      ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
-                      : team.classificationKey === 'attractive_differential'
-                        ? 'border-green-500/30 bg-green-500/10 text-green-300'
-                        : team.classificationKey === 'high_risk'
-                          ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                          : team.classificationKey === 'longshot'
-                            ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
-                            : 'border-border-subtle bg-surface/50 text-text-muted'
-                  }`}>
-                    {team.classificationLabel}
-                  </span>
-                </td>
-                {showOdds && (
-                  <>
-                    <td className="px-3 py-2.5 text-center font-mono text-text-primary">
-                      {team.marketProbability !== null ? formatPercent(team.marketProbability) : '-'}
-                    </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-text-primary">
-                      {team.decimalOdds !== null ? team.decimalOdds.toFixed(2) : '-'}
-                    </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-gold-400 font-semibold">
-                      {team.simulatedProbability !== null ? formatPercent(team.simulatedProbability) : '-'}
-                    </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-text-secondary">
-                      {team.expectedValue !== null ? formatLeagueCurrency(team.expectedValue, prizePool.currency) : '-'}
-                    </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-text-secondary">
-                      {team.individualExpectedValue !== null ? formatLeagueCurrency(team.individualExpectedValue, prizePool.currency) : '-'}
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function ChampionSurvivorPicksList({
   picks,
   statusByTeam,
@@ -1107,8 +985,10 @@ async function buildChampionSurvivorState(
   championOddsSnapshots: ChampionOddsSnapshot[],
   approvedUserIds: Set<string>
 ) {
+  const realTeamCodes = new Set(teams.map((team) => team.code));
   const teamNames = Object.fromEntries(teams.map((team) => [team.code, team.name]));
-  const statusByTeam = new Map(teamStatuses.map((status) => [status.teamCode, status]));
+  const realTeamStatuses = teamStatuses.filter((status) => realTeamCodes.has(status.teamCode));
+  const statusByTeam = new Map(realTeamStatuses.map((status) => [status.teamCode, status]));
 
   const picks = await prisma.championPick.findMany({
     where: { leagueId: league.id },
@@ -1127,12 +1007,16 @@ async function buildChampionSurvivorState(
       },
     },
   });
-  const picksToShow = picks.filter(p => approvedUserIds.has(p.userId));
+  const picksToShow = picks.filter((pick) => (
+    approvedUserIds.has(pick.userId) && realTeamCodes.has(pick.teamCode)
+  ));
   const pickByUser = new Map(picksToShow.map((pick) => [pick.userId, pick]));
 
   const latestOddsByTeam = new Map<string, ChampionOddsSnapshot>();
   for (const snapshot of championOddsSnapshots) {
-    if (!latestOddsByTeam.has(snapshot.teamCode)) latestOddsByTeam.set(snapshot.teamCode, snapshot);
+    if (realTeamCodes.has(snapshot.teamCode) && !latestOddsByTeam.has(snapshot.teamCode)) {
+      latestOddsByTeam.set(snapshot.teamCode, snapshot);
+    }
   }
 
   const prizePool = calculatePrizePool(league, approvedParticipants);
@@ -1155,7 +1039,7 @@ async function buildChampionSurvivorState(
     };
   });
 
-  const distribution = buildPickDistribution(picksToShow, teamStatuses, approvedParticipants);
+  const distribution = buildPickDistribution(picksToShow, realTeamStatuses, approvedParticipants);
   const summary = buildSurvivalSummary(entries, prizePool);
 
   // Build teamreport with simulation data
@@ -1180,7 +1064,7 @@ async function buildChampionSurvivorState(
     ? simulateChampionOdds({
         leagueId: league.id,
         oddsSnapshots: Array.from(latestOddsByTeam.values()),
-        teamStatuses: teamStatuses,
+        teamStatuses: realTeamStatuses,
         teamNames: teamNames,
         iterations: 10000,
       })

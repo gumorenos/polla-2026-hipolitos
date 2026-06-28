@@ -43,10 +43,7 @@ export async function applyRoundOf32ResolutionAction(): Promise<ApplyRoundOf32Re
     return { error: `El cruce ${invalidProposal.matchId} contiene una selección que no existe en Team.` };
   }
 
-  const changed = resolution.proposals.filter((proposal) => (
-    proposal.currentHomeTeamCode !== proposal.resolvedHomeTeamCode
-    || proposal.currentAwayTeamCode !== proposal.resolvedAwayTeamCode
-  ));
+  const changed = resolution.proposals.filter((proposal) => proposal.changed);
   await prisma.$transaction(async (tx) => {
     for (const proposal of changed) {
       await tx.match.update({

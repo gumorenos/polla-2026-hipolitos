@@ -290,7 +290,7 @@ We implement the following 6 tie-breakers sequentially:
 - `runner_up` is terminal and counts as eliminated in a champion-only competition. Server-side status updates reject a second champion in the same league.
 - Imported champion odds target one explicitly selected active Champion Survivor league instead of every league of that type.
 - Match result state is finalized only through the shared result normalizer; scheduling metadata cannot create `status = result` without complete final scores.
-- Round-of-32 materialization preserves match IDs and predictions, uses local final group results, and refuses ambiguous best-third allocations rather than guessing beyond FIFA Annex C.
+- Round-of-32 materialization preserves match IDs and predictions, uses local final group results, and resolves best-third allocations from the complete static FIFA Annex C table. A missing key blocks all changes instead of falling back to heuristic matching.
 - Champion Survivor status initialization is scoped to eligible teams with league-specific `outright_winner` snapshots; sync is explicit and preserves terminal manual overrides.
 
 **Reset Design:**

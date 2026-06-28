@@ -283,7 +283,7 @@ Admin or superadmin manages Champion Survivor
 
 ### Scoring and Recalculation Flow
 
-Final result writes pass through a shared consistency helper: `status = result` and `resultStatus = final` require both scores, while knockout draws require a penalty winner. Provider diagnostics and bracket materialization are explicit superadmin operations in `/admin/resultados`; public page loads never call result providers or mutate fixtures.
+Final result writes pass through a shared consistency helper: `status = result` and `resultStatus = final` require both scores, while knockout draws require a penalty winner. Provider diagnostics and bracket materialization are explicit superadmin operations in `/admin/resultados`; public page loads never call result providers or mutate fixtures. Round-of-32 third-place materialization uses the bundled, integrity-checked 495-row FIFA Annex C table and the fixed winner slot for each r32 match ID.
 
 ```
 Admin enters result for a match

@@ -779,8 +779,12 @@ function BracketResolutionPanel({
           {applying ? 'Aplicando…' : 'Aplicar cruces resueltos'}
         </button>
       </div>
-      {resolution.ready ? (
-        <p className="text-xs text-green-400">Los 16 cruces están resueltos y listos para aplicar.</p>
+      {resolution.ready && resolution.applicableProposalCount === 0 ? (
+        <p className="text-xs text-green-400">No se requieren cambios: los 16 cruces ya están resueltos.</p>
+      ) : resolution.ready ? (
+        <p className="text-xs text-green-400">
+          Los 16 cruces están resueltos. {resolution.applicableProposalCount} cambio(s) listos para aplicar.
+        </p>
       ) : (
         <div className="text-xs text-amber-300 space-y-1">
           {resolution.unresolvedReasons.map((reason) => <p key={reason}>{reason}</p>)}
@@ -791,17 +795,29 @@ function BracketResolutionPanel({
           ))}
         </div>
       )}
-      {!resolution.ready && resolution.canApplySafeProposals && (
-        <p className="text-xs text-blue-300">
-          Hay {resolution.applicableProposalCount} cruce(s) inequívocos que pueden aplicarse sin resolver todavía los mejores terceros.
-        </p>
+      {resolution.annexCKey && (
+        <p className="text-xs text-blue-300">Combinación Annex C: {resolution.annexCKey}</p>
       )}
       {resolution.proposals.length > 0 && (
         <details>
           <summary className="cursor-pointer text-xs text-gold">Ver propuesta de cruces ({resolution.proposals.length})</summary>
-          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-text-secondary">
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-text-secondary">
             {resolution.proposals.map((proposal) => (
-              <p key={proposal.matchId}>{proposal.matchId}: {proposal.resolvedHomeTeamCode} vs {proposal.resolvedAwayTeamCode}</p>
+              <div key={proposal.matchId} className="rounded border border-border-subtle bg-surface/40 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-text-primary">{proposal.matchId}</span>
+                  <span className={proposal.changed ? 'text-amber-300' : 'text-green-400'}>
+                    {proposal.changed ? 'Cambiar' : 'Sin cambios'}
+                  </span>
+                </div>
+                <p>
+                  Actual: {proposal.currentHomeTeamCode} vs {proposal.currentAwayTeamCode}
+                </p>
+                <p>
+                  Resuelto: {proposal.resolvedHomeTeamCode} vs {proposal.resolvedAwayTeamCode}
+                </p>
+                <p className="text-[10px] text-text-muted">{proposal.reason}</p>
+              </div>
             ))}
           </div>
         </details>

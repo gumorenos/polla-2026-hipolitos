@@ -20,6 +20,8 @@ When providers cannot locate a fixture, a superadmin can enter the final score i
 
 The resolver uses local final group results and the existing FIFA qualification engine. It reports blocking matches, resolves `1A`/`2A` placeholders, and proposes Round-of-32 updates without changing match IDs or predictions.
 
-Best-third allocation is conservative. The [official FIFA World Cup 2026 regulations](https://digitalhub.fifa.com/m/636f5c9c6f29771f/original/FWC2026_regulations_EN.pdf) define 495 combinations in Annex C. The app can safely apply direct winner/runner-up pairings, but applies third-place assignments only when the configured constraints produce one unambiguous solution; otherwise it reports that official allocation confirmation is still required. Applying the bracket is an explicit superadmin action.
+Best-third allocation uses the complete 495-row Annex C table from the [official FIFA World Cup 2026 regulations](https://digitalhub.fifa.com/m/636f5c9c6f29771f/original/FWC2026_regulations_EN.pdf). The resolver canonicalizes the eight qualifying third-place groups, looks up the exact official allocation, and assigns each third-place team by its group-winner slot (`vs1A`, `vs1B`, etc.). It never chooses a team merely because its group appears in a placeholder.
+
+`/admin/resultados` previews current and resolved team codes, the Annex C reason, and whether each match changes. Applying the bracket remains an explicit superadmin action. It updates only changed Round-of-32 matches by ID, preserves predictions, and writes `AdminActionLog`. Missing group results or a missing Annex C key block the entire apply operation.
 
 The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi and is never committed to GitHub.

@@ -4,6 +4,13 @@ import {
   type QualificationTeamLike,
   type WorldCupQualification,
 } from './fifa-qualification';
+import {
+  canonicalThirdPlaceGroups,
+  getAnnexCAllocationForGroups,
+  resolveThirdPlacePlaceholder,
+  type AnnexCAllocation,
+  type AnnexCSlot,
+} from './fifa-2026-annex-c';
 import { isConsistentFinalMatchResult } from './match-result';
 
 export type BracketMatchLike = QualificationMatchLike & {
@@ -16,6 +23,8 @@ export type RoundOf32Proposal = {
   currentAwayTeamCode: string;
   resolvedHomeTeamCode: string;
   resolvedAwayTeamCode: string;
+  reason: string;
+  changed: boolean;
 };
 
 export type RoundOf32Resolution = {
@@ -30,13 +39,33 @@ export type RoundOf32Resolution = {
   }>;
   unresolvedReasons: string[];
   unresolvedPlaceholders: string[];
+  annexCKey: string | null;
   proposals: RoundOf32Proposal[];
   qualification: WorldCupQualification;
+};
+
+export type RoundOf32ResolutionOptions = {
+  annexCAllocations?: Readonly<Record<string, AnnexCAllocation>>;
+};
+
+const THIRD_PLACE_SLOT_BY_R32_MATCH_ID: Record<
+  string,
+  { slot: AnnexCSlot; side: 'home' | 'away' }
+> = {
+  r32_03: { slot: 'vs1E', side: 'away' },
+  r32_06: { slot: 'vs1I', side: 'away' },
+  r32_07: { slot: 'vs1A', side: 'away' },
+  r32_08: { slot: 'vs1L', side: 'away' },
+  r32_09: { slot: 'vs1G', side: 'away' },
+  r32_10: { slot: 'vs1D', side: 'away' },
+  r32_13: { slot: 'vs1B', side: 'away' },
+  r32_16: { slot: 'vs1K', side: 'away' },
 };
 
 export function buildRoundOf32Resolution(
   matches: BracketMatchLike[],
   teams: QualificationTeamLike[],
+  options: RoundOf32ResolutionOptions = {},
 ): RoundOf32Resolution {
   const groupMatches = matches.filter((match) => match.phase === 'groups');
   const blockingMatches = groupMatches
@@ -66,39 +95,60 @@ export function buildRoundOf32Resolution(
       .map((entry) => [entry.group, entry.teamCode]),
   );
   const r32Matches = matches.filter((match) => match.phase === 'r32');
-  const thirdPlaceholders = Array.from(new Set(
-    r32Matches
-      .flatMap((match) => [match.homeTeamCode, match.awayTeamCode])
-      .filter(isThirdPlacePlaceholder),
-  ));
-  const thirdAssignment = resolveThirdPlacePlaceholderAssignments(
-    thirdPlaceholders,
-    qualifiedThirdByGroup,
-  );
-  if (!thirdAssignment.resolved) {
-    unresolvedReasons.push(thirdAssignment.reason);
+  const qualifiedThirdGroups = [...qualifiedThirdByGroup.keys()];
+  let annexCKey: string | null = null;
+  let annexCAllocation: AnnexCAllocation | null = null;
+
+  if (qualifiedThirdGroups.length === 8) {
+    annexCKey = canonicalThirdPlaceGroups(qualifiedThirdGroups);
+    annexCAllocation = getAnnexCAllocationForGroups(
+      qualifiedThirdGroups,
+      options.annexCAllocations,
+    );
+    if (!annexCAllocation) {
+      unresolvedReasons.push(`No existe una asignación Annex C para la combinación ${annexCKey}.`);
+    }
+  } else {
+    unresolvedReasons.push(
+      `Annex C requiere ocho grupos de terceros clasificados y se encontraron ${qualifiedThirdGroups.length}.`,
+    );
   }
 
   for (const match of r32Matches) {
     const resolvedHomeTeamCode = resolveRoundOf32TeamCode(
+      match.id,
+      'home',
       match.homeTeamCode,
       directPlaceholderMap,
-      thirdAssignment.assignments,
+      qualifiedThirdByGroup,
+      annexCAllocation,
     );
     const resolvedAwayTeamCode = resolveRoundOf32TeamCode(
+      match.id,
+      'away',
       match.awayTeamCode,
       directPlaceholderMap,
-      thirdAssignment.assignments,
+      qualifiedThirdByGroup,
+      annexCAllocation,
     );
     if (!resolvedHomeTeamCode) unresolvedPlaceholders.add(match.homeTeamCode);
     if (!resolvedAwayTeamCode) unresolvedPlaceholders.add(match.awayTeamCode);
     if (resolvedHomeTeamCode && resolvedAwayTeamCode) {
+      const changed = (
+        match.homeTeamCode !== resolvedHomeTeamCode
+        || match.awayTeamCode !== resolvedAwayTeamCode
+      );
+      const thirdPlaceSlot = THIRD_PLACE_SLOT_BY_R32_MATCH_ID[match.id];
       proposals.push({
         matchId: match.id,
         currentHomeTeamCode: match.homeTeamCode,
         currentAwayTeamCode: match.awayTeamCode,
         resolvedHomeTeamCode,
         resolvedAwayTeamCode,
+        reason: thirdPlaceSlot && annexCKey && annexCAllocation
+          ? `Annex C ${annexCKey}: ${thirdPlaceSlot.slot} -> ${annexCAllocation[thirdPlaceSlot.slot]}.`
+          : 'Posiciones directas de grupo o equipos ya materializados.',
+        changed,
       });
     }
   }
@@ -110,27 +160,27 @@ export function buildRoundOf32Resolution(
     unresolvedReasons.push(`No se pudieron resolver: ${Array.from(unresolvedPlaceholders).join(', ')}.`);
   }
 
-  const applicableProposalCount = proposals.filter((proposal) => (
-    proposal.currentHomeTeamCode !== proposal.resolvedHomeTeamCode
-    || proposal.currentAwayTeamCode !== proposal.resolvedAwayTeamCode
-  )).length;
+  const applicableProposalCount = proposals.filter((proposal) => proposal.changed).length;
   const groupStageResolved = (
     groupMatches.length === 72
     && blockingMatches.length === 0
     && qualification.unresolvedTies.length === 0
   );
 
+  const ready = (
+    blockingMatches.length === 0
+    && unresolvedReasons.length === 0
+    && proposals.length === 16
+  );
+
   return {
-    ready: (
-      blockingMatches.length === 0
-      && unresolvedReasons.length === 0
-      && proposals.length === 16
-    ),
-    canApplySafeProposals: groupStageResolved && applicableProposalCount > 0,
+    ready,
+    canApplySafeProposals: groupStageResolved && ready && applicableProposalCount > 0,
     applicableProposalCount,
     blockingMatches,
     unresolvedReasons: Array.from(new Set(unresolvedReasons)),
     unresolvedPlaceholders: Array.from(unresolvedPlaceholders),
+    annexCKey,
     proposals,
     qualification,
   };
@@ -141,60 +191,6 @@ export function resolveDirectGroupPlaceholder(
   qualification: WorldCupQualification,
 ): string | null {
   return buildDirectGroupPlaceholderMap(qualification).get(placeholder.toUpperCase()) || null;
-}
-
-export function resolveThirdPlacePlaceholderAssignments(
-  placeholders: string[],
-  qualifiedThirdByGroup: Map<string, string>,
-): { resolved: boolean; assignments: Map<string, string>; reason: string } {
-  if (placeholders.length === 0) {
-    return { resolved: true, assignments: new Map(), reason: '' };
-  }
-  if (qualifiedThirdByGroup.size !== placeholders.length) {
-    return {
-      resolved: false,
-      assignments: new Map(),
-      reason: `La asignación de terceros requiere ${placeholders.length} grupos clasificados y hay ${qualifiedThirdByGroup.size}.`,
-    };
-  }
-
-  const ordered = [...placeholders].sort((left, right) => {
-    const leftCount = eligibleGroupsForPlaceholder(left, qualifiedThirdByGroup).length;
-    const rightCount = eligibleGroupsForPlaceholder(right, qualifiedThirdByGroup).length;
-    return leftCount - rightCount || left.localeCompare(right);
-  });
-  const solutions: Array<Map<string, string>> = [];
-
-  const search = (index: number, usedGroups: Set<string>, assignment: Map<string, string>) => {
-    if (solutions.length > 1) return;
-    if (index === ordered.length) {
-      solutions.push(new Map(assignment));
-      return;
-    }
-    const placeholder = ordered[index];
-    for (const group of eligibleGroupsForPlaceholder(placeholder, qualifiedThirdByGroup)) {
-      if (usedGroups.has(group)) continue;
-      const teamCode = qualifiedThirdByGroup.get(group);
-      if (!teamCode) continue;
-      usedGroups.add(group);
-      assignment.set(placeholder, teamCode);
-      search(index + 1, usedGroups, assignment);
-      assignment.delete(placeholder);
-      usedGroups.delete(group);
-    }
-  };
-
-  search(0, new Set(), new Map());
-  if (solutions.length === 1) {
-    return { resolved: true, assignments: solutions[0], reason: '' };
-  }
-  return {
-    resolved: false,
-    assignments: new Map(),
-    reason: solutions.length === 0
-      ? 'Los mejores terceros no encajan en los placeholders configurados.'
-      : 'La asignación de mejores terceros no es única; se requiere confirmar el cruce oficial antes de aplicar.',
-  };
 }
 
 function buildDirectGroupPlaceholderMap(qualification: WorldCupQualification): Map<string, string> {
@@ -209,23 +205,27 @@ function buildDirectGroupPlaceholderMap(qualification: WorldCupQualification): M
 }
 
 function resolveRoundOf32TeamCode(
+  matchId: string,
+  side: 'home' | 'away',
   currentCode: string,
   directPlaceholderMap: Map<string, string>,
-  thirdAssignments: Map<string, string>,
+  qualifiedThirdByGroup: Map<string, string>,
+  annexCAllocation: AnnexCAllocation | null,
 ): string | null {
   const normalized = currentCode.trim().toUpperCase();
+  const thirdPlaceSlot = THIRD_PLACE_SLOT_BY_R32_MATCH_ID[matchId];
+  if (thirdPlaceSlot?.side === side) {
+    if (!annexCAllocation) return null;
+    const assignedPlaceholder = isThirdPlacePlaceholder(normalized)
+      ? resolveThirdPlacePlaceholder(normalized, thirdPlaceSlot.slot, annexCAllocation)
+      : annexCAllocation[thirdPlaceSlot.slot];
+    if (!assignedPlaceholder) return null;
+    return qualifiedThirdByGroup.get(assignedPlaceholder.slice(1)) || null;
+  }
   if (/^[A-Z]{3}$/.test(normalized)) return normalized;
-  return directPlaceholderMap.get(normalized) || thirdAssignments.get(normalized) || null;
+  return directPlaceholderMap.get(normalized) || null;
 }
 
 function isThirdPlacePlaceholder(value: string): boolean {
   return /^3[A-L]+$/.test(value.trim().toUpperCase());
-}
-
-function eligibleGroupsForPlaceholder(
-  placeholder: string,
-  qualifiedThirdByGroup: Map<string, string>,
-): string[] {
-  const allowedGroups = placeholder.trim().toUpperCase().slice(1).split('');
-  return allowedGroups.filter((group) => qualifiedThirdByGroup.has(group));
 }

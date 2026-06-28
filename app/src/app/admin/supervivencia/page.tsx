@@ -9,6 +9,7 @@ import {
 } from '../../../lib/actions/champion-survivor';
 import { normalizeTeamStatus } from '../../../lib/champion-survivor';
 import { calculateWorldCupQualification } from '../../../lib/fifa-qualification';
+import { getEligibleChampionTeams } from '../../../lib/champion-team-eligibility';
 import { AdminChampionSurvivorClient, type ChampionSurvivorLeagueData } from './AdminChampionSurvivorClient';
 
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,7 @@ export default async function AdminChampionSurvivorPage() {
 
   const leagueData = await Promise.all(
     leagues.map(async (league) => {
-      const [adminStateResult, oddsResult, teamStatuses] = await Promise.all([
+      const [adminStateResult, oddsResult, teamStatuses, eligibleTeams] = await Promise.all([
         getChampionSurvivorAdminState(league.id) as Promise<RawActionResult>,
         adminListChampionOddsSnapshots(league.id) as Promise<RawActionResult>,
         prisma.teamTournamentStatus.findMany({
@@ -72,13 +73,14 @@ export default async function AdminChampionSurvivorPage() {
             updatedAt: true,
           },
         }),
+        getEligibleChampionTeams(league.id),
       ]);
 
       if ('error' in adminStateResult) {
         return {
           league: serializeLeague(league),
           error: adminStateResult.error,
-          teams: serializeTeamRows(teams, teamStatuses, qualification.teamTournamentStatusSuggestions),
+          teams: serializeTeamRows(eligibleTeams, teamStatuses, qualification.teamTournamentStatusSuggestions),
           odds: [],
           picks: [],
           summary: null,
@@ -114,7 +116,7 @@ export default async function AdminChampionSurvivorPage() {
       return {
         league: serializeLeague(league),
         error: null,
-        teams: serializeTeamRows(teams, teamStatuses, qualification.teamTournamentStatusSuggestions),
+        teams: serializeTeamRows(eligibleTeams, teamStatuses, qualification.teamTournamentStatusSuggestions),
         odds: oddsData.map((row) => ({
           team: row.team,
           latestSnapshot: row.latestSnapshot
@@ -169,7 +171,6 @@ export default async function AdminChampionSurvivorPage() {
       <AdminChampionSurvivorClient
         leagues={leagues.map(serializeLeague)}
         leagueData={leagueData}
-        allTeams={teams}
       />
     </div>
   );

@@ -141,8 +141,19 @@ export function getChampionPickStatus(
 
   const status = normalizeTeamStatus(teamStatus?.status);
   if (status === 'champion') return 'winner';
-  if (status === 'eliminated') return 'eliminated';
+  if (status === 'eliminated' || status === 'runner_up') return 'eliminated';
   return 'alive';
+}
+
+export function findConflictingChampionTeamCode(
+  teamStatuses: TeamStatusLike[],
+  targetTeamCode: string,
+): string | null {
+  const normalizedTarget = targetTeamCode.trim().toUpperCase();
+  return teamStatuses.find((status) => (
+    normalizeTeamStatus(status.status) === 'champion'
+    && status.teamCode.trim().toUpperCase() !== normalizedTarget
+  ))?.teamCode ?? null;
 }
 
 export function calculatePrizePool(

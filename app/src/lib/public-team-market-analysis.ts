@@ -82,6 +82,27 @@ export function filterRealTeams<T extends TeamIdentity>(teams: T[]): T[] {
   return teams.filter((team) => classifyTeamPickType(team) === 'real_team');
 }
 
+export function collectRealTeamCodesFromSources(
+  teams: TeamIdentity[],
+  sourceGroups: ReadonlyArray<Iterable<string>>,
+): Set<string> {
+  const realTeamCodes = new Set(
+    filterRealTeams(teams).map((team) => team.code.trim().toUpperCase()),
+  );
+  const collected = new Set<string>();
+
+  for (const source of sourceGroups) {
+    for (const teamCode of source) {
+      const normalizedTeamCode = teamCode.trim().toUpperCase();
+      if (realTeamCodes.has(normalizedTeamCode)) {
+        collected.add(normalizedTeamCode);
+      }
+    }
+  }
+
+  return collected;
+}
+
 export function filterTeamMarketRows(
   rows: TeamMarketAnalysisRow[],
   filter: TeamMarketFilter,

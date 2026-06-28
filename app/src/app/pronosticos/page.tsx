@@ -15,6 +15,7 @@ import {
   getChampionPickStatus,
   simulateChampionOdds,
 } from '../../lib/champion-survivor';
+import { getEligibleChampionPickTeamCodes } from '../../lib/champion-team-eligibility';
 
 
 export const dynamic = 'force-dynamic';
@@ -256,6 +257,7 @@ export default async function PronosticosPage() {
     : [[], [], [], []];
 
   type ChampionInfoPayload = {
+    eligibleTeamCodes: string[];
     teamStatuses: Record<string, {
       status: string;
       eliminatedAt: string | null;
@@ -325,6 +327,11 @@ export default async function PronosticosPage() {
   };
 
   const championInfoByLeague: Record<string, ChampionInfoPayload> = {};
+  const eligibleChampionTeamCodesByLeague = new Map(
+    await Promise.all(championSurvivorLeagueIds.map(async (leagueId) => (
+      [leagueId, Array.from(await getEligibleChampionPickTeamCodes(leagueId))] as const
+    )))
+  );
 
   for (const membership of championSurvivorMemberships) {
     const leagueId = membership.leagueId;
@@ -398,6 +405,7 @@ export default async function PronosticosPage() {
       : null;
 
     championInfoByLeague[leagueId] = {
+      eligibleTeamCodes: eligibleChampionTeamCodesByLeague.get(leagueId) || [],
       teamStatuses: teamStatusesPayload,
       championOdds: championOddsPayload,
       summary: {

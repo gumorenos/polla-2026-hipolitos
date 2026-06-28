@@ -286,6 +286,9 @@ We implement the following 6 tie-breakers sequentially:
 - User pick status is computed dynamically from the current pick plus team tournament status, avoiding stale participant status fields.
 - Champion market probability uses only manual or imported `ChampionOddsSnapshot` rows for `sourceMarket = "outright_winner"`; match odds are not a valid substitute.
 - Prize pool calculations must respect the league currency and count approved active members, including users whose picks are already eliminated.
+- The master `Team` catalog is not a writable roster. Participant and admin writes use a derived eligible set from real fixture teams, explicit tournament statuses, and league-scoped `outright_winner` snapshots. Historical picks may remain visible but do not grant eligibility.
+- `runner_up` is terminal and counts as eliminated in a champion-only competition. Server-side status updates reject a second champion in the same league.
+- Imported champion odds target one explicitly selected active Champion Survivor league instead of every league of that type.
 
 **Reset Design:**
 - `ChampionPick.teamCode` is required, so resetting a user pick deletes the active `ChampionPick` row.

@@ -164,6 +164,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Added read-only Champion Survivor user information panels below the explicit pick form: selected champion context and competition context.
 - [x] Added Champion Survivor social and market insight panels: pick versus market, social risk, popular versus differential, survival map, distribution, exclusive picks, and combined alive probability.
 - [x] Added `/invitado` public read-only view for the principal competition, with login CTA and `showOdds`/`showH2H` respected.
+- [x] Hardened Champion Survivor participant validation, writable team eligibility, runner-up handling, unique champion status, and league-scoped champion odds imports.
 - [ ] Full Champion Survivor visual dashboard with simulations and advanced views.
 
 ---

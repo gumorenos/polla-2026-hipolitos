@@ -10,6 +10,7 @@ import {
   isRecommendedChampionSportKey,
   THE_ODDS_API_PROVIDER,
 } from '../odds/champion-sport-guardrails';
+import { getEligibleChampionPickTeamCodes } from '../champion-team-eligibility';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -80,7 +81,7 @@ export async function adminPreviewChampionOdds(sportKey: string) {
   };
 }
 
-export async function adminImportChampionOdds(sportKey: string) {
+export async function adminImportChampionOdds(leagueId: string, sportKey: string) {
   const session = await getCurrentSession();
   checkSuperadmin(session);
 
@@ -88,6 +89,21 @@ export async function adminImportChampionOdds(sportKey: string) {
   if (!normalizedSportKey) {
     return { error: INVALID_CHAMPION_SPORT_MESSAGE };
   }
+
+  const targetLeague = await prisma.league.findFirst({
+    where: {
+      id: leagueId,
+      competitionType: 'champion_survivor',
+      isActive: true,
+      status: 'active',
+    },
+    select: { id: true },
+  });
+  if (!targetLeague) {
+    return { error: 'Selecciona una competencia Champion Survivor activa para importar las cuotas.' };
+  }
+
+  const eligibleTeamCodes = await getEligibleChampionPickTeamCodes(targetLeague.id);
 
   const res = await fetchChampionOutrights(normalizedSportKey);
   if (!res.success) {
@@ -104,21 +120,10 @@ export async function adminImportChampionOdds(sportKey: string) {
   // Record all raw names found to help with future alias resolution
   await recordProviderTeamNames(THE_ODDS_API_PROVIDER, 'outrights', outcomes.map(o => o.outcomeName));
 
-  // Determine which leagues are Champion Survivor leagues to update
-  const csLeagues = await prisma.league.findMany({
-    where: {
-      competitionType: 'champion_survivor'
-    },
-    select: { id: true }
-  });
-
-  if (csLeagues.length === 0) {
-    return { error: 'No hay ligas de tipo champion_survivor creadas.' };
-  }
-
   let matchedCount = 0;
   let unmatchedCount = 0;
   let savedSnapshots = 0;
+  let skippedIneligibleCount = 0;
 
   // We will aggregate bookmakers by computing the median odd for each team
   // Map of teamCode -> odds array
@@ -130,6 +135,10 @@ export async function adminImportChampionOdds(sportKey: string) {
     
     // We only proceed if it was matched confidently
     if (aliasInfo.status === 'matched' && aliasInfo.teamCode) {
+      if (!eligibleTeamCodes.has(aliasInfo.teamCode)) {
+        skippedIneligibleCount++;
+        continue;
+      }
       matchedCount++;
       if (!teamOddsMap[aliasInfo.teamCode]) {
         teamOddsMap[aliasInfo.teamCode] = { odds: [], capturedAt: outcome.lastUpdate };
@@ -152,28 +161,26 @@ export async function adminImportChampionOdds(sportKey: string) {
     const medianOdd = oddsList.length % 2 !== 0 ? oddsList[mid] : (oddsList[mid - 1] + oddsList[mid]) / 2;
     const impliedProbability = 1 / medianOdd;
 
-    for (const league of csLeagues) {
-      await prisma.championOddsSnapshot.create({
-        data: {
-          leagueId: league.id,
-          teamCode: teamCode,
-          provider: THE_ODDS_API_PROVIDER,
-          bookmaker: 'median_aggregated',
-          decimalOdds: medianOdd,
-          impliedProbability: impliedProbability,
-          capturedAt: aggregate.capturedAt,
-          sourceMarket: 'outright_winner',
-          rawSourceRef: JSON.stringify({
-            sportKey: normalizedSportKey,
-            market: 'outrights',
-            aggregation: 'median',
-            samples: oddsList.length,
-          }),
-          userId: session.user.id
-        }
-      });
-      savedSnapshots++;
-    }
+    await prisma.championOddsSnapshot.create({
+      data: {
+        leagueId: targetLeague.id,
+        teamCode: teamCode,
+        provider: THE_ODDS_API_PROVIDER,
+        bookmaker: 'median_aggregated',
+        decimalOdds: medianOdd,
+        impliedProbability: impliedProbability,
+        capturedAt: aggregate.capturedAt,
+        sourceMarket: 'outright_winner',
+        rawSourceRef: JSON.stringify({
+          sportKey: normalizedSportKey,
+          market: 'outrights',
+          aggregation: 'median',
+          samples: oddsList.length,
+        }),
+        userId: session.user.id
+      }
+    });
+    savedSnapshots++;
   }
 
   revalidatePath('/');
@@ -183,6 +190,7 @@ export async function adminImportChampionOdds(sportKey: string) {
     success: true,
     matchedCount,
     unmatchedCount,
+    skippedIneligibleCount,
     savedSnapshots,
     unmatchedNames: Array.from(unmatchedNames)
   };

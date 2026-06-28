@@ -10,6 +10,7 @@ import {
   buildSurvivalSummary,
   calculateChampionProbability,
   calculatePrizePool,
+  findConflictingChampionTeamCode,
   getChampionPickStatus,
   isChampionDeadlinePassed,
   isChampionSurvivorCompetition,
@@ -19,6 +20,10 @@ import {
   type ChampionRankingEntry,
   type TeamTournamentStatusValue,
 } from '../champion-survivor';
+import {
+  assertEligibleChampionTeam,
+  getEligibleChampionTeams,
+} from '../champion-team-eligibility';
 
 type ActionResult<T> = Promise<{ success: true; data: T } | { error: string }>;
 type ActionError = { error: string };
@@ -237,7 +242,7 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
       where: { leagueId_userId: { leagueId, userId } },
       include: { team: true },
     }),
-    prisma.team.findMany({ orderBy: { name: 'asc' } }),
+    getEligibleChampionTeams(leagueId),
     prisma.teamTournamentStatus.findMany({ where: { leagueId } }),
     prisma.leagueMember.count({ where: { leagueId, isParticipant: true, user: { status: 'approved' } } }),
   ]);
@@ -273,7 +278,11 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
       championDeadline: leagueResult.league.championDeadline,
       championDeadlinePassed,
       currentUserPick: pick,
-      canSubmitOrChangePick: !championDeadlinePassed && !pick?.lockedAt,
+      canSubmitOrChangePick:
+        leagueResult.league.isActive
+        && leagueResult.league.status === 'active'
+        && !championDeadlinePassed
+        && !pick?.lockedAt,
       availableTeams: teams,
       currentPickStatus: pickStatus,
       championProbability: probability,
@@ -289,6 +298,10 @@ export async function submitChampionPick(leagueId: string, teamCode: string): Ac
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
   if (isActionError(leagueResult)) return leagueResult;
 
+  if (!leagueResult.league.isActive || leagueResult.league.status !== 'active') {
+    return { error: 'La competencia no está activa.' };
+  }
+
   const normalizedTeamCode = teamCode.trim().toUpperCase();
   if (!normalizedTeamCode) {
     return { error: 'Debes elegir exactamente una selección campeona.' };
@@ -299,24 +312,26 @@ export async function submitChampionPick(leagueId: string, teamCode: string): Ac
   }
 
   const userId = sessionResult.user.id;
-  const [membership, team, existing] = await Promise.all([
+  const [membership, existing] = await Promise.all([
     prisma.leagueMember.findUnique({
       where: { leagueId_userId: { leagueId, userId } },
     }),
-    prisma.team.findUnique({ where: { code: normalizedTeamCode } }),
     prisma.championPick.findUnique({
       where: { leagueId_userId: { leagueId, userId } },
     }),
   ]);
 
-  if (!membership) {
-    return { error: 'No eres miembro registrado en esta polla.' };
-  }
-  if (!team) {
-    return { error: 'La selección elegida no existe.' };
+  if (!membership || !membership.isParticipant) {
+    return { error: 'Debes estar inscrito como participante para elegir campeón.' };
   }
   if (existing?.lockedAt) {
     return { error: 'Ya tienes una elección bloqueada y no puedes cambiarla sin corrección administrativa.' };
+  }
+
+  try {
+    await assertEligibleChampionTeam(leagueId, normalizedTeamCode);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'La selección elegida no está habilitada.' };
   }
 
   const now = new Date();
@@ -400,7 +415,7 @@ export async function adminChangeChampionPick(
   }
 
   const normalizedTeamCode = teamCode.trim().toUpperCase();
-  const [targetMembership, targetUser, team, existing] = await Promise.all([
+  const [targetMembership, targetUser, existing] = await Promise.all([
     prisma.leagueMember.findUnique({
       where: { leagueId_userId: { leagueId, userId: targetUserId } },
     }),
@@ -408,7 +423,6 @@ export async function adminChangeChampionPick(
       where: { id: targetUserId },
       select: { id: true, status: true },
     }),
-    prisma.team.findUnique({ where: { code: normalizedTeamCode } }),
     prisma.championPick.findUnique({
       where: { leagueId_userId: { leagueId, userId: targetUserId } },
     }),
@@ -417,7 +431,11 @@ export async function adminChangeChampionPick(
   if (!targetMembership || !targetMembership.isParticipant || targetUser?.status !== 'approved') {
     return { error: 'El usuario objetivo debe ser participante aprobado de esta polla.' };
   }
-  if (!team) return { error: 'La selección elegida no existe.' };
+  try {
+    await assertEligibleChampionTeam(leagueId, normalizedTeamCode);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'La selección elegida no está habilitada.' };
+  }
 
   const now = new Date();
   const pick = await prisma.championPick.upsert({
@@ -544,47 +562,73 @@ export async function adminSetTeamTournamentStatus(
   }
 
   const normalizedTeamCode = teamCode.trim().toUpperCase();
-  const team = await prisma.team.findUnique({ where: { code: normalizedTeamCode } });
-  if (!team) return { error: 'La selección no existe.' };
+  try {
+    await assertEligibleChampionTeam(leagueId, normalizedTeamCode);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'La selección no está habilitada.' };
+  }
 
   const now = new Date();
-  const updated = await prisma.teamTournamentStatus.upsert({
-    where: { teamCode_leagueId: { teamCode: normalizedTeamCode, leagueId } },
-    update: {
-      status: normalizedStatus,
-      eliminatedAt: normalizedStatus === 'eliminated' ? now : null,
-      eliminatedInMatchId: normalizedStatus === 'eliminated' ? options?.eliminatedInMatchId || null : null,
-      finalRank: options?.finalRank ?? (normalizedStatus === 'champion' ? 1 : null),
-      notes: notes || null,
-      updatedById: adminResult.user.id,
-    },
-    create: {
-      leagueId,
-      teamCode: normalizedTeamCode,
-      status: normalizedStatus,
-      eliminatedAt: normalizedStatus === 'eliminated' ? now : null,
-      eliminatedInMatchId: normalizedStatus === 'eliminated' ? options?.eliminatedInMatchId || null : null,
-      finalRank: options?.finalRank ?? (normalizedStatus === 'champion' ? 1 : null),
-      notes: notes || null,
-      updatedById: adminResult.user.id,
-    },
-  });
+  const isEliminatedStatus = normalizedStatus === 'eliminated' || normalizedStatus === 'runner_up';
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      if (normalizedStatus === 'champion') {
+        const championRows = await tx.teamTournamentStatus.findMany({
+          where: {
+            leagueId,
+            status: 'champion',
+          },
+          select: { teamCode: true, status: true },
+        });
+        const conflictingChampion = findConflictingChampionTeamCode(championRows, normalizedTeamCode);
+        if (conflictingChampion) {
+          throw new Error(`Ya existe un campeón registrado para esta competencia: ${conflictingChampion}.`);
+        }
+      }
 
-  await prisma.adminActionLog.create({
-    data: {
-      userId: adminResult.user.id,
-      action: 'champion_survivor_team_status_set',
-      target: `team:${normalizedTeamCode}:league:${leagueId}`,
-      details: JSON.stringify({ status: normalizedStatus, notes, ...options }),
-    },
-  });
+      const statusRow = await tx.teamTournamentStatus.upsert({
+        where: { teamCode_leagueId: { teamCode: normalizedTeamCode, leagueId } },
+        update: {
+          status: normalizedStatus,
+          eliminatedAt: isEliminatedStatus ? now : null,
+          eliminatedInMatchId: isEliminatedStatus ? options?.eliminatedInMatchId || null : null,
+          finalRank: options?.finalRank ?? (normalizedStatus === 'champion' ? 1 : null),
+          notes: notes || null,
+          updatedById: adminResult.user.id,
+        },
+        create: {
+          leagueId,
+          teamCode: normalizedTeamCode,
+          status: normalizedStatus,
+          eliminatedAt: isEliminatedStatus ? now : null,
+          eliminatedInMatchId: isEliminatedStatus ? options?.eliminatedInMatchId || null : null,
+          finalRank: options?.finalRank ?? (normalizedStatus === 'champion' ? 1 : null),
+          notes: notes || null,
+          updatedById: adminResult.user.id,
+        },
+      });
 
-  revalidatePath('/admin');
-  revalidatePath('/liga');
-  revalidatePath('/competencia');
-  revalidatePath('/ranking');
+      await tx.adminActionLog.create({
+        data: {
+          userId: adminResult.user.id,
+          action: 'champion_survivor_team_status_set',
+          target: `team:${normalizedTeamCode}:league:${leagueId}`,
+          details: JSON.stringify({ status: normalizedStatus, notes, ...options }),
+        },
+      });
 
-  return { success: true, data: updated };
+      return statusRow;
+    });
+
+    revalidatePath('/admin');
+    revalidatePath('/liga');
+    revalidatePath('/competencia');
+    revalidatePath('/ranking');
+
+    return { success: true, data: updated };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'No se pudo actualizar el estado de la selección.' };
+  }
 }
 
 export async function adminCreateChampionOddsSnapshot(
@@ -604,8 +648,11 @@ export async function adminCreateChampionOddsSnapshot(
   }
 
   const normalizedTeamCode = teamCode.trim().toUpperCase();
-  const team = await prisma.team.findUnique({ where: { code: normalizedTeamCode } });
-  if (!team) return { error: 'La selección no existe.' };
+  try {
+    await assertEligibleChampionTeam(leagueId, normalizedTeamCode);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'La selección no está habilitada.' };
+  }
 
   const snapshot = await prisma.championOddsSnapshot.create({
     data: {
@@ -650,7 +697,7 @@ export async function adminListChampionOddsSnapshots(leagueId: string): ActionRe
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
   if (isActionError(leagueResult)) return leagueResult;
 
-  const teams = await prisma.team.findMany({ orderBy: { name: 'asc' } });
+  const teams = await getEligibleChampionTeams(leagueId);
   const latestByTeam = await latestChampionOddsByTeam(leagueId);
 
   return {

@@ -158,7 +158,7 @@ export function TeamMarketAnalysisTable({
             </thead>
             <tbody className="divide-y divide-border-subtle/30">
               {visibleRows.map((team) => (
-                <tr key={team.teamCode} className={`hover:bg-bg-hover/30 transition-colors ${team.status === 'eliminated' ? 'opacity-60' : ''}`}>
+                <tr key={team.teamCode} className={`hover:bg-bg-hover/30 transition-colors ${team.status === 'eliminated' || team.status === 'runner_up' ? 'opacity-60' : ''}`}>
                   <td className="px-3 py-2.5">
                     <span className="font-semibold text-text-primary">{team.teamName}</span>
                     <span className="ml-1 text-[10px] text-text-muted font-mono uppercase">({team.teamCode})</span>

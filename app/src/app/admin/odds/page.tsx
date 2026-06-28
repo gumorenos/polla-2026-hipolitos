@@ -191,6 +191,7 @@ export default async function AdminOddsPage() {
     matchedOutrightsCount,
     pendingOutrightsCount,
     matchedOutrightTeams,
+    championSurvivorLeagues,
   ] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: 'asc' },
@@ -240,6 +241,15 @@ export default async function AdminOddsPage() {
       },
       select: { suggestedTeamCode: true },
       distinct: ['suggestedTeamCode'],
+    }),
+    prisma.league.findMany({
+      where: {
+        competitionType: 'champion_survivor',
+        isActive: true,
+        status: 'active',
+      },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'desc' },
     }),
   ]);
 
@@ -371,6 +381,7 @@ export default async function AdminOddsPage() {
           matchedOutrightsCount={matchedOutrightsCount}
           pendingOutrightsCount={pendingOutrightsCount}
           matchedOutrightsWithoutSnapshot={matchedOutrightsWithoutSnapshot}
+          championSurvivorLeagues={championSurvivorLeagues}
         />
       </div>
     </>

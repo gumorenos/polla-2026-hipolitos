@@ -5,6 +5,7 @@ import {
   calculateIndividualExpectedValue,
   calculatePrizePool,
   classifyChampionPick,
+  findConflictingChampionTeamCode,
   getChampionPickStatus,
   isChampionDeadlinePassed,
   resolveCompetitionType,
@@ -35,7 +36,17 @@ describe('Champion Survivor business logic', () => {
     expect(getChampionPickStatus(pick, { teamCode: 'PER', status: 'unknown' })).toBe('alive');
     expect(getChampionPickStatus(pick, { teamCode: 'PER', status: 'active' })).toBe('alive');
     expect(getChampionPickStatus(pick, { teamCode: 'PER', status: 'eliminated' })).toBe('eliminated');
+    expect(getChampionPickStatus(pick, { teamCode: 'PER', status: 'runner_up' })).toBe('eliminated');
     expect(getChampionPickStatus(pick, { teamCode: 'PER', status: 'champion' })).toBe('winner');
+  });
+
+  it('detects a conflicting second champion in the same league state', () => {
+    const statuses = [
+      { teamCode: 'ARG', status: 'champion' },
+      { teamCode: 'BRA', status: 'runner_up' },
+    ];
+    expect(findConflictingChampionTeamCode(statuses, 'FRA')).toBe('ARG');
+    expect(findConflictingChampionTeamCode(statuses, 'ARG')).toBeNull();
   });
 
   it('returns unavailable champion probability when no champion odds snapshot exists', () => {
@@ -174,6 +185,22 @@ describe('Champion Survivor business logic', () => {
 
     expect(result.available).toBe(true);
     expect(result.resolved).toBe(true);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].teamCode).toBe('ARG');
+    expect(result.entries[0].simulatedProbability).toBe(1);
+  });
+
+  it('excludes the runner-up from champion odds simulation', () => {
+    const result = simulateChampionOdds({
+      iterations: 100,
+      seed: 10,
+      teamStatuses: [{ teamCode: 'BRA', status: 'runner_up' }],
+      oddsSnapshots: [
+        { teamCode: 'ARG', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+        { teamCode: 'BRA', decimalOdds: 2, impliedProbability: 0.5, sourceMarket: 'outright_winner' },
+      ],
+    });
+
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0].teamCode).toBe('ARG');
     expect(result.entries[0].simulatedProbability).toBe(1);

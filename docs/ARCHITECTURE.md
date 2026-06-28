@@ -235,11 +235,14 @@ User requests Champion Survivor state
 
 ```
 User explicitly saves one champion pick
-  → Server Action validates approved session, membership, valid team, and deadline
+  → Server Action validates approved session, active participant membership, active league, and deadline
+  → Selected team must belong to the derived eligible tournament roster
   → league.championDeadline is the hard cutoff
   → Pick is created or updated only if not already locked
   → lockedAt is set on save
 ```
+
+Champion Survivor derives two server-side team sets. The visible set keeps safe historical picks available for dashboards, while the stricter writable set contains real teams found in tournament fixtures, explicit tournament statuses, or `outright_winner` snapshots. Both sets exclude bracket placeholders, and historical picks alone never authorize future writes.
 
 `/pronosticos` also provides read-only Champion Survivor context below the explicit pick form:
 
@@ -267,8 +270,10 @@ The guest route never exposes forms, Server Actions, admin links, prediction inp
 Admin or superadmin manages Champion Survivor
   → Server Action validates superadmin or league owner/admin role
   → Admin pick changes and resets require a non-empty reason
+  → Team writes use the same eligible tournament roster as participant picks
   → Team tournament statuses are updated separately from user records
-  → Champion odds are manual outright_winner snapshots only
+  → Only one champion status is accepted per league
+  → Champion odds are outright_winner snapshots scoped to one active Survivor league
   → CSV export is generated as text/csv, not spreadsheet files
 ```
 

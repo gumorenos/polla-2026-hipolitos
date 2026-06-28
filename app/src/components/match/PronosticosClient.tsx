@@ -9,6 +9,7 @@ import { submitChampionPick } from '../../lib/actions/champion-survivor';
 import { FLAG_MAP } from '../ui/FlagDisc';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
 import { calculateIndividualExpectedValue, classifyChampionPick } from '../../lib/champion-survivor';
+import { filterRealTeams } from '../../lib/public-team-market-analysis';
 
 type OddsInfo = {
   homeOdds: number;
@@ -40,6 +41,7 @@ type H2HInfo = {
 };
 
 type ChampionInfoByLeague = Record<string, {
+  eligibleTeamCodes: string[];
   teamStatuses: Record<string, {
     status: string;
     eliminatedAt: string | null;
@@ -205,13 +207,14 @@ function formatMatchDate(value: Date | string | number): string {
 function getTournamentStatusLabel(status?: string | null): string {
   if (status === 'active') return 'Vivo';
   if (status === 'eliminated') return 'Eliminado';
+  if (status === 'runner_up') return 'Eliminado (subcampeón)';
   if (status === 'champion') return 'Campeón acertado';
   return 'Estado no definido';
 }
 
 function getStatusTone(status?: string | null): string {
   if (status === 'champion') return 'border-gold-500/50 bg-gold-400/10 text-gold-400';
-  if (status === 'eliminated') return 'border-red-500/30 bg-red-500/10 text-red-400 opacity-70';
+  if (status === 'eliminated' || status === 'runner_up') return 'border-red-500/30 bg-red-500/10 text-red-400 opacity-70';
   if (status === 'active') return 'border-green-500/30 bg-green-500/10 text-green-400';
   return 'border-border-subtle bg-bg-secondary/30 text-text-secondary';
 }
@@ -278,11 +281,18 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
   }, [leagues, activeLeagueId]);
 
   const activeChampionInfo = activeLeague ? championInfoByLeague[activeLeague.id] : undefined;
+  const activeEligibleTeamCodes = activeChampionInfo?.eligibleTeamCodes;
 
 
   const realTeams = useMemo(() => {
-    return teams.filter(t => t.code.length === 3 && !/^\d/.test(t.code) && !/^[WR]/.test(t.code));
+    return filterRealTeams(teams);
   }, [teams]);
+
+  const selectableChampionTeams = useMemo(() => {
+    if (activeLeague?.competitionType !== 'champion_survivor') return realTeams;
+    const eligibleCodes = new Set(activeEligibleTeamCodes || []);
+    return realTeams.filter((team) => eligibleCodes.has(team.code));
+  }, [activeEligibleTeamCodes, activeLeague?.competitionType, realTeams]);
 
   const recentFinishedMatches = useMemo(() => {
     return matches
@@ -635,7 +645,7 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                       className="field py-1.5 px-3 text-xs bg-bg-secondary text-text-primary border border-border-default rounded-lg w-full md:w-56 disabled:opacity-75 font-sans"
                     >
                       <option value="">-- Elige Campeón --</option>
-                      {realTeams.map(t => {
+                      {selectableChampionTeams.map(t => {
                         const flag = FLAG_MAP[t.code.toUpperCase()] || '';
                         return (
                           <option key={t.code} value={t.code}>

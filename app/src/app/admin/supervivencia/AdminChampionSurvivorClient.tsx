@@ -142,7 +142,6 @@ export interface ChampionSurvivorLeagueData {
 interface AdminChampionSurvivorClientProps {
   leagues: ChampionSurvivorLeagueOption[];
   leagueData: ChampionSurvivorLeagueData[];
-  allTeams: Array<{ code: string; name: string }>;
 }
 
 const statusOptions: Array<{ value: TeamTournamentStatusValue; label: string; requiresReason: boolean }> = [
@@ -155,7 +154,6 @@ const statusOptions: Array<{ value: TeamTournamentStatusValue; label: string; re
 export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientProps> = ({
   leagues,
   leagueData,
-  allTeams,
 }) => {
   const router = useRouter();
   const [selectedLeagueId, setSelectedLeagueId] = useState(leagues[0]?.id || '');
@@ -448,7 +446,7 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
               className="field text-xs py-2 w-full"
             >
               <option value="">-- Selecciona selección --</option>
-              {allTeams.map((team) => (
+              {activeData?.teams.map(({ team }) => (
                 <option key={team.code} value={team.code}>
                   {team.name} ({team.code})
                 </option>

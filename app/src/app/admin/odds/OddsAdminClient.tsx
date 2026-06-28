@@ -160,6 +160,7 @@ interface OddsAdminClientProps {
   matchedOutrightsCount: number;
   pendingOutrightsCount: number;
   matchedOutrightsWithoutSnapshot: string[];
+  championSurvivorLeagues: Array<{ id: string; name: string }>;
 }
 
 export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
@@ -191,6 +192,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   matchedOutrightsCount,
   pendingOutrightsCount,
   matchedOutrightsWithoutSnapshot,
+  championSurvivorLeagues,
 }) => {
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -213,6 +215,9 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [championOtherSports, setChampionOtherSports] = useState<TheOddsApiSport[]>([]);
   const [selectedSport, setSelectedSport] = useState<string>('');
   const [championPreview, setChampionPreview] = useState<ChampionOddsPreview | null>(null);
+  const [selectedChampionLeagueId, setSelectedChampionLeagueId] = useState(
+    championSurvivorLeagues[0]?.id || '',
+  );
 
   const toggleTeamExpanded = (code: string) => {
     setExpandedTeams((prev) => {
@@ -441,6 +446,10 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   };
 
   const handleImportChampionOdds = async () => {
+    if (!selectedChampionLeagueId) {
+      setStatusMsg({ type: 'error', text: 'Selecciona una competencia Champion Survivor activa.' });
+      return;
+    }
     if (!canPreviewChampionOdds) {
       setStatusMsg({ type: 'error', text: INVALID_CHAMPION_SPORT_MESSAGE });
       return;
@@ -452,13 +461,13 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setChampionLoading(true);
     setStatusMsg(null);
     try {
-      const res = await adminImportChampionOdds(normalizedSelectedSport);
+      const res = await adminImportChampionOdds(selectedChampionLeagueId, normalizedSelectedSport);
       if ('error' in res) {
         setStatusMsg({ type: 'error', text: res.error ?? 'No se pudieron importar las cuotas de campeón.' });
       } else {
         setStatusMsg({ 
           type: 'success', 
-          text: `Éxito. Coincidencias: ${res.matchedCount}, Sin coincidir: ${res.unmatchedCount}, Snapshots guardados: ${res.savedSnapshots}. ${res.unmatchedNames?.length ? `Nuevos sin coincidir: ${res.unmatchedNames.join(', ')}` : ''}`
+          text: `Éxito. Coincidencias elegibles: ${res.matchedCount}, Sin coincidir: ${res.unmatchedCount}, Fuera del roster: ${res.skippedIneligibleCount}, Snapshots guardados: ${res.savedSnapshots}. ${res.unmatchedNames?.length ? `Nuevos sin coincidir: ${res.unmatchedNames.join(', ')}` : ''}`
         });
         router.refresh();
       }
@@ -1403,6 +1412,21 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
           </div>
 
           <div className="space-y-2">
+            <label className="text-xs text-text-secondary font-semibold block" htmlFor="champion-league-target">
+              Competencia Champion Survivor destino
+            </label>
+            <select
+              id="champion-league-target"
+              value={selectedChampionLeagueId}
+              onChange={(event) => setSelectedChampionLeagueId(event.target.value)}
+              className="w-full px-3 py-1.5 bg-bg-tertiary border border-border-default rounded-lg text-sm text-text-primary focus:outline-none focus:border-gold-500/50"
+            >
+              <option value="">-- Selecciona competencia activa --</option>
+              {championSurvivorLeagues.map((league) => (
+                <option key={league.id} value={league.id}>{league.name}</option>
+              ))}
+            </select>
+
             <span className="text-xs text-text-secondary font-semibold block">Sport key (ej. soccer_fifa_world_cup_winner)</span>
             <input
               type="text"
@@ -1442,7 +1466,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             <button
               type="button"
               onClick={handleImportChampionOdds}
-              disabled={championLoading || !canPreviewChampionOdds || !hasCurrentChampionPreview}
+              disabled={championLoading || !selectedChampionLeagueId || !canPreviewChampionOdds || !hasCurrentChampionPreview}
               className="px-3 py-1.5 w-full bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/20 text-gold-400 rounded-lg text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-1 transition-all disabled:opacity-50 mt-2"
             >
               <Database className="w-3 h-3" /> Importar Cuotas de Campeón

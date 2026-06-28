@@ -10,6 +10,7 @@ import { FLAG_MAP } from '../ui/FlagDisc';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
 import { calculateIndividualExpectedValue, classifyChampionPick } from '../../lib/champion-survivor';
 import { filterRealTeams } from '../../lib/public-team-market-analysis';
+import { isConsistentFinalMatchResult } from '../../lib/match-result';
 
 type OddsInfo = {
   homeOdds: number;
@@ -175,11 +176,7 @@ function getActionError(result: unknown): string | null {
 }
 
 function isFinishedMatch(match: Match): boolean {
-  return (
-    match.resultStatus === 'final' ||
-    match.status === 'result' ||
-    (match.homeScore !== null && match.homeScore !== undefined && match.awayScore !== null && match.awayScore !== undefined)
-  );
+  return isConsistentFinalMatchResult(match);
 }
 
 function isUpcomingMatch(match: Match): boolean {

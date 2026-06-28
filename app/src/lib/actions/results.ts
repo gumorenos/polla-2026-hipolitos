@@ -8,6 +8,7 @@ import { getProviderCooldown } from '../odds/providers';
 import { fetchMatchResultFromFootballData, ProviderDiagnostic, ProviderResultDetails } from '../odds/football-data';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
 import { recordProviderTeamNames, resolveProviderTeamAlias } from '../team-alias-service';
+import { isConsistentFinalMatchResult } from '../match-result';
 
 interface ApiFootballFixture {
   fixture: {
@@ -51,19 +52,24 @@ async function fetchFromApiFootball(
   const isEnabled = credential.configured;
   const kickoffDate = new Date(match.kickoffUtc);
   const dateStr = kickoffDate.toISOString().slice(0, 10);
+  const dateFrom = shiftUtcDate(kickoffDate, -1);
+  const dateTo = shiftUtcDate(kickoffDate, 1);
   const timestamp = new Date().toISOString();
 
   const baseDiag: Omit<ProviderDiagnostic, 'success' | 'statusCode' | 'errorMessage'> = {
     provider: 'api-football',
     matchId: match.id,
     date: dateStr,
+    localHomeTeamCode: match.homeTeamCode,
+    localAwayTeamCode: match.awayTeamCode,
+    localKickoffUtc: kickoffDate.toISOString(),
     timestamp,
   };
 
   if (!isEnabled || !apiKey) {
     return {
       error: 'API-Football no está habilitado o no está configurado.',
-      diagnostic: { ...baseDiag, success: false, errorMessage: 'Provider disabled or key missing' },
+      diagnostic: { ...baseDiag, success: false, failureCategory: 'provider_disabled', errorMessage: 'Provider disabled or key missing' },
     };
   }
 
@@ -71,7 +77,7 @@ async function fetchFromApiFootball(
   if (cooldown) {
     return {
       error: `API-Football está en cooldown hasta ${cooldown.toISOString()}`,
-      diagnostic: { ...baseDiag, success: false, errorMessage: `Cooldown until ${cooldown.toISOString()}` },
+      diagnostic: { ...baseDiag, success: false, failureCategory: 'rate_limit', errorMessage: `Cooldown until ${cooldown.toISOString()}` },
     };
   }
 
@@ -84,12 +90,14 @@ async function fetchFromApiFootball(
   if (!homeId || !awayId) {
     return {
       error: `No se pudieron resolver los IDs de equipos: ${match.homeTeamCode}=${homeId}, ${match.awayTeamCode}=${awayId}`,
-      diagnostic: { ...baseDiag, success: false, errorMessage: 'Team ID resolution failed' },
+      diagnostic: { ...baseDiag, querySummary: `homeTeamId=${homeId || 'unresolved'}; awayTeamId=${awayId || 'unresolved'}`, success: false, failureCategory: 'team_alias_mismatch', errorMessage: 'Team ID resolution failed' },
     };
   }
 
-  // Use fixtures by date + team filter (more reliable than H2H for recent matches)
-  const url = `https://v3.football.api-sports.io/fixtures?date=${dateStr}&team=${homeId}&season=2026`;
+  // Use a UTC date margin because providers can place midnight fixtures on an adjacent date.
+  const querySummary = `team=${homeId}; opponent=${awayId}; season=2026; from=${dateFrom}; to=${dateTo}`;
+  const diagnosticBase = { ...baseDiag, querySummary };
+  const url = `https://v3.football.api-sports.io/fixtures?team=${homeId}&season=2026&from=${dateFrom}&to=${dateTo}`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -101,21 +109,21 @@ async function fetchFromApiFootball(
     const msg = err instanceof Error ? err.message : 'Network error';
     return {
       error: `Error de red con API-Football: ${msg}`,
-      diagnostic: { ...baseDiag, success: false, errorMessage: `Network: ${msg}` },
+      diagnostic: { ...diagnosticBase, success: false, failureCategory: 'network', errorMessage: `Network: ${msg}` },
     };
   }
 
   if (res.status === 429) {
     return {
       error: 'Límite de peticiones de API-Football (429)',
-      diagnostic: { ...baseDiag, success: false, statusCode: 429, errorMessage: 'Rate limit' },
+      diagnostic: { ...diagnosticBase, success: false, statusCode: 429, failureCategory: 'rate_limit', errorMessage: 'Rate limit' },
     };
   }
 
   if (!res.ok) {
     return {
       error: `API-Football falló con estado ${res.status}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: `HTTP ${res.status}` },
+      diagnostic: { ...diagnosticBase, success: false, statusCode: res.status, failureCategory: 'provider_error', errorMessage: `HTTP ${res.status}` },
     };
   }
 
@@ -125,14 +133,14 @@ async function fetchFromApiFootball(
   } catch {
     return {
       error: 'API-Football: Respuesta JSON inválida',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Invalid JSON' },
+      diagnostic: { ...diagnosticBase, success: false, statusCode: res.status, failureCategory: 'provider_error', errorMessage: 'Invalid JSON' },
     };
   }
 
   if (!data?.response || !Array.isArray(data.response)) {
     return {
       error: 'Respuesta inválida de API-Football',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'No response array' },
+      diagnostic: { ...diagnosticBase, success: false, statusCode: res.status, failureCategory: 'response_empty', errorMessage: 'No response array' },
     };
   }
 
@@ -144,18 +152,29 @@ async function fetchFromApiFootball(
       : []),
   ).catch(() => undefined);
 
+  const responseContext = {
+    responseCount: data.response.length,
+    candidateSummaries: data.response.slice(0, 8).map((fixture) => (
+      `${fixture.fixture.id}: ${fixture.teams?.home.name || '?'} vs ${fixture.teams?.away.name || '?'}; ${fixture.fixture.date}; ${fixture.fixture.status.short}`
+    )),
+  };
+
   // Find fixture matching our kickoff (within 24h window)
   const matchKickoffDate = new Date(match.kickoffUtc);
   let targetFixture: ApiFootballFixture | undefined;
-  let idFilteredDateFallback: ApiFootballFixture | undefined;
+  let hasCandidateInsideDateWindow = false;
   for (const fixture of data.response) {
     const f = fixture as ApiFootballFixture;
     const fDate = new Date(f.fixture.date);
     const diffMs = Math.abs(fDate.getTime() - matchKickoffDate.getTime());
     if (diffMs >= 24 * 60 * 60 * 1000) continue;
-    idFilteredDateFallback ??= f;
+    hasCandidateInsideDateWindow = true;
     if (!f.teams) {
       continue;
+    }
+    if (f.teams.home.id === homeId && f.teams.away.id === awayId) {
+      targetFixture = f;
+      break;
     }
     const [homeResolution, awayResolution] = await Promise.all([
       resolveProviderTeamAlias('api-football', f.teams.home.name),
@@ -171,12 +190,20 @@ async function fetchFromApiFootball(
       break;
     }
   }
-  targetFixture ??= idFilteredDateFallback;
 
   if (!targetFixture) {
     return {
       error: `API-Football: No fixture encontrado para ${match.homeTeamCode} vs ${match.awayTeamCode} el ${dateStr}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Fixture not found' },
+      diagnostic: {
+        ...diagnosticBase,
+        ...responseContext,
+        success: false,
+        statusCode: res.status,
+        failureCategory: data.response.length === 0
+          ? 'response_empty'
+          : hasCandidateInsideDateWindow ? 'team_alias_mismatch' : 'date_window_mismatch',
+        errorMessage: 'Fixture not found',
+      },
     };
   }
 
@@ -186,7 +213,7 @@ async function fetchFromApiFootball(
   if (!isFinished) {
     return {
       error: `API-Football: Partido no finalizado. Estado: ${statusShort}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: `Status: ${statusShort}` },
+      diagnostic: { ...diagnosticBase, ...responseContext, matchedFixtureId: String(targetFixture.fixture.id), success: false, statusCode: res.status, failureCategory: 'not_final', errorMessage: `Status: ${statusShort}` },
     };
   }
 
@@ -196,7 +223,7 @@ async function fetchFromApiFootball(
   if (homeScore === null || awayScore === null) {
     return {
       error: 'API-Football: Marcadores no disponibles aún.',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Null scores' },
+      diagnostic: { ...diagnosticBase, ...responseContext, matchedFixtureId: String(targetFixture.fixture.id), success: false, statusCode: res.status, failureCategory: 'invalid_scores', errorMessage: 'Null scores' },
     };
   }
 
@@ -221,7 +248,7 @@ async function fetchFromApiFootball(
 
   return {
     result: { homeScore, awayScore, wentToExtraTime, wentToPenalties, homePenaltyScore, awayPenaltyScore, winnerTeamCode },
-    diagnostic: { ...baseDiag, success: true, statusCode: res.status },
+    diagnostic: { ...diagnosticBase, ...responseContext, matchedFixtureId: String(targetFixture.fixture.id), success: true, statusCode: res.status },
   };
 }
 
@@ -239,7 +266,7 @@ export async function fetchAndSaveMatchResultInternal(
     return { error: 'Partido no encontrado' };
   }
 
-  if (match.status === 'result' && !force) {
+  if (isConsistentFinalMatchResult(match) && !force) {
     return { error: 'El partido ya tiene un resultado final. Usa force para re-consultar.' };
   }
 
@@ -330,6 +357,25 @@ export async function fetchAndSaveMatchResultAction(matchId: string, force = fal
   }
 }
 
+export async function diagnoseMatchResultProvidersAction(matchId: string) {
+  try {
+    const session = await getCurrentSession();
+    if (!session?.user) return { error: 'No autorizado' };
+
+    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+    if (!user?.isSuperadmin) return { error: 'No tienes permisos de superadministrador' };
+
+    return await fetchAndSaveMatchResultInternal(matchId, {
+      force: true,
+      dryRun: true,
+      provider: 'auto',
+    });
+  } catch (error) {
+    console.error('Error diagnosing result providers:', error);
+    return { error: 'Ocurrió un error al diagnosticar los proveedores de resultados' };
+  }
+}
+
 // ─── Server Action: mark match as postponed/cancelled ────────────────────────
 
 export async function markMatchStatusAction(
@@ -349,7 +395,18 @@ export async function markMatchStatusAction(
     await prisma.match.update({
       where: { id: matchId },
       data: {
+        status: 'open',
         resultStatus: newStatus,
+        homeScore: null,
+        awayScore: null,
+        winnerTeamCode: null,
+        wentToExtraTime: false,
+        wentToPenalties: false,
+        homePenaltyScore: null,
+        awayPenaltyScore: null,
+        resultSource: 'manual_admin',
+        resultFetchedAt: null,
+        resultNotes: `Estado marcado manualmente como ${newStatus}.`,
         resultUpdatedAt: new Date(),
         resultVerifiedById: user.id,
       },
@@ -369,6 +426,12 @@ export async function markMatchStatusAction(
     console.error('Error marking match status:', error);
     return { error: 'Ocurrió un error al actualizar el estado del partido' };
   }
+}
+
+function shiftUtcDate(value: Date, days: number): string {
+  const shifted = new Date(value);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
 }
 
 // ─── Server Action: apply CSV results in bulk ────────────────────────────────
@@ -503,6 +566,29 @@ export async function applyCSVResultsAction(validatedRows: CSVResultRow[]) {
     const errors: string[] = [];
 
     for (const row of validatedRows) {
+      if (row.status !== 'final') {
+        await prisma.match.update({
+          where: { id: row.matchId },
+          data: {
+            status: 'open',
+            resultStatus: row.status,
+            homeScore: null,
+            awayScore: null,
+            winnerTeamCode: null,
+            wentToExtraTime: false,
+            wentToPenalties: false,
+            homePenaltyScore: null,
+            awayPenaltyScore: null,
+            resultSource: 'csv_import',
+            resultNotes: row.resultNotes,
+            resultUpdatedAt: new Date(),
+            resultVerifiedById: user.id,
+          },
+        });
+        applied++;
+        continue;
+      }
+
       const res = await updateMatchResultInternal(
         row.matchId,
         row.homeScore,
@@ -513,7 +599,7 @@ export async function applyCSVResultsAction(validatedRows: CSVResultRow[]) {
           homePenaltyScore: row.homePenaltyScore,
           awayPenaltyScore: row.awayPenaltyScore,
           winnerTeamCode: row.winnerTeamCode,
-          resultStatus: row.status === 'final' ? 'final' : row.status,
+          resultStatus: 'final',
           resultSource: 'csv_import',
           resultNotes: row.resultNotes ?? undefined,
         },

@@ -99,7 +99,12 @@ async function main() {
   } else {
     const whereClause: Prisma.MatchWhereInput = {};
     if (!force) {
-      whereClause.status = { not: 'result' };
+      whereClause.OR = [
+        { status: { not: 'result' } },
+        { homeScore: null },
+        { awayScore: null },
+        { resultStatus: { not: 'final' } },
+      ];
     }
 
     let allUnfinishedMatches = await prisma.match.findMany({

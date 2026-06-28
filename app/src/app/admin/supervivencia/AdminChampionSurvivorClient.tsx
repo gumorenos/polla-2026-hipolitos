@@ -19,8 +19,10 @@ import {
   adminChangeChampionPick,
   adminCreateChampionOddsSnapshot,
   adminExportChampionSurvivorCsv,
+  adminInitializeChampionTeamStatuses,
   adminResetChampionPick,
   adminSetTeamTournamentStatus,
+  adminSyncChampionTeamStatuses,
 } from '../../../lib/actions/champion-survivor';
 import type { TeamTournamentStatusValue } from '../../../lib/champion-survivor';
 
@@ -52,7 +54,9 @@ export interface ChampionSurvivorPickRow {
   lockedAt: string | null;
   championProbability: number | null;
   championProbabilityAvailable: boolean;
+  championDecimalOdds: number | null;
   expectedValue: number | null;
+  individualExpectedValue: number | null;
   correctedAt: string | null;
   correctedByAdminId: string | null;
   lastCorrectionReason: string | null;
@@ -323,6 +327,53 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
     setMessage({ type: 'success', text: 'CSV generado correctamente.' });
   };
 
+  const handleInitializeStatuses = async () => {
+    if (!activeData || !confirm('¿Inicializar estados activos para el roster con cuotas de campeón?')) return;
+    setLoading(true);
+    setMessage(null);
+    const result = await adminInitializeChampionTeamStatuses(activeData.league.id);
+    setLoading(false);
+    if ('error' in result) {
+      setMessage({ type: 'error', text: result.error });
+      return;
+    }
+    const summary = result.data as {
+      created: number;
+      unchanged: number;
+      skippedIneligible: number;
+      skippedPlaceholders: number;
+      existingManualStatusesPreserved: number;
+    };
+    setMessage({
+      type: 'success',
+      text: `Estados inicializados: ${summary.created} creados, ${summary.unchanged} sin cambios, ${summary.skippedPlaceholders} placeholders omitidos, ${summary.skippedIneligible} fuera del roster y ${summary.existingManualStatusesPreserved} estados manuales preservados.`,
+    });
+    router.refresh();
+  };
+
+  const handleSyncStatuses = async () => {
+    if (!activeData || !confirm('¿Sincronizar estados con los resultados finales locales?')) return;
+    setLoading(true);
+    setMessage(null);
+    const result = await adminSyncChampionTeamStatuses(activeData.league.id);
+    setLoading(false);
+    if ('error' in result) {
+      setMessage({ type: 'error', text: result.error });
+      return;
+    }
+    const summary = result.data as {
+      updated: number;
+      preservedManual: number;
+      champion: string | null;
+      runnerUp: string | null;
+    };
+    setMessage({
+      type: 'success',
+      text: `Sincronización completada: ${summary.updated} estados actualizados y ${summary.preservedManual} estados manuales preservados.${summary.champion ? ` Campeón: ${summary.champion}; subcampeón: ${summary.runnerUp}.` : ''}`,
+    });
+    router.refresh();
+  };
+
   const runAction = async (promise: Promise<ActionResponse>, successText: string) => {
     setLoading(true);
     setMessage(null);
@@ -380,14 +431,32 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
           </select>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCsvExport}
-          disabled={loading}
-          className="btn-gold px-4 py-2 text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-2"
-        >
-          <Download className="w-4 h-4" /> Exportar CSV
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleInitializeStatuses}
+            disabled={loading}
+            className="px-3 py-2 text-xs rounded border border-border-default bg-bg-secondary hover:bg-bg-hover disabled:opacity-50"
+          >
+            Inicializar estados
+          </button>
+          <button
+            type="button"
+            onClick={handleSyncStatuses}
+            disabled={loading}
+            className="px-3 py-2 text-xs rounded border border-border-default bg-bg-secondary hover:bg-bg-hover disabled:opacity-50"
+          >
+            Sincronizar resultados
+          </button>
+          <button
+            type="button"
+            onClick={handleCsvExport}
+            disabled={loading}
+            className="btn-gold px-4 py-2 text-xs font-mono uppercase tracking-wider flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Exportar CSV
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -636,7 +705,9 @@ function PicksTable({
               <th className="p-3">Equipo elegido</th>
               <th className="p-3">Estado</th>
               <th className="p-3">Probabilidad según mercado</th>
+              <th className="p-3">Cuota campeón</th>
               <th className="p-3">Valor esperado estimado</th>
+              <th className="p-3">EV individual estimado</th>
               <th className="p-3">Fecha de selección</th>
               <th className="p-3">Bloqueado</th>
               <th className="p-3">Última corrección</th>
@@ -646,7 +717,7 @@ function PicksTable({
           <tbody className="divide-y divide-border-subtle/40">
             {picks.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-text-muted italic">
+                <td colSpan={11} className="p-8 text-center text-text-muted italic">
                   No hay picks para este filtro.
                 </td>
               </tr>
@@ -669,7 +740,9 @@ function PicksTable({
                   </td>
                   <td className="p-3"><StatusBadge status={pick.status} /></td>
                   <td className="p-3">{formatProbability(pick.championProbability)}</td>
+                  <td className="p-3 font-mono">{pick.championDecimalOdds !== null ? pick.championDecimalOdds.toFixed(2) : 'Sin cuota'}</td>
                   <td className="p-3">{formatExpectedValue(pick.expectedValue, data.league.currency)}</td>
+                  <td className="p-3">{formatExpectedValue(pick.individualExpectedValue, data.league.currency)}</td>
                   <td className="p-3 text-text-secondary">{formatDateTime(pick.submittedAt)}</td>
                   <td className="p-3 text-text-secondary">{formatDateTime(pick.lockedAt)}</td>
                   <td className="p-3 text-text-secondary">

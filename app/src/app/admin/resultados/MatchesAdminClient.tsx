@@ -2,12 +2,16 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { updateMatchResultAction, manuallyRecalculateStandingsAction } from '../../../lib/actions/admin';
-import { fetchAndSaveMatchResultAction, markMatchStatusAction, validateCSVRows, applyCSVResultsAction, CSVValidationResult, CSVResultRow } from '../../../lib/actions/results';
+import { diagnoseMatchResultProvidersAction, fetchAndSaveMatchResultAction, markMatchStatusAction, validateCSVRows, applyCSVResultsAction, CSVValidationResult, CSVResultRow } from '../../../lib/actions/results';
+import { applyRoundOf32ResolutionAction } from '../../../lib/actions/bracket';
 import { Match } from '@prisma/client';
-import { AlertCircle, CheckCircle, RefreshCw, PauseCircle, XCircle, Upload, Download, ChevronDown } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, PauseCircle, XCircle, Upload, Download, ChevronDown, Search } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { getComputedMatchStatus, getComputedStatusDisplay } from '../../../lib/utils/matchStatus';
 import type { QualificationStatus, WorldCupQualification } from '../../../lib/fifa-qualification';
+import type { RoundOf32Resolution } from '../../../lib/knockout-bracket';
+import type { ProviderDiagnostic } from '../../../lib/odds/football-data';
+import { useRouter } from 'next/navigation';
 function parseCSV(text: string): Record<string, string>[] {
   const result: Record<string, string>[] = [];
   const lines: string[][] = [];
@@ -93,10 +97,11 @@ interface MatchRowProps {
   actionLoading: boolean;
   onUpdate: (matchId: string, homeScore: number, awayScore: number, details: MatchUpdateDetails) => Promise<void>;
   onFetchFromApi: (matchId: string) => Promise<void>;
+  onDiagnoseProviders: (matchId: string) => Promise<void>;
   onMarkStatus: (matchId: string, status: 'postponed' | 'cancelled') => Promise<void>;
 }
 
-function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onMarkStatus }: MatchRowProps) {
+function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onDiagnoseProviders, onMarkStatus }: MatchRowProps) {
   const [homeScore, setHomeScore] = useState<string>(match.homeScore !== null ? String(match.homeScore) : '');
   const [awayScore, setAwayScore] = useState<string>(match.awayScore !== null ? String(match.awayScore) : '');
   const [wentToExtraTime, setWentToExtraTime] = useState<boolean>(match.wentToExtraTime);
@@ -242,6 +247,13 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onM
                 </button>
                 <button
                   type="button"
+                  onClick={async () => { setShowActions(false); await onDiagnoseProviders(match.id); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-background transition-colors"
+                >
+                  <Search className="w-3.5 h-3.5 text-blue-400" /> Diagnosticar proveedores
+                </button>
+                <button
+                  type="button"
                   onClick={async () => { setShowActions(false); await onMarkStatus(match.id, 'postponed'); }}
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-background transition-colors"
                 >
@@ -269,16 +281,22 @@ const CSV_COLUMNS = ['matchId', 'homeTeamCode', 'awayTeamCode', 'status', 'homeS
 export default function MatchesAdminClient({
   matches,
   qualification,
+  bracketResolution,
 }: {
   matches: Match[];
   qualification: WorldCupQualification;
+  bracketResolution: RoundOf32Resolution;
 }) {
+  const router = useRouter();
   const [loadingMatchId, setLoadingMatchId] = useState<string | null>(null);
   const [actionLoadingMatchId, setActionLoadingMatchId] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [providerDiagnostics, setProviderDiagnostics] = useState<ProviderDiagnostic[]>([]);
+  const [diagnosticMatchId, setDiagnosticMatchId] = useState<string | null>(null);
+  const [applyingBracket, setApplyingBracket] = useState(false);
 
   // CSV/Excel state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -319,7 +337,10 @@ export default function MatchesAdminClient({
     setSuccess(null);
     const result = await updateMatchResultAction(matchId, homeScore, awayScore, details);
     if (result.error) setError(result.error);
-    else setSuccess('Resultado guardado y clasificaciones actualizadas');
+    else {
+      setSuccess('Resultado guardado y clasificaciones actualizadas');
+      router.refresh();
+    }
     setLoadingMatchId(null);
   };
 
@@ -327,11 +348,44 @@ export default function MatchesAdminClient({
     setActionLoadingMatchId(matchId);
     setError(null);
     setSuccess(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await fetchAndSaveMatchResultAction(matchId, false, 'auto') as any;
-    if (result.error) setError(`API: ${result.error}`);
-    else setSuccess(`Resultado obtenido vía ${result.usedProvider ?? 'API'}${result.isFallback ? ' (fallback)' : ''}`);
+    const result = await fetchAndSaveMatchResultAction(matchId, false, 'auto');
+    if ('diagnostics' in result && result.diagnostics) {
+      setProviderDiagnostics(result.diagnostics);
+      setDiagnosticMatchId(matchId);
+    }
+    if ('error' in result) setError(`API: ${result.error}`);
+    else {
+      setSuccess(`Resultado obtenido vía ${result.usedProvider ?? 'API'}${result.isFallback ? ' (fallback)' : ''}`);
+      router.refresh();
+    }
     setActionLoadingMatchId(null);
+  };
+
+  const handleDiagnoseProviders = async (matchId: string) => {
+    setActionLoadingMatchId(matchId);
+    setError(null);
+    setSuccess(null);
+    const result = await diagnoseMatchResultProvidersAction(matchId);
+    if ('diagnostics' in result && result.diagnostics) {
+      setProviderDiagnostics(result.diagnostics);
+      setDiagnosticMatchId(matchId);
+    }
+    if ('error' in result) setError(`Diagnóstico: ${result.error}`);
+    else setSuccess('Diagnóstico completado sin modificar el resultado.');
+    setActionLoadingMatchId(null);
+  };
+
+  const handleApplyBracket = async () => {
+    setApplyingBracket(true);
+    setError(null);
+    setSuccess(null);
+    const result = await applyRoundOf32ResolutionAction();
+    if ('error' in result) setError(result.error);
+    else {
+      setSuccess(`Bracket actualizado: ${result.changed} cruce(s) modificados.`);
+      router.refresh();
+    }
+    setApplyingBracket(false);
   };
 
   const handleMarkStatus = async (matchId: string, status: 'postponed' | 'cancelled') => {
@@ -340,7 +394,10 @@ export default function MatchesAdminClient({
     setSuccess(null);
     const result = await markMatchStatusAction(matchId, status);
     if (result.error) setError(result.error);
-    else setSuccess(`Partido marcado como ${status === 'postponed' ? 'postergado' : 'cancelado'}`);
+    else {
+      setSuccess(`Partido marcado como ${status === 'postponed' ? 'postergado' : 'cancelado'}`);
+      router.refresh();
+    }
     setActionLoadingMatchId(null);
   };
 
@@ -496,7 +553,16 @@ export default function MatchesAdminClient({
         </div>
       )}
 
+      {diagnosticMatchId && providerDiagnostics.length > 0 && (
+        <ProviderDiagnosticsPanel matchId={diagnosticMatchId} diagnostics={providerDiagnostics} />
+      )}
+
       <QualificationPanel qualification={qualification} />
+      <BracketResolutionPanel
+        resolution={bracketResolution}
+        applying={applyingBracket}
+        onApply={handleApplyBracket}
+      />
 
       {/* Match Table */}
       <div className="overflow-x-auto">
@@ -526,6 +592,7 @@ export default function MatchesAdminClient({
                   actionLoading={actionLoadingMatchId === match.id}
                   onUpdate={handleUpdateMatchResult}
                   onFetchFromApi={handleFetchFromApi}
+                  onDiagnoseProviders={handleDiagnoseProviders}
                   onMarkStatus={handleMarkStatus}
                 />
               ))
@@ -640,6 +707,105 @@ export default function MatchesAdminClient({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProviderDiagnosticsPanel({
+  matchId,
+  diagnostics,
+}: {
+  matchId: string;
+  diagnostics: ProviderDiagnostic[];
+}) {
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
+      <div>
+        <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Diagnóstico de proveedores</h3>
+        <p className="text-xs text-text-secondary">Partido {matchId}. Esta consulta no guarda resultados.</p>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        {diagnostics.map((diagnostic) => (
+          <div key={`${diagnostic.provider}-${diagnostic.timestamp}`} className="rounded border border-border-subtle bg-background/40 p-3 text-xs space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-text-primary">{diagnostic.provider}</span>
+              <span className={diagnostic.success ? 'text-green-400' : 'text-amber-400'}>
+                {diagnostic.success ? 'Fixture encontrado' : diagnostic.failureCategory || 'Sin coincidencia'}
+              </span>
+            </div>
+            <p className="text-text-secondary">Local: {diagnostic.localHomeTeamCode} vs {diagnostic.localAwayTeamCode}</p>
+            <p className="text-text-secondary">Kickoff UTC: {diagnostic.localKickoffUtc || diagnostic.date}</p>
+            <p className="text-text-secondary">Consulta: {diagnostic.querySummary || 'No disponible'}</p>
+            <p className="text-text-secondary">Candidatos: {diagnostic.responseCount ?? 'No disponible'}</p>
+            {diagnostic.matchedFixtureId && <p className="text-green-400">Fixture: {diagnostic.matchedFixtureId}</p>}
+            {diagnostic.errorMessage && <p className="text-amber-300">Motivo: {diagnostic.errorMessage}</p>}
+            {diagnostic.candidateSummaries && diagnostic.candidateSummaries.length > 0 && (
+              <details className="pt-1">
+                <summary className="cursor-pointer text-blue-300">Ver candidatos normalizados</summary>
+                <ul className="mt-1 space-y-1 text-[10px] text-text-muted">
+                  {diagnostic.candidateSummaries.map((candidate) => <li key={candidate}>{candidate}</li>)}
+                </ul>
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BracketResolutionPanel({
+  resolution,
+  applying,
+  onApply,
+}: {
+  resolution: RoundOf32Resolution;
+  applying: boolean;
+  onApply: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-lg border border-border-subtle bg-background/35 p-4 space-y-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Resolver bracket de dieciseisavos</h3>
+          <p className="text-xs text-text-secondary">Calculado únicamente con resultados finales locales de fase de grupos.</p>
+        </div>
+        <button
+          type="button"
+          disabled={!resolution.canApplySafeProposals || applying}
+          onClick={onApply}
+          className="px-4 py-2 rounded bg-gold text-background text-xs font-semibold disabled:opacity-40"
+        >
+          {applying ? 'Aplicando…' : 'Aplicar cruces resueltos'}
+        </button>
+      </div>
+      {resolution.ready ? (
+        <p className="text-xs text-green-400">Los 16 cruces están resueltos y listos para aplicar.</p>
+      ) : (
+        <div className="text-xs text-amber-300 space-y-1">
+          {resolution.unresolvedReasons.map((reason) => <p key={reason}>{reason}</p>)}
+          {resolution.blockingMatches.map((match) => (
+            <p key={match.id} className="text-text-secondary">
+              Bloquea {match.id}: {match.homeTeamCode} vs {match.awayTeamCode} ({match.resultStatus || 'sin estado final'})
+            </p>
+          ))}
+        </div>
+      )}
+      {!resolution.ready && resolution.canApplySafeProposals && (
+        <p className="text-xs text-blue-300">
+          Hay {resolution.applicableProposalCount} cruce(s) inequívocos que pueden aplicarse sin resolver todavía los mejores terceros.
+        </p>
+      )}
+      {resolution.proposals.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs text-gold">Ver propuesta de cruces ({resolution.proposals.length})</summary>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-text-secondary">
+            {resolution.proposals.map((proposal) => (
+              <p key={proposal.matchId}>{proposal.matchId}: {proposal.resolvedHomeTeamCode} vs {proposal.resolvedAwayTeamCode}</p>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

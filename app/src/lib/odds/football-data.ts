@@ -23,6 +23,14 @@ export interface ProviderDiagnostic {
   provider: string;
   matchId: string;
   date: string;
+  localHomeTeamCode?: string;
+  localAwayTeamCode?: string;
+  localKickoffUtc?: string;
+  querySummary?: string;
+  responseCount?: number;
+  candidateSummaries?: string[];
+  matchedFixtureId?: string;
+  failureCategory?: 'provider_disabled' | 'network' | 'rate_limit' | 'response_empty' | 'date_window_mismatch' | 'team_alias_mismatch' | 'not_final' | 'invalid_scores' | 'provider_error';
   statusCode?: number;
   errorMessage?: string;
   timestamp: string;
@@ -121,31 +129,37 @@ export async function fetchMatchResultFromFootballData(
 
   const kickoffDate = new Date(match.kickoffUtc);
   const dateStr = kickoffDate.toISOString().slice(0, 10);
+  const dateFrom = shiftUtcDate(kickoffDate, -1);
+  const dateTo = shiftUtcDate(kickoffDate, 1);
   const timestamp = new Date().toISOString();
 
   const baseDiag: Omit<ProviderDiagnostic, 'success' | 'statusCode' | 'errorMessage'> = {
     provider: 'football-data',
     matchId: match.id,
     date: dateStr,
+    localHomeTeamCode: match.homeTeamCode,
+    localAwayTeamCode: match.awayTeamCode,
+    localKickoffUtc: kickoffDate.toISOString(),
+    querySummary: `competition=${competitionCode}; dateFrom=${dateFrom}; dateTo=${dateTo}`,
     timestamp,
   };
 
   if (!enabled) {
     return {
       error: 'football-data.org no está habilitado o no está configurado',
-      diagnostic: { ...baseDiag, success: false, errorMessage: 'Provider disabled' },
+      diagnostic: { ...baseDiag, success: false, failureCategory: 'provider_disabled', errorMessage: 'Provider disabled' },
     };
   }
 
   if (!apiKey) {
     return {
       error: 'FOOTBALL_DATA_API_KEY no configurado',
-      diagnostic: { ...baseDiag, success: false, errorMessage: 'API key missing' },
+      diagnostic: { ...baseDiag, success: false, failureCategory: 'provider_disabled', errorMessage: 'API key missing' },
     };
   }
 
-  // Query matches by date range (same day)
-  const url = `${baseUrl}/competitions/${competitionCode}/matches?dateFrom=${dateStr}&dateTo=${dateStr}`;
+  // A one-day margin catches providers that classify midnight UTC fixtures on an adjacent date.
+  const url = `${baseUrl}/competitions/${competitionCode}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
 
   let res: Response;
   try {
@@ -161,28 +175,28 @@ export async function fetchMatchResultFromFootballData(
     const msg = err instanceof Error ? err.message : 'Network error';
     return {
       error: `Error de red al contactar football-data.org: ${msg}`,
-      diagnostic: { ...baseDiag, success: false, errorMessage: `Network: ${msg}` },
+      diagnostic: { ...baseDiag, success: false, failureCategory: 'network', errorMessage: `Network: ${msg}` },
     };
   }
 
   if (res.status === 403) {
     return {
       error: `football-data.org: Acceso denegado (403) — verifica tu plan o el código de competencia (${competitionCode})`,
-      diagnostic: { ...baseDiag, success: false, statusCode: 403, errorMessage: 'Access denied — check plan or competition code' },
+      diagnostic: { ...baseDiag, success: false, statusCode: 403, failureCategory: 'provider_error', errorMessage: 'Access denied — check plan or competition code' },
     };
   }
 
   if (res.status === 429) {
     return {
       error: 'football-data.org: Límite de peticiones alcanzado (429)',
-      diagnostic: { ...baseDiag, success: false, statusCode: 429, errorMessage: 'Rate limit' },
+      diagnostic: { ...baseDiag, success: false, statusCode: 429, failureCategory: 'rate_limit', errorMessage: 'Rate limit' },
     };
   }
 
   if (!res.ok) {
     return {
       error: `football-data.org: Error HTTP ${res.status}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: `HTTP ${res.status}` },
+      diagnostic: { ...baseDiag, success: false, statusCode: res.status, failureCategory: 'provider_error', errorMessage: `HTTP ${res.status}` },
     };
   }
 
@@ -192,14 +206,14 @@ export async function fetchMatchResultFromFootballData(
   } catch {
     return {
       error: 'football-data.org: Respuesta JSON inválida',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Invalid JSON' },
+      diagnostic: { ...baseDiag, success: false, statusCode: res.status, failureCategory: 'provider_error', errorMessage: 'Invalid JSON' },
     };
   }
 
   if (!data?.matches || !Array.isArray(data.matches)) {
     return {
       error: 'football-data.org: Respuesta vacía o formato inesperado',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'No matches array' },
+      diagnostic: { ...baseDiag, success: false, statusCode: res.status, failureCategory: 'response_empty', errorMessage: 'No matches array' },
     };
   }
 
@@ -214,15 +228,26 @@ export async function fetchMatchResultFromFootballData(
     ]),
   ).catch(() => undefined);
 
+  const responseContext = {
+    responseCount: data.matches.length,
+    candidateSummaries: data.matches.slice(0, 8).map((candidate) => (
+      `${candidate.id}: ${candidate.homeTeam.tla || candidate.homeTeam.name} vs ${candidate.awayTeam.tla || candidate.awayTeam.name}; ${candidate.utcDate}; ${candidate.status}`
+    )),
+  };
+
   // Find the matching fixture by team codes
   let fdMatch = data.matches.find((m) => {
+    const withinDateWindow = Math.abs(new Date(m.utcDate).getTime() - kickoffDate.getTime()) < 24 * 60 * 60 * 1000;
     const fdHome = normalizeTla(m.homeTeam.tla);
     const fdAway = normalizeTla(m.awayTeam.tla);
-    return fdHome === match.homeTeamCode && fdAway === match.awayTeamCode;
+    return withinDateWindow && fdHome === match.homeTeamCode && fdAway === match.awayTeamCode;
   });
 
   if (!fdMatch) {
     for (const candidate of data.matches) {
+      if (Math.abs(new Date(candidate.utcDate).getTime() - kickoffDate.getTime()) >= 24 * 60 * 60 * 1000) {
+        continue;
+      }
       const [homeResolution, awayResolution] = await Promise.all([
         resolveProviderTeamAlias('football-data', candidate.homeTeam.name),
         resolveProviderTeamAlias('football-data', candidate.awayTeam.name),
@@ -240,16 +265,28 @@ export async function fetchMatchResultFromFootballData(
   }
 
   if (!fdMatch) {
+    const hasCandidateInsideDateWindow = data.matches.some((candidate) => (
+      Math.abs(new Date(candidate.utcDate).getTime() - kickoffDate.getTime()) < 24 * 60 * 60 * 1000
+    ));
     return {
       error: `football-data.org: No se encontró partido ${match.homeTeamCode} vs ${match.awayTeamCode} el ${dateStr}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Match not found in response' },
+      diagnostic: {
+        ...baseDiag,
+        ...responseContext,
+        success: false,
+        statusCode: res.status,
+        failureCategory: data.matches.length === 0
+          ? 'response_empty'
+          : hasCandidateInsideDateWindow ? 'team_alias_mismatch' : 'date_window_mismatch',
+        errorMessage: 'Match not found in response',
+      },
     };
   }
 
   if (!['FINISHED', 'AWARDED'].includes(fdMatch.status)) {
     return {
       error: `football-data.org: Partido no finalizado. Estado: ${fdMatch.status}`,
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: `Match status: ${fdMatch.status}` },
+      diagnostic: { ...baseDiag, ...responseContext, matchedFixtureId: String(fdMatch.id), success: false, statusCode: res.status, failureCategory: 'not_final', errorMessage: `Match status: ${fdMatch.status}` },
     };
   }
 
@@ -259,7 +296,7 @@ export async function fetchMatchResultFromFootballData(
   if (homeScore === null || awayScore === null) {
     return {
       error: 'football-data.org: Marcadores no disponibles aún',
-      diagnostic: { ...baseDiag, success: false, statusCode: res.status, errorMessage: 'Null scores' },
+      diagnostic: { ...baseDiag, ...responseContext, matchedFixtureId: String(fdMatch.id), success: false, statusCode: res.status, failureCategory: 'invalid_scores', errorMessage: 'Null scores' },
     };
   }
 
@@ -291,6 +328,12 @@ export async function fetchMatchResultFromFootballData(
       awayPenaltyScore,
       winnerTeamCode,
     },
-    diagnostic: { ...baseDiag, success: true, statusCode: res.status },
+    diagnostic: { ...baseDiag, ...responseContext, matchedFixtureId: String(fdMatch.id), success: true, statusCode: res.status },
   };
+}
+
+function shiftUtcDate(value: Date, days: number): string {
+  const shifted = new Date(value);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
 }

@@ -279,6 +279,8 @@ Admin or superadmin manages Champion Survivor
 
 ### Scoring and Recalculation Flow
 
+Final result writes pass through a shared consistency helper: `status = result` and `resultStatus = final` require both scores, while knockout draws require a penalty winner. Provider diagnostics and bracket materialization are explicit superadmin operations in `/admin/resultados`; public page loads never call result providers or mutate fixtures.
+
 ```
 Admin enters result for a match
   → Server Action: updateMatchResultAction(matchId, homeScore, awayScore)

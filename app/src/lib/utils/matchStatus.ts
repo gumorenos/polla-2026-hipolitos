@@ -3,6 +3,8 @@
  * Separates the display status (computed at render time) from the DB `status` field.
  */
 
+import { isConsistentFinalMatchResult } from '../match-result';
+
 export type ComputedMatchStatus =
   | 'scheduled'      // kickoff in the future
   | 'closed_pending' // past kickoff, no result yet
@@ -23,12 +25,13 @@ export function getComputedMatchStatus(match: {
   homeScore?: number | null;
   awayScore?: number | null;
   resultStatus?: string | null;
+  status?: string | null;
 }): ComputedMatchStatus {
-  const { resultStatus, homeScore } = match;
+  const { resultStatus } = match;
 
   if (resultStatus === 'postponed') return 'postponed';
   if (resultStatus === 'cancelled') return 'cancelled';
-  if (resultStatus === 'final' || homeScore !== null && homeScore !== undefined) return 'final';
+  if (isConsistentFinalMatchResult(match)) return 'final';
 
   const kickoff = new Date(match.kickoffUtc).getTime();
   const now = Date.now();

@@ -63,12 +63,24 @@ export default async function AdminDashboardPage() {
   // 4. Matches stats
   const totalMatches = await prisma.match.count();
   const openMatchesCount = await prisma.match.count({ where: { status: { in: ['open', 'soon'] } } });
-  const finishedMatchesCount = await prisma.match.count({ where: { status: 'result' } });
+  const finishedMatchesCount = await prisma.match.count({
+    where: {
+      status: 'result',
+      resultStatus: 'final',
+      homeScore: { not: null },
+      awayScore: { not: null },
+    },
+  });
   
   // Matches past kickoff but status is not result/finished
   const allNotFinished = await prisma.match.findMany({
     where: {
-      status: { not: 'result' },
+      OR: [
+        { status: { not: 'result' } },
+        { resultStatus: { not: 'final' } },
+        { homeScore: null },
+        { awayScore: null },
+      ],
     },
   });
   const resultsPending = allNotFinished.filter(

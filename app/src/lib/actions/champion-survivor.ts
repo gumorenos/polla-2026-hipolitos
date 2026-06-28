@@ -9,6 +9,7 @@ import {
   buildPickDistribution,
   buildSurvivalSummary,
   calculateChampionProbability,
+  calculateIndividualExpectedValue,
   calculatePrizePool,
   findConflictingChampionTeamCode,
   getChampionPickStatus,
@@ -22,8 +23,16 @@ import {
 } from '../champion-survivor';
 import {
   assertEligibleChampionTeam,
+  getEligibleChampionPickTeamCodes,
   getEligibleChampionTeams,
 } from '../champion-team-eligibility';
+import {
+  buildChampionStatusInitializationPlan,
+  buildGroupStageChampionStatusUpdates,
+} from '../champion-status-sync';
+import { calculateWorldCupQualification } from '../fifa-qualification';
+import { isConsistentFinalMatchResult } from '../match-result';
+import { classifyTeamPickType } from '../public-team-market-analysis';
 
 type ActionResult<T> = Promise<{ success: true; data: T } | { error: string }>;
 type ActionError = { error: string };
@@ -44,6 +53,14 @@ function isActionError(result: unknown): result is ActionError {
     'error' in result &&
     typeof (result as { error?: unknown }).error === 'string'
   );
+}
+
+function revalidateChampionSurvivorPaths() {
+  revalidatePath('/admin/supervivencia');
+  revalidatePath('/pronosticos');
+  revalidatePath('/ranking');
+  revalidatePath('/');
+  revalidatePath('/invitado');
 }
 
 async function getApprovedSessionUser(): Promise<ActionError | { user: ApprovedSessionUser }> {
@@ -136,6 +153,10 @@ async function buildChampionSurvivorEntries(leagueId: string) {
 
   const pickByUser = new Map(picks.map((pick) => [pick.userId, pick]));
   const statusByTeam = new Map(teamStatuses.map((status) => [status.teamCode, status]));
+  const pickCountByTeam = new Map<string, number>();
+  for (const pick of picks) {
+    pickCountByTeam.set(pick.teamCode, (pickCountByTeam.get(pick.teamCode) || 0) + 1);
+  }
   const prizePool = calculatePrizePool(leagueResult, members.length);
   const oddsByTeam = await latestChampionOddsByTeam(leagueId);
 
@@ -167,7 +188,13 @@ async function buildChampionSurvivorEntries(leagueId: string) {
       lockedAt: pick?.lockedAt || null,
       championProbability: probability.impliedProbability,
       championProbabilityAvailable: probability.available,
+      championDecimalOdds: probability.decimalOdds,
       expectedValue: probability.expectedValue,
+      individualExpectedValue: calculateIndividualExpectedValue(
+        prizePool.amount,
+        probability.impliedProbability,
+        pick ? pickCountByTeam.get(pick.teamCode) || 0 : 0,
+      ),
       correctedAt: pick?.correctedAt || null,
       correctedByAdminId: pick?.correctedByAdminId || null,
       lastCorrectionReason: pick?.lastCorrectionReason || null,
@@ -184,6 +211,8 @@ async function buildChampionSurvivorEntries(leagueId: string) {
       team: { code: string; name: string; hue: number } | null;
       teamTournamentStatus: TeamTournamentStatusValue;
       championProbabilityAvailable: boolean;
+      championDecimalOdds: number | null;
+      individualExpectedValue: number | null;
       lockedAt: Date | null;
       correctedAt: Date | null;
       correctedByAdminId: string | null;
@@ -536,6 +565,225 @@ export async function adminResetChampionPick(
   revalidatePath('/ranking');
 
   return { success: true, data: { reset: true } };
+}
+
+export async function adminInitializeChampionTeamStatuses(leagueId: string): ActionResult<unknown> {
+  const adminResult = await requireLeagueAdmin(leagueId);
+  if (isActionError(adminResult)) return adminResult;
+
+  const leagueResult = await requireChampionSurvivorLeague(leagueId);
+  if (isActionError(leagueResult)) return leagueResult;
+
+  const [eligibleTeamCodes, snapshots, existingStatuses] = await Promise.all([
+    getEligibleChampionPickTeamCodes(leagueId),
+    prisma.championOddsSnapshot.findMany({
+      where: { leagueId, sourceMarket: 'outright_winner' },
+      select: { teamCode: true, team: { select: { code: true, name: true } } },
+      distinct: ['teamCode'],
+    }),
+    prisma.teamTournamentStatus.findMany({
+      where: { leagueId },
+      select: { teamCode: true, status: true },
+    }),
+  ]);
+  const plan = buildChampionStatusInitializationPlan(
+    eligibleTeamCodes,
+    snapshots
+      .filter((snapshot) => classifyTeamPickType(snapshot.team) === 'real_team')
+      .map((snapshot) => snapshot.teamCode),
+    existingStatuses,
+  );
+  if (plan.targetTeamCodes.length === 0) {
+    return { error: 'No hay equipos elegibles con cuotas de campeón outright_winner para inicializar.' };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const teamCode of plan.createTeamCodes) {
+      await tx.teamTournamentStatus.upsert({
+        where: { teamCode_leagueId: { teamCode, leagueId } },
+        update: {},
+        create: {
+          leagueId,
+          teamCode,
+          status: 'active',
+          notes: 'Inicializado desde roster elegible con cuotas de campeón.',
+          updatedById: adminResult.user.id,
+        },
+      });
+    }
+    await tx.adminActionLog.create({
+      data: {
+        userId: adminResult.user.id,
+        action: 'champion_survivor_statuses_initialized',
+        target: `league:${leagueId}`,
+        details: JSON.stringify(plan),
+      },
+    });
+  });
+
+  revalidateChampionSurvivorPaths();
+  return {
+    success: true,
+    data: {
+      created: plan.createTeamCodes.length,
+      unchanged: plan.unchanged,
+      skippedIneligible: plan.skippedIneligible,
+      skippedPlaceholders: snapshots.filter((snapshot) => (
+        classifyTeamPickType(snapshot.team) !== 'real_team'
+      )).length,
+      existingManualStatusesPreserved: existingStatuses.filter((status) => (
+        status.status === 'eliminated' || status.status === 'runner_up' || status.status === 'champion'
+      )).length,
+    },
+  };
+}
+
+export async function adminSyncChampionTeamStatuses(leagueId: string): ActionResult<unknown> {
+  const adminResult = await requireLeagueAdmin(leagueId);
+  if (isActionError(adminResult)) return adminResult;
+
+  const leagueResult = await requireChampionSurvivorLeague(leagueId);
+  if (isActionError(leagueResult)) return leagueResult;
+
+  const [eligibleTeamCodes, snapshots, existingStatuses, matches, teams] = await Promise.all([
+    getEligibleChampionPickTeamCodes(leagueId),
+    prisma.championOddsSnapshot.findMany({
+      where: { leagueId, sourceMarket: 'outright_winner' },
+      select: { teamCode: true, team: { select: { code: true, name: true } } },
+      distinct: ['teamCode'],
+    }),
+    prisma.teamTournamentStatus.findMany({
+      where: { leagueId },
+      select: { teamCode: true, status: true },
+    }),
+    prisma.match.findMany({ orderBy: { kickoffUtc: 'asc' } }),
+    prisma.team.findMany({ select: { code: true, name: true } }),
+  ]);
+  const initializationPlan = buildChampionStatusInitializationPlan(
+    eligibleTeamCodes,
+    snapshots
+      .filter((snapshot) => classifyTeamPickType(snapshot.team) === 'real_team')
+      .map((snapshot) => snapshot.teamCode),
+    existingStatuses,
+  );
+  if (initializationPlan.targetTeamCodes.length === 0) {
+    return { error: 'No hay equipos elegibles con cuotas outright_winner para sincronizar.' };
+  }
+
+  const qualification = calculateWorldCupQualification(matches, teams);
+  const groupsComplete = qualification.groups.length === 12
+    && qualification.groups.every((group) => group.complete);
+  if (!groupsComplete) {
+    const blockingMatches = matches
+      .filter((match) => match.phase === 'groups' && !isConsistentFinalMatchResult(match))
+      .map((match) => match.id);
+    return {
+      error: `La fase de grupos no está completa. Bloquean: ${blockingMatches.join(', ') || 'faltan grupos configurados'}.`,
+    };
+  }
+  if (qualification.unresolvedTies.length > 0) {
+    return { error: qualification.unresolvedTies[0] };
+  }
+
+  const groupPlan = buildGroupStageChampionStatusUpdates(
+    initializationPlan.targetTeamCodes,
+    existingStatuses,
+    qualification.teamTournamentStatusSuggestions,
+  );
+  const finalMatch = matches.find((match) => (
+    match.phase === 'final' && isConsistentFinalMatchResult(match) && Boolean(match.winnerTeamCode)
+  ));
+  const existingByTeam = new Map(existingStatuses.map((status) => [status.teamCode, status.status]));
+  const finalWinner = finalMatch?.winnerTeamCode || null;
+  const finalRunnerUp = finalMatch && finalWinner
+    ? (finalWinner === finalMatch.homeTeamCode ? finalMatch.awayTeamCode : finalMatch.homeTeamCode)
+    : null;
+  const conflictingChampion = existingStatuses.find((status) => (
+    status.status === 'champion' && status.teamCode !== finalWinner
+  ));
+  if (finalWinner && conflictingChampion) {
+    return { error: `Ya existe otro campeón manual registrado: ${conflictingChampion.teamCode}.` };
+  }
+  if (finalWinner && finalRunnerUp && (
+    !eligibleTeamCodes.has(finalWinner) || !eligibleTeamCodes.has(finalRunnerUp)
+  )) {
+    return { error: 'La final contiene una selección que no pertenece al roster elegible de Champion Survivor.' };
+  }
+  const winnerCurrentStatus = finalWinner ? existingByTeam.get(finalWinner) : null;
+  if (finalWinner && winnerCurrentStatus && !['active', 'unknown', 'champion'].includes(winnerCurrentStatus)) {
+    return { error: `${finalWinner} tiene un estado manual terminal (${winnerCurrentStatus}) que debe revisarse antes de sincronizar la final.` };
+  }
+  const runnerCurrentStatus = finalRunnerUp ? existingByTeam.get(finalRunnerUp) : null;
+  if (finalRunnerUp && runnerCurrentStatus && !['active', 'unknown', 'runner_up'].includes(runnerCurrentStatus)) {
+    return { error: `${finalRunnerUp} tiene un estado manual terminal (${runnerCurrentStatus}) que debe revisarse antes de sincronizar la final.` };
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    for (const update of groupPlan.updates) {
+      await tx.teamTournamentStatus.upsert({
+        where: { teamCode_leagueId: { teamCode: update.teamCode, leagueId } },
+        update: {
+          status: update.status,
+          eliminatedAt: update.status === 'eliminated' ? now : null,
+          notes: update.status === 'eliminated'
+            ? 'Sin clasificación a la fase eliminatoria según resultados finales de grupos.'
+            : 'Clasificado o activo según resultados finales de grupos.',
+          updatedById: adminResult.user.id,
+        },
+        create: {
+          leagueId,
+          teamCode: update.teamCode,
+          status: update.status,
+          eliminatedAt: update.status === 'eliminated' ? now : null,
+          notes: update.status === 'eliminated'
+            ? 'Sin clasificación a la fase eliminatoria según resultados finales de grupos.'
+            : 'Clasificado o activo según resultados finales de grupos.',
+          updatedById: adminResult.user.id,
+        },
+      });
+    }
+
+    if (finalWinner && finalRunnerUp) {
+      await tx.teamTournamentStatus.upsert({
+        where: { teamCode_leagueId: { teamCode: finalWinner, leagueId } },
+        update: { status: 'champion', finalRank: 1, eliminatedAt: null, notes: 'Campeón según resultado final.', updatedById: adminResult.user.id },
+        create: { leagueId, teamCode: finalWinner, status: 'champion', finalRank: 1, notes: 'Campeón según resultado final.', updatedById: adminResult.user.id },
+      });
+      if (!runnerCurrentStatus || runnerCurrentStatus === 'active' || runnerCurrentStatus === 'unknown') {
+        await tx.teamTournamentStatus.upsert({
+          where: { teamCode_leagueId: { teamCode: finalRunnerUp, leagueId } },
+          update: { status: 'runner_up', finalRank: 2, eliminatedAt: now, notes: 'Subcampeón según resultado final.', updatedById: adminResult.user.id },
+          create: { leagueId, teamCode: finalRunnerUp, status: 'runner_up', finalRank: 2, eliminatedAt: now, notes: 'Subcampeón según resultado final.', updatedById: adminResult.user.id },
+        });
+      }
+    }
+
+    await tx.adminActionLog.create({
+      data: {
+        userId: adminResult.user.id,
+        action: 'champion_survivor_statuses_synced',
+        target: `league:${leagueId}`,
+        details: JSON.stringify({
+          updates: groupPlan.updates,
+          preservedManual: groupPlan.preservedManual,
+          finalWinner,
+          finalRunnerUp,
+        }),
+      },
+    });
+  });
+
+  revalidateChampionSurvivorPaths();
+  return {
+    success: true,
+    data: {
+      updated: groupPlan.updates.length,
+      preservedManual: groupPlan.preservedManual,
+      champion: finalWinner,
+      runnerUp: finalRunnerUp,
+    },
+  };
 }
 
 export async function adminSetTeamTournamentStatus(

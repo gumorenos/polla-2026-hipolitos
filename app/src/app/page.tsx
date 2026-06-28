@@ -25,6 +25,7 @@ import type { TeamTournamentStatus, ChampionOddsSnapshot } from '@prisma/client'
 import { TeamMarketAnalysisTable } from '../components/public/TeamMarketAnalysisTable';
 import { filterRealTeams } from '../lib/public-team-market-analysis';
 import { getVisibleChampionTeamCodes } from '../lib/champion-team-eligibility';
+import { isConsistentFinalMatchResult } from '../lib/match-result';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,12 +165,7 @@ function formatDate(value: Date): string {
 }
 
 function isFinishedMatch(match: { resultStatus: string | null; status: string; homeScore: number | null; awayScore: number | null }): boolean {
-  return (
-    match.resultStatus === 'final' ||
-    match.status === 'result' ||
-    match.status === 'finished' ||
-    (match.homeScore !== null && match.awayScore !== null)
-  );
+  return isConsistentFinalMatchResult(match);
 }
 
 function getRequestNowMs(now: Date = new Date()): number {

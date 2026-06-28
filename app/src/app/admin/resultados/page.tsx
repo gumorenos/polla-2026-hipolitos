@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import MatchesAdminClient from './MatchesAdminClient';
 import Link from 'next/link';
 import { calculateWorldCupQualification } from '../../../lib/fifa-qualification';
+import { buildRoundOf32Resolution } from '../../../lib/knockout-bracket';
 
 export const metadata = {
   title: 'Admin - Resultados | La Polla 2026',
@@ -32,6 +33,7 @@ export default async function AdminResultadosPage() {
   ]);
 
   const qualification = calculateWorldCupQualification(matches, teams);
+  const bracketResolution = buildRoundOf32Resolution(matches, teams);
 
   return (
     <div className="w-full space-y-6">
@@ -47,7 +49,11 @@ export default async function AdminResultadosPage() {
           Ingresa los marcadores finales de los partidos. Al guardar un resultado, las predicciones de los usuarios serán calificadas automáticamente y las tablas de posiciones se recalcularán de forma global.
         </p>
 
-        <MatchesAdminClient matches={matches} qualification={qualification} />
+        <MatchesAdminClient
+          matches={matches}
+          qualification={qualification}
+          bracketResolution={bracketResolution}
+        />
       </div>
     </div>
   );

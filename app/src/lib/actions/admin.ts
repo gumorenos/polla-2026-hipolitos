@@ -7,6 +7,7 @@ import { calculatePoints } from '../scoring/calculatePoints';
 import { revalidatePath } from 'next/cache';
 import { auth } from '../auth';
 import { randomUUID } from 'crypto';
+import { isConsistentFinalMatchResult, normalizeFinalMatchResult } from '../match-result';
 
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
 
@@ -238,57 +239,21 @@ export async function updateMatchResultInternal(
   }
 
   const isKnockout = match.phase !== 'groups';
-  
-  let wentToExtraTime = false;
-  let wentToPenalties = false;
-  let homePenaltyScore: number | null = null;
-  let awayPenaltyScore: number | null = null;
-  let winnerTeamCode: string | null = null;
-  let resultStatus = 'final';
-
-  if (isKnockout && knockoutDetails) {
-    wentToExtraTime = !!knockoutDetails.wentToExtraTime;
-    wentToPenalties = !!knockoutDetails.wentToPenalties;
-    if (wentToPenalties) {
-      if (homeScore !== awayScore) {
-        return { error: 'Si el partido fue a penales, el marcador debe ser empate' };
-      }
-      if (knockoutDetails.homePenaltyScore === undefined || knockoutDetails.homePenaltyScore === null ||
-          knockoutDetails.awayPenaltyScore === undefined || knockoutDetails.awayPenaltyScore === null) {
-        return { error: 'Los goles de penales son obligatorios si se llegó a tanda de penales' };
-      }
-      homePenaltyScore = knockoutDetails.homePenaltyScore;
-      awayPenaltyScore = knockoutDetails.awayPenaltyScore;
-      if (homePenaltyScore === awayPenaltyScore) {
-        return { error: 'La tanda de penales debe tener un ganador' };
-      }
-      winnerTeamCode = homePenaltyScore > awayPenaltyScore ? match.homeTeamCode : match.awayTeamCode;
-    } else {
-      if (homeScore > awayScore) {
-        winnerTeamCode = match.homeTeamCode;
-      } else if (awayScore > homeScore) {
-        winnerTeamCode = match.awayTeamCode;
-      } else {
-        if (knockoutDetails.resultStatus === 'closed_pending_result') {
-          resultStatus = 'closed_pending_result';
-        } else {
-          return { error: 'Los partidos de eliminatorias no pueden terminar empatados sin tanda de penales' };
-        }
-      }
-    }
-  } else {
-    if (homeScore > awayScore) {
-      winnerTeamCode = match.homeTeamCode;
-    } else if (awayScore > homeScore) {
-      winnerTeamCode = match.awayTeamCode;
-    } else {
-      winnerTeamCode = null; // Draw
-    }
+  const normalizedResult = normalizeFinalMatchResult({
+    phase: match.phase,
+    homeTeamCode: match.homeTeamCode,
+    awayTeamCode: match.awayTeamCode,
+    homeScore,
+    awayScore,
+    wentToExtraTime: knockoutDetails?.wentToExtraTime,
+    wentToPenalties: knockoutDetails?.wentToPenalties,
+    homePenaltyScore: knockoutDetails?.homePenaltyScore,
+    awayPenaltyScore: knockoutDetails?.awayPenaltyScore,
+  });
+  if (!normalizedResult.valid) {
+    return { error: normalizedResult.error };
   }
-
-  if (isKnockout && match.phase === 'final' && resultStatus === 'final' && !winnerTeamCode) {
-    return { error: 'El partido de la final debe tener un ganador definido' };
-  }
+  const finalResult = normalizedResult.result;
 
   let logUserId = actingUserId;
   if (!logUserId) {
@@ -311,16 +276,20 @@ export async function updateMatchResultInternal(
     data: {
       homeScore,
       awayScore,
-      status: 'result',
-      resultStatus,
-      wentToExtraTime,
-      wentToPenalties,
-      homePenaltyScore,
-      awayPenaltyScore,
-      winnerTeamCode,
+      status: finalResult.status,
+      resultStatus: finalResult.resultStatus,
+      wentToExtraTime: finalResult.wentToExtraTime,
+      wentToPenalties: finalResult.wentToPenalties,
+      homePenaltyScore: finalResult.homePenaltyScore,
+      awayPenaltyScore: finalResult.awayPenaltyScore,
+      winnerTeamCode: finalResult.winnerTeamCode,
       resultSource: knockoutDetails?.resultSource || null,
       resultNotes: knockoutDetails?.resultNotes || null,
+      resultFetchedAt: knockoutDetails?.resultSource && knockoutDetails.resultSource !== 'manual_admin'
+        ? new Date()
+        : null,
       resultUpdatedAt: new Date(),
+      resultVerifiedById: actingUserId || null,
     },
   });
 
@@ -341,11 +310,12 @@ export async function updateMatchResultInternal(
         details: JSON.stringify({ 
           homeScore, 
           awayScore, 
-          wentToExtraTime, 
-          wentToPenalties, 
-          homePenaltyScore, 
-          awayPenaltyScore, 
-          winnerTeamCode 
+          wentToExtraTime: finalResult.wentToExtraTime,
+          wentToPenalties: finalResult.wentToPenalties,
+          homePenaltyScore: finalResult.homePenaltyScore,
+          awayPenaltyScore: finalResult.awayPenaltyScore,
+          winnerTeamCode: finalResult.winnerTeamCode,
+          resultSource: knockoutDetails?.resultSource || null,
         }),
       }
     }));
@@ -358,7 +328,7 @@ export async function updateMatchResultInternal(
       { 
         homeScore, 
         awayScore,
-        winnerTeamCode,
+        winnerTeamCode: finalResult.winnerTeamCode,
         homeTeamCode: match.homeTeamCode,
         awayTeamCode: match.awayTeamCode,
         isKnockout
@@ -427,7 +397,12 @@ export async function updateMatchResultAction(
       return { error: 'Los marcadores deben ser números positivos' };
     }
 
-    return await updateMatchResultInternal(matchId, homeScore, awayScore, knockoutDetails, user.id);
+    return await updateMatchResultInternal(matchId, homeScore, awayScore, {
+      ...knockoutDetails,
+      resultStatus: 'final',
+      resultSource: 'manual_admin',
+      resultNotes: knockoutDetails?.resultNotes || 'Resultado final ingresado manualmente por administrador.',
+    }, user.id);
   } catch (error) {
     console.error('Error updating match result action:', error);
     return { error: 'Ocurrió un error al actualizar el resultado' };
@@ -726,7 +701,18 @@ export async function updateMatchDetailsAction(
       return { error: 'Fecha de kickoff inválida' };
     }
 
-    // Update match
+    const existingMatch = await prisma.match.findUnique({ where: { id: matchId } });
+    if (!existingMatch) {
+      return { error: 'Partido no encontrado' };
+    }
+    if (data.status === 'result' && !isConsistentFinalMatchResult(existingMatch)) {
+      return { error: 'No puedes marcar el partido como result sin guardar primero un marcador final completo.' };
+    }
+    if (data.status !== 'result' && isConsistentFinalMatchResult(existingMatch)) {
+      return { error: 'Un resultado final debe modificarse desde Ingresar Resultados, no desde la programación del partido.' };
+    }
+
+    // Update match scheduling metadata without bypassing result invariants.
     await prisma.match.update({
       where: { id: matchId },
       data: {

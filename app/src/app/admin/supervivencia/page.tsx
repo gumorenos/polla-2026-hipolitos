@@ -41,8 +41,9 @@ export default async function AdminChampionSurvivorPage() {
       slug: true,
       championDeadline: true,
       currency: true,
+      isDefault: true,
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
   });
 
   const [teams, matches] = await Promise.all([

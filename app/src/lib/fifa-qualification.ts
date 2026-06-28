@@ -470,7 +470,7 @@ function isFinishedGroupMatch(match: QualificationMatchLike): boolean {
     Boolean(match.group) &&
     match.homeScore !== null &&
     match.awayScore !== null &&
-    (match.resultStatus === 'final' || match.status === 'result')
+    match.resultStatus === 'final'
   );
 }
 

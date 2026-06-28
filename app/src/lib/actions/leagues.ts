@@ -411,6 +411,8 @@ export async function manageMemberAction(
     }
 
     revalidatePath(`/liga/${league.slug}`);
+    revalidatePath('/admin/competencias');
+    revalidatePath('/admin/ligas');
     return { success: true };
   } catch (error) {
     console.error('Error in manageMemberAction:', error);
@@ -459,6 +461,7 @@ export async function archiveLeagueAction(leagueId: string, archive: boolean) {
     revalidatePath('/competencia');
     revalidatePath(`/liga/${updatedLeague.slug}`);
     revalidatePath(`/competencia/${updatedLeague.slug}`);
+    revalidatePath('/admin/competencias');
     revalidatePath('/admin/ligas');
     return { data: updatedLeague };
   } catch (error) {
@@ -505,6 +508,7 @@ export async function deleteLeagueAction(leagueId: string) {
 
     revalidatePath('/liga');
     revalidatePath('/competencia');
+    revalidatePath('/admin/competencias');
     revalidatePath('/admin/ligas');
     return { success: true };
   } catch (error) {
@@ -611,6 +615,7 @@ export async function updateLeagueSettingsAction(
     revalidatePath('/competencia');
     revalidatePath(`/liga/${updated.slug}`);
     revalidatePath(`/competencia/${updated.slug}`);
+    revalidatePath('/admin/competencias');
     revalidatePath('/admin/ligas');
     revalidatePath('/admin');
 
@@ -719,6 +724,7 @@ export async function addMemberAction(leagueId: string, targetUserId: string) {
     revalidatePath('/competencia');
     revalidatePath(`/liga/${league.slug}`);
     revalidatePath(`/competencia/${league.slug}`);
+    revalidatePath('/admin/competencias');
     revalidatePath('/admin/ligas');
     await recalculateAllStandings();
 

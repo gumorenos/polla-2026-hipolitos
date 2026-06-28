@@ -5,6 +5,7 @@ import { Shield, Settings, Archive, Trash2, ArrowLeft, Users, X, ArrowUp, ArrowD
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { archiveLeagueAction, deleteLeagueAction, addMemberAction, manageMemberAction, updateLeagueSettingsAction } from '../../lib/actions/leagues';
+import { summarizeCompetitionMembers } from '../../lib/competition-members';
 import { parseLimaDateTimeToUtc, getLimaDateTimeLocalString } from '../../lib/utils/dates';
 
 interface LeagueMemberData {
@@ -17,6 +18,7 @@ interface LeagueMemberData {
     email: string;
     displayName: string | null;
     username: string | null;
+    status: string | null;
   };
 }
 
@@ -31,9 +33,6 @@ interface LeagueAdminData {
   owner: {
     name: string;
     email: string;
-  };
-  _count: {
-    members: number;
   };
   members: LeagueMemberData[];
   championDeadline: string | null;
@@ -80,6 +79,13 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
 
   const activeLeague = leagues.find((l) => l.id === activeLeagueId);
   const settingsLeague = leagues.find((l) => l.id === settingsLeagueId);
+  const activeLeagueSummary = activeLeague
+    ? summarizeCompetitionMembers(activeLeague.members.map((member) => ({
+        role: member.role,
+        isParticipant: member.isParticipant,
+        userStatus: member.user.status,
+      })))
+    : null;
 
   const handleSaveSettings = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -193,11 +199,11 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
 
     let confirmMsg = '';
     if (action === 'remove') {
-      confirmMsg = '¿Estás seguro de que deseas eliminar a este participante de la competencia?';
+      confirmMsg = '¿Estás seguro de que deseas eliminar a este miembro de la competencia?';
     } else if (action === 'promote') {
-      confirmMsg = '¿Estás seguro de que deseas promover a este participante a administrador?';
+      confirmMsg = '¿Estás seguro de que deseas promover a este miembro a administrador?';
     } else if (action === 'demote') {
-      confirmMsg = '¿Estás seguro de que deseas degradar a este administrador a participante regular?';
+      confirmMsg = '¿Estás seguro de que deseas degradar a este administrador a miembro regular?';
     }
 
     if (confirmMsg && !confirm(confirmMsg)) {
@@ -251,7 +257,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
           <div className="hidden md:grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold text-center">
             <span className="col-span-3 text-left">Competencia</span>
             <span className="col-span-3 text-left">Creador</span>
-            <span className="col-span-2">Participantes</span>
+            <span className="col-span-2">Participantes / miembros</span>
             <span className="col-span-2">Estado</span>
             <span className="col-span-2 text-right">Acciones</span>
           </div>
@@ -267,6 +273,11 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
               leagues.map((l) => {
                 const isArchived = l.status === 'archived';
                 const isLoading = loadingLeagueId === l.id;
+                const memberSummary = summarizeCompetitionMembers(l.members.map((member) => ({
+                  role: member.role,
+                  isParticipant: member.isParticipant,
+                  userStatus: member.user.status,
+                })));
                 return (
                   <div
                     key={l.id}
@@ -284,10 +295,15 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       <span className="text-xs text-text-muted font-mono">{l.owner?.email || 'N/A'}</span>
                     </div>
 
-                    {/* Members Count */}
-                    <div className="col-span-2 flex items-center justify-center gap-1 text-sm text-text-primary">
+                    {/* Participant and membership counts */}
+                    <div className="col-span-2 flex items-center justify-center gap-1.5 text-sm text-text-primary">
                       <Users className="w-4 h-4 text-gold-400" />
-                      <span>{l._count.members}</span>
+                      <span className="text-center leading-tight">
+                        <strong>{memberSummary.participants}</strong> participantes
+                        <span className="block text-[10px] text-text-muted">
+                          {memberSummary.totalMembers} miembros
+                        </span>
+                      </span>
                     </div>
 
                     {/* Status badge */}
@@ -308,7 +324,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                       <button
                         type="button"
                         onClick={() => setActiveLeagueId(l.id)}
-                        title="Gestionar Participantes"
+                        title="Gestionar miembros y participantes"
                         className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
                       >
                         <Users className="w-4 h-4" />
@@ -366,12 +382,29 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
 
             <div>
               <h3 className="font-display text-2xl tracking-wide text-text-primary uppercase">
-                PARTICIPANTES: {activeLeague.name}
+                MIEMBROS Y PARTICIPANTES: {activeLeague.name}
               </h3>
               <p className="text-xs text-text-secondary">
-                Administra los miembros, roles e invitaciones de esta competencia.
+                Administra membresías y roles. Un owner o administrador puede no competir.
               </p>
             </div>
+
+            {activeLeagueSummary && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-bg-secondary/40 border border-border-subtle rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-gold-400">{activeLeagueSummary.participants}</p>
+                  <p className="text-[9px] uppercase text-text-muted">Participantes</p>
+                </div>
+                <div className="bg-bg-secondary/40 border border-border-subtle rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-text-primary">{activeLeagueSummary.totalMembers}</p>
+                  <p className="text-[9px] uppercase text-text-muted">Miembros totales</p>
+                </div>
+                <div className="bg-bg-secondary/40 border border-border-subtle rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-blue-400">{activeLeagueSummary.administrators}</p>
+                  <p className="text-[9px] uppercase text-text-muted">Admins / owners</p>
+                </div>
+              </div>
+            )}
 
             {/* Modal Alerts */}
             {modalError && (
@@ -420,7 +453,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
             {/* Members List */}
             <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pr-1">
               <div className="text-[10px] font-mono uppercase text-text-secondary border-b border-border-subtle pb-1">
-                Miembros Actuales ({activeLeague.members.length})
+                Miembros actuales ({activeLeague.members.length})
               </div>
 
               {activeLeague.members.length === 0 ? (
@@ -430,6 +463,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   {activeLeague.members.map((m) => {
                     const isOwner = m.role === 'owner';
                     const isAdmin = m.role === 'admin';
+                    const roleLabel = isOwner ? 'Owner' : isAdmin ? 'Administrador' : 'Miembro';
                     return (
                       <div key={m.userId} className="flex items-center justify-between py-2.5 gap-2">
                         <div>
@@ -441,7 +475,17 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          <span
+                            className={`text-[8px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
+                              m.isParticipant
+                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                            }`}
+                          >
+                            {m.isParticipant ? 'Participa' : 'No participa'}
+                          </span>
+
                           {/* Role Badge */}
                           <span
                             className={`text-[8px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
@@ -452,7 +496,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                                 : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
                             }`}
                           >
-                            {m.role}
+                            {roleLabel}
                           </span>
 
                           {/* Member Operations */}

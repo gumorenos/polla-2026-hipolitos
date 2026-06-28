@@ -5,26 +5,28 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings } from 'lucide-react';
 import { useViewMode } from './ViewModeProvider';
+import { filterVisibleNavigationItems } from '../../lib/navigation';
 
-export const BottomNav: React.FC = () => {
+type BottomNavProps = {
+  isAuthenticated: boolean;
+};
+
+export const BottomNav: React.FC<BottomNavProps> = ({ isAuthenticated }) => {
   const pathname = usePathname();
   const { showAdminUi } = useViewMode();
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
-    { label: 'Competencias', path: '/competencia', icon: Users },
-    { label: 'Predicciones', path: '/pronosticos', icon: CalendarCheck },
-    { label: 'Ranking', path: '/ranking', icon: Award },
-    { label: 'Perfil', path: '/perfil', icon: User },
-    { label: 'Admin', path: '/admin', icon: Settings, adminOnly: true },
+    { label: 'Competencias', path: '/competencia', icon: Users, authenticatedOnly: true },
+    { label: 'Predicciones', path: '/pronosticos', icon: CalendarCheck, authenticatedOnly: true },
+    { label: 'Ranking', path: '/ranking', icon: Award, authenticatedOnly: true },
+    { label: 'Perfil', path: '/perfil', icon: User, authenticatedOnly: true },
+    { label: 'Admin', path: '/admin', icon: Settings, authenticatedOnly: true, adminOnly: true },
   ];
 
-  // In participant-view mode, hide the admin nav item
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.adminOnly) {
-      return showAdminUi;
-    }
-    return true;
+  const visibleNavItems = filterVisibleNavigationItems(navItems, {
+    isAuthenticated,
+    showAdminUi,
   });
 
   return (

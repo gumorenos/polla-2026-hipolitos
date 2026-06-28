@@ -33,18 +33,22 @@ export default async function AdminDashboardPage() {
   const totalLeagues = await prisma.league.count();
   const defaultLeague = await prisma.league.findFirst({ where: { isDefault: true } });
   
-  let defaultLeagueMembersCount = 0;
+  let defaultLeagueParticipantsCount = 0;
   let defaultLeagueFee = 0;
   let defaultLeagueCurrency = 'PEN';
   let defaultLeaguePrize = 0;
   
   if (defaultLeague) {
-    defaultLeagueMembersCount = await prisma.leagueMember.count({
-      where: { leagueId: defaultLeague.id, user: { status: 'approved' } }
+    defaultLeagueParticipantsCount = await prisma.leagueMember.count({
+      where: {
+        leagueId: defaultLeague.id,
+        isParticipant: true,
+        user: { status: 'approved' },
+      }
     });
     defaultLeagueFee = defaultLeague.entryFee;
     defaultLeagueCurrency = defaultLeague.currency;
-    defaultLeaguePrize = defaultLeague.prizePoolOverride ?? (defaultLeagueMembersCount * defaultLeague.entryFee);
+    defaultLeaguePrize = defaultLeague.prizePoolOverride ?? (defaultLeagueParticipantsCount * defaultLeague.entryFee);
   }
 
   // Count approved users not in any pool
@@ -208,9 +212,9 @@ export default async function AdminDashboardPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div className="space-y-1">
-                <span className="text-xs text-text-muted">Miembros Aprobados:</span>
+                <span className="text-xs text-text-muted">Participantes aprobados:</span>
                 <p className="font-bold text-text-primary flex items-center gap-1">
-                  <Users className="w-4 h-4 text-gold-400" /> {defaultLeagueMembersCount} participantes
+                  <Users className="w-4 h-4 text-gold-400" /> {defaultLeagueParticipantsCount} participantes
                 </p>
               </div>
               <div className="space-y-1">
@@ -248,7 +252,7 @@ export default async function AdminDashboardPage() {
                 <span>Aprobación y Gestión de Usuarios</span>
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>
-              <Link href="/admin/ligas" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
+              <Link href="/admin/competencias" className="w-full text-left px-4 py-2.5 bg-bg-secondary hover:bg-bg-hover text-text-primary rounded-lg text-sm font-medium border border-border-default transition-all flex items-center justify-between">
                 <span>Auditar y Configurar Competencias</span>
                 <span className="text-xs text-text-muted">&rarr;</span>
               </Link>

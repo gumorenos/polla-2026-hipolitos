@@ -1252,7 +1252,7 @@ export default function UsersAdminClient({
                 <p className="text-text-primary font-semibold font-bold text-gold">{detailUser._count?.predictions ?? 0}</p>
               </div>
               <div>
-                <p className="text-text-secondary">PUEDE CREAR LIGAS:</p>
+                <p className="text-text-secondary">PUEDE CREAR COMPETENCIAS:</p>
                 <p className="text-text-primary font-semibold">{detailUser.canCreateLeagues ? 'SÍ' : 'NO'}</p>
               </div>
               <div className="md:col-span-2">

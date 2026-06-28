@@ -266,6 +266,10 @@ Champion Survivor also includes aggregate social and market panels for participa
 
 The guest route never exposes forms, Server Actions, admin links, prediction inputs, or private user-management data. For `full_prediction` it shows public ranking, match results, upcoming matches, and aggregate champion pick distribution. For `champion_survivor` it shows aggregate survival counts, pick distribution, exclusive picks, recent results, and upcoming matches without the pick form. `showOdds` and `showH2H` still control whether public match odds and H2H context are displayed.
 
+The shared application shell filters navigation from the resolved Better Auth session. Guests see only `Inicio` plus an `Iniciar sesión` action; authenticated competition, prediction, ranking, profile, and admin links are withheld while the session is pending and remain hidden when no session exists.
+
+Admin competition management is exposed at `/admin/competencias`; `/admin/ligas` is a compatibility redirect. The underlying Prisma model remains `League`. Membership counts distinguish all `LeagueMember` rows from approved rows with `isParticipant = true`, which are the only rows used for participant and estimated prize-pool counts.
+
 ```
 Admin or superadmin manages Champion Survivor
   → Server Action validates superadmin or league owner/admin role

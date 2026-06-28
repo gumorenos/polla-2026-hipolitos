@@ -1764,6 +1764,7 @@ export async function adminTransferLeagueOwnershipAction(
     });
 
     revalidatePath('/admin/usuarios');
+    revalidatePath('/admin/competencias');
     revalidatePath('/admin/ligas');
     revalidatePath(`/liga/${league.slug}`);
     revalidatePath(`/competencia/${league.slug}`);

@@ -70,13 +70,13 @@ describe('Champion Survivor business logic', () => {
   });
 
   it('respects league currency, entry fee, and prize pool override', () => {
-    expect(calculatePrizePool({ currency: 'PEN', entryFee: 20 }, 8)).toEqual({
-      amount: 160,
+    expect(calculatePrizePool({ currency: 'PEN', entryFee: 20 }, 7)).toEqual({
+      amount: 140,
       estimated: true,
       currency: 'PEN',
     });
 
-    expect(calculatePrizePool({ currency: 'PEN', entryFee: 20, prizePoolOverride: 500 }, 8)).toEqual({
+    expect(calculatePrizePool({ currency: 'PEN', entryFee: 20, prizePoolOverride: 500 }, 7)).toEqual({
       amount: 500,
       estimated: false,
       currency: 'PEN',

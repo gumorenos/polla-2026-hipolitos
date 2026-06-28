@@ -356,3 +356,15 @@ We implement the following 6 tie-breakers sequentially:
 - Navigation must preserve the preview without adding query parameters to every link.
 - Normal users cannot expose admin UI by changing the cookie because their effective mode is always participant.
 - Server-rendered participant pages can hide administrative presentation controls while continuing to authorize actions from the real session.
+
+## ADR-019 — Competition terminology and membership semantics
+
+**Date:** 2026-06-28
+**Status:** Accepted
+
+**Decision:** Use `Competencias` in the admin interface and `/admin/competencias` as the primary route while preserving `/admin/ligas` as a redirect. Keep the Prisma `League` model unchanged. Treat membership, administrative role, and participation as independent concepts.
+
+**Rationale:**
+- `LeagueMember` grants membership and may grant owner/admin permissions.
+- Only approved members with `isParticipant = true` compete and contribute to the estimated prize pool.
+- Guest navigation must not advertise authenticated-only pages while Better Auth is unresolved or absent.

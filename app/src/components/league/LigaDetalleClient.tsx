@@ -276,7 +276,9 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                 {(league.entryFee ?? 0) > 0 && (
                   <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
                     {(() => {
-                      const memberCount = league.memberCount ?? members.filter(m => m.user.status === 'approved').length;
+                      const memberCount = league.memberCount ?? members.filter(
+                        m => m.isParticipant && m.user.status === 'approved'
+                      ).length;
                       const prize = league.prizePoolOverride ?? (memberCount * (league.entryFee ?? 0));
                       return `Premio total: ${formatLeagueCurrency(prize, league.currency ?? 'PEN')}`;
                     })()}

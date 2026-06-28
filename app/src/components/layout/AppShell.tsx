@@ -1,18 +1,24 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { BottomNav } from './BottomNav';
 import { SidebarNav } from './SidebarNav';
-import { Shield } from 'lucide-react';
+import { LogIn, Shield } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { ParticipantViewBanner } from './ParticipantViewBanner';
 import { useViewMode } from './ViewModeProvider';
 
 interface AppShellProps {
   children: React.ReactNode;
+  isAuthenticated: boolean;
+  isSessionPending: boolean;
 }
 
-function MobileHeader() {
+function MobileHeader({
+  isAuthenticated,
+  isSessionPending,
+}: Pick<AppShellProps, 'isAuthenticated' | 'isSessionPending'>) {
   const { showAdminUi } = useViewMode();
 
   return (
@@ -30,12 +36,25 @@ function MobileHeader() {
             <Shield className="w-2.5 h-2.5" /> Superadmin
           </span>
         )}
+        {!isAuthenticated && !isSessionPending && (
+          <Link
+            href="/login"
+            className="btn-gold inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            Iniciar sesión
+          </Link>
+        )}
       </div>
     </header>
   );
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ children }) => {
+export const AppShell: React.FC<AppShellProps> = ({
+  children,
+  isAuthenticated,
+  isSessionPending,
+}) => {
   const pathname = usePathname();
   // Simply use pathname for admin area check to avoid needing useSearchParams at this level
   const isAdminArea = pathname === '/admin' || pathname.startsWith('/admin/');
@@ -47,7 +66,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   return (
     <div className="flex min-h-screen bg-bg-primary text-text-primary">
       {/* Desktop Sidebar Navigation */}
-      <SidebarNav />
+      <SidebarNav isAuthenticated={isAuthenticated} isSessionPending={isSessionPending} />
 
       {/* Main Page Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
@@ -55,7 +74,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         <ParticipantViewBanner />
 
         {/* Mobile Header Bar */}
-        <MobileHeader />
+        <MobileHeader isAuthenticated={isAuthenticated} isSessionPending={isSessionPending} />
 
         {/* Dynamic Page Scroll Content */}
         <main className={mainClassName}>
@@ -64,7 +83,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <BottomNav />
+      <BottomNav isAuthenticated={isAuthenticated} />
     </div>
   );
 };

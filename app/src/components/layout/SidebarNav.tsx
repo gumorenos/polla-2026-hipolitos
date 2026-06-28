@@ -3,31 +3,37 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings, Shield, Eye } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarCheck, Award, User, Settings, Shield, Eye, LogIn } from 'lucide-react';
 import { authClient } from '../../lib/auth-client';
+import { filterVisibleNavigationItems } from '../../lib/navigation';
 import { useViewMode } from './ViewModeProvider';
 import { ViewModeSwitchButton } from './ViewModeSwitchButton';
 
-export const SidebarNav: React.FC = () => {
+type SidebarNavProps = {
+  isAuthenticated: boolean;
+  isSessionPending: boolean;
+};
+
+export const SidebarNav: React.FC<SidebarNavProps> = ({
+  isAuthenticated,
+  isSessionPending,
+}) => {
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
   const { isParticipantPreview, showAdminUi } = useViewMode();
 
   const navItems = [
     { label: 'Inicio', path: '/', icon: LayoutDashboard },
-    { label: 'Competencias', path: '/competencia', icon: Users },
-    { label: 'Predicciones', path: '/pronosticos', icon: CalendarCheck },
-    { label: 'Ranking', path: '/ranking', icon: Award },
-    { label: 'Perfil', path: '/perfil', icon: User },
-    { label: 'Panel Admin', path: '/admin', icon: Settings, adminOnly: true },
+    { label: 'Competencias', path: '/competencia', icon: Users, authenticatedOnly: true },
+    { label: 'Predicciones', path: '/pronosticos', icon: CalendarCheck, authenticatedOnly: true },
+    { label: 'Ranking', path: '/ranking', icon: Award, authenticatedOnly: true },
+    { label: 'Perfil', path: '/perfil', icon: User, authenticatedOnly: true },
+    { label: 'Panel Admin', path: '/admin', icon: Settings, authenticatedOnly: true, adminOnly: true },
   ];
 
-  // In participant-view mode, hide the admin nav item
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.adminOnly) {
-      return showAdminUi;
-    }
-    return true;
+  const visibleNavItems = filterVisibleNavigationItems(navItems, {
+    isAuthenticated,
+    showAdminUi,
   });
 
   return (
@@ -99,6 +105,15 @@ export const SidebarNav: React.FC = () => {
             </span>
           </div>
         </div>
+      )}
+      {!isAuthenticated && !isSessionPending && (
+        <Link
+          href="/login"
+          className="btn-gold mt-4 flex items-center justify-center gap-2 px-3 py-2 text-xs uppercase"
+        >
+          <LogIn className="w-4 h-4" />
+          Iniciar sesión
+        </Link>
       )}
     </aside>
   );

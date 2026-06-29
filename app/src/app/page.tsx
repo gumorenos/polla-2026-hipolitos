@@ -13,6 +13,7 @@ import {
   classifyChampionPick,
   simulateChampionOdds,
   ChampionOddsSimulationEntry,
+  type PublicTeamTournamentStatus,
 } from '../lib/champion-survivor';
 import { formatLeagueCurrency } from '../lib/utils/currency';
 import { calculateWorldCupQualification } from '../lib/fifa-qualification';
@@ -723,7 +724,7 @@ function ChampionSurvivorPicksList({
   statusByTeam,
 }: {
   picks: PublicChampionPick[];
-  statusByTeam: Map<string, TeamTournamentStatus>;
+  statusByTeam: Map<string, PublicTeamTournamentStatus>;
 }) {
   return (
     <div className="card-base overflow-hidden">

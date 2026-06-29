@@ -14,6 +14,12 @@ export type TeamStatusLike = {
   eliminatedAt?: Date | string | null;
 };
 
+export type PublicTeamTournamentStatus = {
+  teamCode: string;
+  status: TeamTournamentStatusValue;
+  eliminatedAt: Date | null;
+};
+
 export type ChampionOddsLike = {
   teamCode: string;
   teamName?: string | null;

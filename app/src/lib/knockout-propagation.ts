@@ -94,9 +94,11 @@ export function buildKnockoutPropagationPlan(
     for (const side of ['home', 'away'] as const) {
       const placeholder = target[side];
       const sourceMatch = sourceByReference.get(placeholder);
-      const resolvedTeamCode = sourceMatch
-        ? resolveReferenceTeamCode(placeholder, sourceMatch)
-        : null;
+      if (!sourceMatch) {
+        pendingReferences.add(placeholder);
+        continue;
+      }
+      const resolvedTeamCode = resolveReferenceTeamCode(placeholder, sourceMatch);
       if (!resolvedTeamCode) {
         pendingReferences.add(placeholder);
         continue;

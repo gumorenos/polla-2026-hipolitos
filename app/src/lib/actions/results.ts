@@ -8,7 +8,7 @@ import { getProviderCooldown } from '../odds/providers';
 import { fetchMatchResultFromFootballData, ProviderDiagnostic, ProviderResultDetails } from '../odds/football-data';
 import { recordProviderResponseDiagnostic, resolveProviderApiKey } from '../provider-credentials';
 import { recordProviderTeamNames, resolveProviderTeamAlias } from '../team-alias-service';
-import { isConsistentFinalMatchResult } from '../match-result';
+import { isCompleteFinalMatchResult } from '../match-result';
 
 interface ApiFootballFixture {
   fixture: {
@@ -266,7 +266,7 @@ export async function fetchAndSaveMatchResultInternal(
     return { error: 'Partido no encontrado' };
   }
 
-  if (isConsistentFinalMatchResult(match) && !force) {
+  if (isCompleteFinalMatchResult(match) && !force) {
     return { error: 'El partido ya tiene un resultado final. Usa force para re-consultar.' };
   }
 
@@ -337,7 +337,15 @@ export async function fetchAndSaveMatchResultInternal(
     return { error: `Error al aplicar resultado: ${updateRes.error}`, diagnostics };
   }
 
-  return { success: true, result, usedProvider, isFallback, diagnostics };
+  return {
+    success: true,
+    result,
+    usedProvider,
+    isFallback,
+    diagnostics,
+    postResultPipelineApplied: true,
+    progressionWarning: updateRes.progressionWarning,
+  };
 }
 
 // ─── Server Action: fetch from admin UI ──────────────────────────────────────

@@ -420,3 +420,16 @@ We implement the following 6 tie-breakers sequentially:
 - One shared render prevents guest and authenticated public views from drifting.
 - Server-applied attributes avoid hydration mismatch while client cookie updates remain immediate.
 - The original design remains the fallback when preferences are missing or invalid.
+
+## ADR-024 — Surgical and idempotent result polling
+
+**Date:** 2026-06-29
+**Status:** Accepted
+
+**Decision:** Poll group results from kickoff plus 125 minutes and knockout results from kickoff plus 195 minutes. Reload and atomically claim each incomplete match before invoking the existing provider/save pipeline, with a 15-minute retry grace and a bounded batch size.
+
+**Rationale:**
+- Complete finals never consume provider quota.
+- Phase-specific offsets avoid polling while matches are likely still active.
+- `resultFetchedAt` supplies concurrency and retry protection without a schema change.
+- Every successful source continues through one scoring, propagation, and Survivor pipeline.

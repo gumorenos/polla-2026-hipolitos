@@ -431,4 +431,8 @@ The shared `/` and `/invitado` dashboard reads validated `polla_theme_scheme` an
 
 # Knockout progression boundary
 
-All final result sources converge on `updateMatchResultInternal`. For knockout matches it invokes the server-only progression service, which builds a pure `Wxx`/`RUxx` plan, updates only placeholder-compatible match sides, and synchronizes initialized `TeamTournamentStatus` rows. The public application reads the resulting match and status data but never performs propagation writes.
+All final result sources converge on `updateMatchResultInternal`. After every final result it invokes the idempotent server-only progression service; once knockout results exist, that service builds a pure `Wxx`/`RUxx` plan, updates only placeholder-compatible match sides, and synchronizes initialized `TeamTournamentStatus` rows. The public application reads the resulting match and status data but never performs propagation writes.
+
+# Surgical result scheduler boundary
+
+`scripts/fetch-results-surgical.ts` selects due matches with pure epoch-millisecond helpers, rechecks each row, and atomically claims provider attempts through the existing `resultFetchedAt` field. It never implements provider parsing or result persistence itself; successful requests converge on `fetchAndSaveMatchResultInternal` and `updateMatchResultInternal` for scoring, standings, bracket propagation, Survivor synchronization, and revalidation.

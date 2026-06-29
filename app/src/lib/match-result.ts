@@ -5,6 +5,11 @@ export type MatchResultStateLike = {
   awayScore?: number | null;
 };
 
+export type CompleteMatchResultStateLike = MatchResultStateLike & {
+  phase: string;
+  winnerTeamCode?: string | null;
+};
+
 export type FinalMatchResultInput = {
   phase: string;
   homeTeamCode: string;
@@ -105,6 +110,11 @@ export function isConsistentFinalMatchResult(match: MatchResultStateLike): boole
     && match.awayScore !== null
     && match.awayScore !== undefined
   );
+}
+
+export function isCompleteFinalMatchResult(match: CompleteMatchResultStateLike): boolean {
+  if (!isConsistentFinalMatchResult(match)) return false;
+  return match.phase === 'groups' || Boolean(match.winnerTeamCode?.trim());
 }
 
 export function getMatchResultConsistencyIssue(match: MatchResultStateLike): string | null {

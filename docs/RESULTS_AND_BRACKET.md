@@ -6,6 +6,8 @@ A final match is valid only when `status = result`, `resultStatus = final`, and 
 
 Scheduling edits cannot mark an incomplete match as `result`. Provider lookup failures do not modify the match. Postponed, cancelled, or pending matches remain non-final and do not retain final scores.
 
+The production result cron uses the surgical scheduler documented in `docs/RESULT_FETCHING.md`: groups become due 125 minutes after kickoff, knockouts after 195 minutes, and complete DB finals are rechecked and skipped before any provider call. Successful provider saves use the same scoring, ranking, bracket propagation, Survivor synchronization, and cache revalidation pipeline as manual results.
+
 ## Provider diagnostics
 
 `/admin/resultados` can explicitly diagnose API-Football and football-data lookups without saving a result. The report includes local teams and kickoff, normalized query criteria, candidate count, matched fixture ID, and a classified failure reason. Credentials and raw secrets are never returned to the browser.

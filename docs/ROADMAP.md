@@ -154,6 +154,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Session-aware shared navigation hides competition, prediction, ranking, profile, and admin links from guests.
 - [x] Added explicit bulk match-odds refresh modes for future missing/all matches with cooldown-aware structured summaries.
 - [x] Reorganized the shared Champion Survivor home and added cookie-based visual schemes and palettes.
+- [x] Added phase-aware surgical result polling with final-result guards and idempotent post-result processing.
 - [x] Admin user management: view all users, toggle superadmin, approve/reject/disable users, create users manually.
 - [x] Commit: "feat: admin panel with match results and league management"
 

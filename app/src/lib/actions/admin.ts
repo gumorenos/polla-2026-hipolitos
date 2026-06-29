@@ -358,17 +358,15 @@ export async function updateMatchResultInternal(
   await recalculateAllStandings();
 
   let progressionWarning: string | null = null;
-  if (isKnockout) {
-    try {
-      const progression = await applyKnockoutProgressionAndSurvivorSync(logUserId);
-      if (progression.conflicts.length > 0) {
-        progressionWarning = progression.conflicts.join(' ');
-      }
-    } catch (error) {
-      progressionWarning = error instanceof Error
-        ? `El resultado se guardó, pero no se pudo propagar el bracket: ${error.message}`
-        : 'El resultado se guardó, pero no se pudo propagar el bracket.';
+  try {
+    const progression = await applyKnockoutProgressionAndSurvivorSync(logUserId);
+    if (progression.conflicts.length > 0) {
+      progressionWarning = progression.conflicts.join(' ');
     }
+  } catch (error) {
+    progressionWarning = error instanceof Error
+      ? `El resultado se guardó, pero no se pudo sincronizar el torneo: ${error.message}`
+      : 'El resultado se guardó, pero no se pudo sincronizar el torneo.';
   }
 
   try {
@@ -378,6 +376,7 @@ export async function updateMatchResultInternal(
     revalidatePath('/ranking');
     revalidatePath('/admin/supervivencia');
     revalidatePath('/');
+    revalidatePath('/invitado');
   } catch {
     // revalidatePath fails outside of requests, ignore in CLI
   }

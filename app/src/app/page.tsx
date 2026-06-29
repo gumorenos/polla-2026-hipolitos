@@ -182,9 +182,7 @@ function getRequestNowMs(now: Date = new Date()): number {
   return now.getTime();
 }
 
-function getUpcomingPublicMatches(matches: PublicMatch[], nowMs: number): PublicMatch[] {
-  return matches.filter((match) => !isFinishedMatch(match) && match.kickoffUtc.getTime() > nowMs);
-}
+
 
 function matchPhaseLabel(phase: string): string {
   const labels: Record<string, string> = {
@@ -877,9 +875,8 @@ function MatchList({
   matches: PublicMatch[];
   showOdds: boolean;
   showH2H: boolean;
-  nowMs?: number;
+  nowMs: number;
 }) {
-  const currentNow = nowMs ?? Date.now();
   return (
     <section className="card-base overflow-hidden">
       <div className="p-4 border-b border-border-subtle bg-bg-secondary/40">
@@ -890,7 +887,7 @@ function MatchList({
       ) : (
         <div className="divide-y divide-border-subtle/40 max-h-[600px] overflow-y-auto pr-1">
           {matches.map((match) => {
-            const displayStatus = getPublicMatchDisplayStatus(match, currentNow);
+            const displayStatus = getPublicMatchDisplayStatus(match, nowMs);
             return (
               <div key={match.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">

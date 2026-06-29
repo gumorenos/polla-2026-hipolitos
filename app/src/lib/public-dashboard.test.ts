@@ -11,6 +11,7 @@ import {
   PUBLIC_FIXTURE_BLOCKS,
 } from './public-home-layout';
 import { getPublicMatchDisplayStatus } from './public-dashboard';
+import { isBulkMatchOddsEligible } from './odds/bulk-match-odds';
 
 describe('Public guest dashboard components constraints', () => {
   it('calculates individual expected value correctly', () => {
@@ -181,7 +182,6 @@ describe('getPublicMatchDisplayStatus', () => {
       hasGlobalMatchWinnerOdds: false,
     };
     const now = new Date('2026-06-15T18:01:00Z');
-    const { isBulkMatchOddsEligible } = require('./odds/bulk-match-odds');
     expect(isBulkMatchOddsEligible(match, 'future_missing', now)).toBe(false);
   });
 

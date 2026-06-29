@@ -5,6 +5,7 @@ import {
   DEFAULT_TEAM_MARKET_FILTER,
   filterTeamMarketRows,
   sortTeamMarketRows,
+  TEAM_MARKET_FILTER_OPTIONS,
   type SortDirection,
   type TeamMarketAnalysisRow,
   type TeamMarketFilter,
@@ -17,17 +18,6 @@ type TeamMarketAnalysisTableProps = {
   currency: string;
   showOdds: boolean;
 };
-
-const FILTER_OPTIONS: Array<{ value: TeamMarketFilter; label: string; requiresOdds?: boolean }> = [
-  { value: 'alive', label: 'Vivos / activos' },
-  { value: 'all', label: 'Todos' },
-  { value: 'eliminated', label: 'Eliminados' },
-  { value: 'with_picks', label: 'Con picks' },
-  { value: 'without_picks', label: 'Sin picks' },
-  { value: 'with_market_odds', label: 'Con cuota de mercado', requiresOdds: true },
-  { value: 'without_market_odds', label: 'Sin cuota de mercado', requiresOdds: true },
-  { value: 'positive_ev', label: 'Valor positivo / EV positivo', requiresOdds: true },
-];
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -91,7 +81,7 @@ export function TeamMarketAnalysisTable({
     return sortTeamMarketRows(filtered, sortKey, sortDirection);
   }, [filter, sortDirection, sortKey, teamsReport]);
 
-  const availableFilters = FILTER_OPTIONS.filter((option) => showOdds || !option.requiresOdds);
+  const availableFilters = TEAM_MARKET_FILTER_OPTIONS.filter((option) => showOdds || !option.requiresOdds);
   const noChampionOddsLoaded = showOdds
     && teamsReport.length > 0
     && teamsReport.every((team) => team.decimalOdds === null);
@@ -130,23 +120,28 @@ export function TeamMarketAnalysisTable({
 
   return (
     <div className="card-base overflow-hidden">
-      <div className="px-4 py-3 bg-bg-secondary/60 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="px-4 py-3 bg-bg-secondary/60 border-b border-border-subtle space-y-3">
         <div>
           <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Análisis de Equipos y Mercado</h3>
           <p className="text-[10px] text-text-muted font-mono uppercase">Equipos relevantes detectados</p>
         </div>
-        <label className="flex items-center gap-2 text-xs text-text-secondary">
-          <span className="font-mono uppercase text-[10px]">Filtrar</span>
-          <select
-            value={filter}
-            onChange={(event) => setFilter(event.target.value as TeamMarketFilter)}
-            className="min-w-52 rounded border border-border-default bg-bg-tertiary px-3 py-2 text-xs text-text-primary focus:border-gold-500/50 focus:outline-none"
-          >
-            {availableFilters.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtros del análisis de equipos">
+          {availableFilters.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+              className={`rounded-full border px-3 py-1.5 text-[10px] font-mono font-semibold transition-colors ${
+                filter === option.value
+                  ? 'border-gold-500 bg-gold-400/15 text-gold-400'
+                  : 'border-border-default bg-bg-tertiary text-text-secondary hover:border-border-active hover:text-text-primary'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {noChampionOddsLoaded && (

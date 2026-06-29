@@ -407,3 +407,16 @@ We implement the following 6 tie-breakers sequentially:
 - Known knockout losers must not appear in the default active-team view.
 - One-pick teams receive consistent exclusive labels regardless of their rank among sparse picks.
 - Every displayed label has a direct user-facing meaning and documented threshold.
+
+## ADR-023 — Shared public dashboard order and cookie visual preferences
+
+**Date:** 2026-06-29
+**Status:** Accepted
+
+**Decision:** `/` and `/invitado` share one Champion Survivor presentation ordered as Supervivencia, Fixture, and Grupos FIFA. Visual scheme and palette are validated server-side and persisted in non-sensitive cookies rather than application data.
+
+**Rationale:**
+- Picks and market context are the primary Survivor workflow after group completion.
+- One shared render prevents guest and authenticated public views from drifting.
+- Server-applied attributes avoid hydration mismatch while client cookie updates remain immediate.
+- The original design remains the fallback when preferences are missing or invalid.

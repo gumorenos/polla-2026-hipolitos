@@ -21,10 +21,13 @@ export const PublicDashboardTabs: React.FC<PublicDashboardTabsProps> = ({ tabs, 
   return (
     <div className="space-y-6">
       {/* Tabs list */}
-      <div className="flex border-b border-border-subtle overflow-x-auto scrollbar-thin">
+      <div className="flex border-b border-border-subtle overflow-x-auto scrollbar-thin" role="tablist">
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-5 py-3 text-xs uppercase tracking-wider font-mono border-b-2 font-bold whitespace-nowrap transition-all ${
               activeTab === tab.id
@@ -39,7 +42,7 @@ export const PublicDashboardTabs: React.FC<PublicDashboardTabsProps> = ({ tabs, 
       </div>
 
       {/* Tab content */}
-      <div className="transition-all duration-200">
+      <div className="transition-all duration-200" role="tabpanel">
         {children[activeIndex] || null}
       </div>
     </div>

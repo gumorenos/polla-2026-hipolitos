@@ -16,7 +16,9 @@
 
   --gold-400: #D4A843;
   --gold-500: #C49B2E;
+  --gold-light: #E6B94E;
   --gold-glow: rgba(212, 168, 67, 0.15);
+  --accent-contrast: #0A0A0F;
 
   --color-exact: #D4A843;
   --tendency: #8B9EB0;
@@ -51,7 +53,108 @@
   --text-display: 56px;
 }
 
-/* Themes Classes */
+/* Cookie themes. The default values intentionally preserve the existing design. */
+html.theme-black[data-theme-scheme="default"] {
+  --bg-primary: #0A0A0F;
+  --bg-secondary: #12121A;
+  --bg-tertiary: #1C1C28;
+  --bg-hover: #242433;
+  --border-subtle: #1E1E2E;
+  --border-default: #2A2A3E;
+  --border-active: #3D3D5C;
+  --text-primary: #F0EFE8;
+  --text-secondary: #8A8A9A;
+  --text-muted: #4A4A5E;
+  --bg-gradient-start: #0d0d16;
+  --bg-gradient-end: #07070b;
+}
+
+html.theme-dark[data-theme-scheme="dark"] {
+  --bg-primary: #151519;
+  --bg-secondary: #1D1D23;
+  --bg-tertiary: #27272F;
+  --bg-hover: #31313B;
+  --border-subtle: #24242B;
+  --border-default: #383842;
+  --border-active: #51515E;
+  --text-primary: #F1F1EC;
+  --text-secondary: #A5A5B1;
+  --text-muted: #686879;
+  --bg-gradient-start: #202027;
+  --bg-gradient-end: #121216;
+}
+
+html.theme-light[data-theme-scheme="light"] {
+  --bg-primary: #F5F6F8;
+  --bg-secondary: #ECEEF1;
+  --bg-tertiary: #FFFFFF;
+  --bg-hover: #E4E7EB;
+  --border-subtle: #E2E5E9;
+  --border-default: #CDD2D9;
+  --border-active: #9AA2AE;
+  --text-primary: #171A20;
+  --text-secondary: #515966;
+  --text-muted: #8A94A2;
+  --bg-gradient-start: #FFFFFF;
+  --bg-gradient-end: #F1F3F6;
+}
+
+html.theme-black[data-theme-scheme="black"] {
+  --bg-primary: #000000;
+  --bg-secondary: #08080A;
+  --bg-tertiary: #101014;
+  --bg-hover: #19191F;
+  --border-subtle: #17171C;
+  --border-default: #25252D;
+  --border-active: #3B3B47;
+  --text-primary: #F4F3EE;
+  --text-secondary: #9696A2;
+  --text-muted: #555563;
+  --bg-gradient-start: #09090D;
+  --bg-gradient-end: #000000;
+}
+
+html[data-theme-palette="gold"] {
+  --gold-400: #D4A843;
+  --gold-500: #C49B2E;
+  --gold-light: #E6B94E;
+  --gold-glow: rgba(212, 168, 67, 0.15);
+  --accent-contrast: #0A0A0F;
+}
+
+html[data-theme-palette="midnight"] {
+  --gold-400: #55B7E8;
+  --gold-500: #3298CF;
+  --gold-light: #83CDF0;
+  --gold-glow: rgba(85, 183, 232, 0.16);
+  --accent-contrast: #07131B;
+}
+
+html[data-theme-palette="pitch"] {
+  --gold-400: #59C98A;
+  --gold-500: #35A96A;
+  --gold-light: #82DDA9;
+  --gold-glow: rgba(89, 201, 138, 0.16);
+  --accent-contrast: #062013;
+}
+
+html[data-theme-palette="worldcup"] {
+  --gold-400: #D16068;
+  --gold-500: #AF3F49;
+  --gold-light: #E28A90;
+  --gold-glow: rgba(209, 96, 104, 0.16);
+  --accent-contrast: #FFFFFF;
+}
+
+html[data-theme-palette="premium"] {
+  --gold-400: #B994F4;
+  --gold-500: #9166D4;
+  --gold-light: #CFB4FA;
+  --gold-glow: rgba(185, 148, 244, 0.16);
+  --accent-contrast: #160D24;
+}
+
+/* Legacy classes remain for the existing profile preference control. */
 html.theme-black, .theme-black {
   --bg-primary: #0A0A0F;
   --bg-secondary: #12121A;
@@ -103,7 +206,7 @@ html.theme-light, .theme-light {
   --color-border: var(--border-default);
 
   --color-gold: var(--gold-400);
-  --color-gold-light: #e6b94e;
+  --color-gold-light: var(--gold-light);
 
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
@@ -178,7 +281,7 @@ button {
 
 .btn-gold {
   background: var(--gold-400);
-  color: #0A0A0F;
+  color: var(--accent-contrast);
   border: none;
   border-radius: 11px;
   padding: 12px 20px;

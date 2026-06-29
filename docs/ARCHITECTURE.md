@@ -425,6 +425,10 @@ Provider team identity is resolved through `TeamAlias`. `ProviderTeamOutcome` st
 
 The `viewMode` cookie stores `admin` or `participant` for superadmin presentation. The application combines it with the authenticated session before showing admin navigation or preview indicators. This cookie is not an authorization input; routes and actions continue to enforce permissions through Better Auth session data and database roles.
 
+# Public visual preference boundary
+
+The shared `/` and `/invitado` dashboard reads validated `polla_theme_scheme` and `polla_theme_palette` cookies on the server and applies CSS-variable data attributes to `<html>`. The client switcher updates only those non-sensitive cookies and matching attributes; it does not write user or competition records. Invalid values fall back to the original default/gold design.
+
 # Knockout progression boundary
 
 All final result sources converge on `updateMatchResultInternal`. For knockout matches it invokes the server-only progression service, which builds a pure `Wxx`/`RUxx` plan, updates only placeholder-compatible match sides, and synchronizes initialized `TeamTournamentStatus` rows. The public application reads the resulting match and status data but never performs propagation writes.

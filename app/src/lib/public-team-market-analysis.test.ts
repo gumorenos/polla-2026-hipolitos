@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_TEAM_MARKET_FILTER,
+  TEAM_MARKET_FILTER_OPTIONS,
   classifyTeamPickType,
   collectRealTeamCodesFromSources,
   derivePublicTournamentStatus,
@@ -106,6 +107,19 @@ describe('public team market analysis', () => {
     expect(filterTeamMarketRows([active, eliminated, runnerUp], 'eliminated').map((item) => item.teamCode)).toEqual(['BRA', 'FRA']);
     expect(filterTeamMarketRows([active, eliminated, runnerUp], 'all')).toHaveLength(3);
     expect(DEFAULT_TEAM_MARKET_FILTER).toBe('alive');
+  });
+
+  it('offers every public market filter as a button-ready option', () => {
+    expect(TEAM_MARKET_FILTER_OPTIONS.map((option) => option.value)).toEqual([
+      'alive',
+      'all',
+      'eliminated',
+      'with_picks',
+      'without_picks',
+      'with_market_odds',
+      'without_market_odds',
+      'positive_ev',
+    ]);
   });
 
   it('hides RSA from the active view after elimination but keeps it in all and eliminated views', () => {

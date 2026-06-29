@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { LogIn, Trophy, Users, Award, Calendar, Zap, Activity, Shield } from 'lucide-react';
+import { LogIn, Trophy, Award, Calendar, Zap, Activity, Shield } from 'lucide-react';
+import { cookies } from 'next/headers';
 import { prisma } from '../lib/db';
 import { getCurrentSession } from '../lib/auth-helpers';
 import {
@@ -27,6 +28,13 @@ import { derivePublicTournamentStatus, filterRealTeams } from '../lib/public-tea
 import { getVisibleChampionTeamCodes } from '../lib/champion-team-eligibility';
 import { isConsistentFinalMatchResult } from '../lib/match-result';
 import { buildKnockoutChampionStatusUpdates } from '../lib/champion-status-sync';
+import { ThemePreferenceSwitcher } from '../components/public/ThemePreferenceSwitcher';
+import {
+  parseThemePreferences,
+  THEME_PALETTE_COOKIE_NAME,
+  THEME_SCHEME_COOKIE_NAME,
+} from '../lib/theme-preferences';
+import { CHAMPION_SURVIVOR_HOME_SECTIONS } from '../lib/public-home-layout';
 
 export const dynamic = 'force-dynamic';
 
@@ -190,7 +198,12 @@ function matchPhaseLabel(phase: string): string {
 }
 
 export default async function PublicHome() {
-  const session = await getCurrentSession();
+  const [session, cookieStore] = await Promise.all([getCurrentSession(), cookies()]);
+  const themePreferences = parseThemePreferences(
+    cookieStore.get(THEME_SCHEME_COOKIE_NAME)?.value,
+    cookieStore.get(THEME_PALETTE_COOKIE_NAME)?.value,
+    cookieStore.get('themeMode')?.value,
+  );
   const league = await prisma.league.findFirst({
     where: {
       isDefault: true,
@@ -204,6 +217,7 @@ export default async function PublicHome() {
     return (
       <div className="space-y-6 py-4">
         <GuestHeader session={session} />
+        <ThemePreferenceSwitcher initialPreferences={themePreferences} />
         <section className="card-base p-8 text-center space-y-4 max-w-2xl mx-auto">
           <div className="w-14 h-14 rounded-full bg-gold-400/10 border border-gold-500/30 flex items-center justify-center mx-auto">
             <Trophy className="w-7 h-7 text-gold-400" />
@@ -377,16 +391,20 @@ export default async function PublicHome() {
     { id: 'matches', label: 'Fixture y Resultados', icon: <Calendar className="w-4 h-4" /> },
   ];
 
-  const championSurvivorTabs = [
-    { id: 'survival', label: 'Mapa de Supervivencia', icon: <Award className="w-4 h-4" /> },
-    { id: 'picks', label: 'Picks por Participante', icon: <Users className="w-4 h-4" /> },
-    { id: 'fifa', label: 'Fase de Grupos FIFA', icon: <Activity className="w-4 h-4" /> },
-    { id: 'matches', label: 'Fixture y Resultados', icon: <Calendar className="w-4 h-4" /> },
-  ];
+  const championSurvivorTabIcons = {
+    survival: <Award className="w-4 h-4" />,
+    matches: <Calendar className="w-4 h-4" />,
+    fifa: <Activity className="w-4 h-4" />,
+  };
+  const championSurvivorTabs = CHAMPION_SURVIVOR_HOME_SECTIONS.map((section) => ({
+    ...section,
+    icon: championSurvivorTabIcons[section.id],
+  }));
 
   return (
     <div className="space-y-6 py-4">
       <GuestHeader session={session} />
+      <ThemePreferenceSwitcher initialPreferences={themePreferences} />
 
       <section className="space-y-2">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
@@ -414,31 +432,19 @@ export default async function PublicHome() {
 
       {isChampionSurvivor && championSurvivorState ? (
         <PublicDashboardTabs tabs={championSurvivorTabs}>
-          {/* Tab 1: Mapa de Supervivencia */}
+          {/* Tab 1: Survivor overview */}
           <div className="space-y-6">
-            <ChampionSurvivorSummaryCards state={championSurvivorState} prizePool={prizePool} showOdds={league.showOdds} />
+            <ChampionSurvivorPicksList picks={championSurvivorState.picksToShow} statusByTeam={championSurvivorState.statusByTeam} />
             <TeamMarketAnalysisTable
               teamsReport={championSurvivorState.teamsReport}
               currency={prizePool.currency}
               showOdds={league.showOdds}
             />
+            <ChampionSurvivorSummaryCards state={championSurvivorState} prizePool={prizePool} showOdds={league.showOdds} />
           </div>
 
-          {/* Tab 2: Picks por Participante */}
-          <ChampionSurvivorPicksList picks={championSurvivorState.picksToShow} statusByTeam={championSurvivorState.statusByTeam} />
-
-          {/* Tab 3: Fase de Grupos FIFA */}
-          <FifaClassificationEngine qualification={qualification} />
-
-          {/* Tab 4: Fixture y Resultados */}
+          {/* Tab 2: Fixture */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <MatchList
-              title="Resultados recientes"
-              emptyText="Todavía no hay resultados registrados."
-              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
-              showOdds={league.showOdds}
-              showH2H={league.showH2H}
-            />
             <MatchList
               title="Próximos partidos"
               emptyText="No hay próximos partidos disponibles."
@@ -446,7 +452,17 @@ export default async function PublicHome() {
               showOdds={league.showOdds}
               showH2H={league.showH2H}
             />
+            <MatchList
+              title="Resultados recientes"
+              emptyText="Todavía no hay resultados registrados."
+              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
+              showOdds={league.showOdds}
+              showH2H={league.showH2H}
+            />
           </div>
+
+          {/* Tab 3: FIFA groups */}
+          <FifaClassificationEngine qualification={qualification} />
         </PublicDashboardTabs>
       ) : (
         <PublicDashboardTabs tabs={fullPredictionTabs}>
@@ -469,16 +485,16 @@ export default async function PublicHome() {
           {/* Tab 4: Fixture y Resultados */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <MatchList
-              title="Resultados recientes"
-              emptyText="Todavía no hay resultados registrados."
-              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
+              title="Próximos partidos"
+              emptyText="No hay próximos partidos disponibles."
+              matches={upcomingMatches}
               showOdds={league.showOdds}
               showH2H={league.showH2H}
             />
             <MatchList
-              title="Próximos partidos"
-              emptyText="No hay próximos partidos disponibles."
-              matches={upcomingMatches}
+              title="Resultados recientes"
+              emptyText="Todavía no hay resultados registrados."
+              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
               showOdds={league.showOdds}
               showH2H={league.showH2H}
             />
@@ -704,12 +720,12 @@ function ChampionSurvivorSummaryCards({
 }) {
   const summary = state.summary;
   return (
-    <div className="card-base p-5 space-y-4">
-      <div>
-        <h2 className="font-display text-2xl tracking-wide uppercase text-text-primary">Mapa de supervivencia</h2>
-        <p className="text-xs text-text-secondary">Resumen consolidado de picks y estados. Exclusivamente de lectura.</p>
+    <div className="space-y-3 border-t border-border-subtle pt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-lg tracking-wide uppercase text-text-primary">Resumen de supervivencia</h2>
+        <span className="text-[9px] font-mono uppercase text-text-muted">Mapa compacto</span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Total participantes" value={String(summary.totalParticipants)} />
         <MetricCard label="Vivos" value={String(summary.alive)} />
         <MetricCard label="Eliminados" value={String(summary.eliminated)} />
@@ -753,7 +769,6 @@ function ChampionSurvivorPicksList({
                 <th className="px-4 py-2">Participante</th>
                 <th className="px-4 py-2">Campeón Elegido</th>
                 <th className="px-4 py-2 text-center w-24">Estado Pick</th>
-                <th className="px-4 py-2 text-right">Fecha Selección</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle/40">
@@ -777,9 +792,6 @@ function ChampionSurvivorPicksList({
                       }`}>
                         {pickStatus === 'winner' ? 'Ganador' : pickStatus === 'eliminated' ? 'Eliminado' : 'Vivo'}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-text-muted">
-                      {pick.submittedAt ? formatDate(new Date(pick.submittedAt)) : '-'}
                     </td>
                   </tr>
                 );

@@ -32,6 +32,21 @@ export type TeamMarketFilter =
 
 export const DEFAULT_TEAM_MARKET_FILTER: TeamMarketFilter = 'alive';
 
+export const TEAM_MARKET_FILTER_OPTIONS: ReadonlyArray<{
+  value: TeamMarketFilter;
+  label: string;
+  requiresOdds?: boolean;
+}> = [
+  { value: 'alive', label: 'Vivos / activos' },
+  { value: 'all', label: 'Todos' },
+  { value: 'eliminated', label: 'Eliminados' },
+  { value: 'with_picks', label: 'Con picks' },
+  { value: 'without_picks', label: 'Sin picks' },
+  { value: 'with_market_odds', label: 'Con cuota', requiresOdds: true },
+  { value: 'without_market_odds', label: 'Sin cuota', requiresOdds: true },
+  { value: 'positive_ev', label: 'EV positivo', requiresOdds: true },
+];
+
 export type TeamMarketSortKey =
   | 'teamName'
   | 'pickCount'

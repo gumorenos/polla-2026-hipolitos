@@ -4,6 +4,12 @@ import "./globals.css";
 import { AppLayoutWrapper } from "../components/layout/AppLayoutWrapper";
 import { cookies } from "next/headers";
 import { parseViewMode, VIEW_MODE_COOKIE_NAME } from "../lib/view-mode";
+import {
+  getLegacyThemeClass,
+  parseThemePreferences,
+  THEME_PALETTE_COOKIE_NAME,
+  THEME_SCHEME_COOKIE_NAME,
+} from "../lib/theme-preferences";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -50,13 +56,20 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const themeMode = cookieStore.get('themeMode')?.value || 'black';
+  const themePreferences = parseThemePreferences(
+    cookieStore.get(THEME_SCHEME_COOKIE_NAME)?.value,
+    cookieStore.get(THEME_PALETTE_COOKIE_NAME)?.value,
+    cookieStore.get('themeMode')?.value,
+  );
   const storedViewMode = parseViewMode(cookieStore.get(VIEW_MODE_COOKIE_NAME)?.value);
 
   return (
     <html
       lang="es"
-      className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased theme-${themeMode}`}
+      data-theme-scheme={themePreferences.scheme}
+      data-theme-palette={themePreferences.palette}
+      className={`${dmSans.variable} ${ibmPlexMono.variable} ${bebasNeue.variable} h-full antialiased ${getLegacyThemeClass(themePreferences.scheme)}`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <AppLayoutWrapper storedViewMode={storedViewMode}>{children}</AppLayoutWrapper>

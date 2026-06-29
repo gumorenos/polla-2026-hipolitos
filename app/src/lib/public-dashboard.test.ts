@@ -4,6 +4,12 @@ import {
   classifyChampionPick,
   calculateChampionProbability,
 } from './champion-survivor';
+import {
+  CHAMPION_SURVIVOR_HOME_SECTIONS,
+  CHAMPION_SURVIVOR_OVERVIEW_BLOCKS,
+  PUBLIC_CHAMPION_PICK_COLUMNS,
+  PUBLIC_FIXTURE_BLOCKS,
+} from './public-home-layout';
 
 describe('Public guest dashboard components constraints', () => {
   it('calculates individual expected value correctly', () => {
@@ -51,5 +57,23 @@ describe('Public guest dashboard components constraints', () => {
     expect(res.available).toBe(false);
     expect(res.impliedProbability).toBeNull();
     expect(res.expectedValue).toBeNull();
+  });
+
+  it('keeps the public Champion Survivor screens and blocks in product order', () => {
+    expect(CHAMPION_SURVIVOR_HOME_SECTIONS.map((section) => section.id)).toEqual([
+      'survival',
+      'matches',
+      'fifa',
+    ]);
+    expect(CHAMPION_SURVIVOR_OVERVIEW_BLOCKS).toEqual([
+      'participant_picks',
+      'team_market_analysis',
+      'compact_summary',
+    ]);
+    expect(PUBLIC_FIXTURE_BLOCKS).toEqual(['upcoming_matches', 'recent_results']);
+  });
+
+  it('does not expose the pick selection date as a public column', () => {
+    expect(PUBLIC_CHAMPION_PICK_COLUMNS).toEqual(['participant', 'team', 'status']);
   });
 });

@@ -60,6 +60,21 @@ export type ThirdPlaceEntry = GroupStandingEntry & {
   groupRank: number;
 };
 
+export type ThirdPlaceTieDiagnostic = {
+  teamCodes: string[];
+  positions: number[];
+  equalPoints: boolean;
+  equalGoalDifference: boolean;
+  equalGoalsScored: boolean;
+  headToHeadApplicable: false;
+  fairPlayPointsMissing: boolean;
+  fifaRankingMissing: boolean;
+  drawingOfLotsRequired: boolean;
+  affectsQualificationCutoff: boolean;
+  manualAdminResolutionRequired: boolean;
+  message: string;
+};
+
 export type WorldCupQualification = {
   groups: GroupStanding[];
   thirdPlacedTeams: ThirdPlaceEntry[];
@@ -68,6 +83,7 @@ export type WorldCupQualification = {
   statusByTeam: Record<string, QualificationStatus>;
   teamTournamentStatusSuggestions: Record<string, SuggestedTeamTournamentStatus>;
   unresolvedTies: string[];
+  thirdPlaceTieDiagnostics: ThirdPlaceTieDiagnostic[];
 };
 
 type TieCriterion =
@@ -93,6 +109,7 @@ export function calculateWorldCupQualification(
   const groups = calculateGroupStandings(matches, teams);
   const allThirdPlaceComparisonsAvailable = groups.length === 12 && groups.every((group) => group.complete);
   const thirdPlacedTeams = rankThirdPlacedTeams(groups);
+  const thirdPlaceTieDiagnostics = buildThirdPlaceTieDiagnostics(thirdPlacedTeams);
   const statusByTeam: Record<string, QualificationStatus> = {};
   const qualifiedTeamCodes: string[] = [];
   const eliminatedTeamCodes: string[] = [];
@@ -111,8 +128,16 @@ export function calculateWorldCupQualification(
 
   if (allThirdPlaceComparisonsAvailable) {
     const thirdPlaceBoundaryUnresolved = isThirdPlaceBoundaryUnresolved(thirdPlacedTeams);
+    const cutoffDiagnostic = thirdPlaceTieDiagnostics.find((diagnostic) => diagnostic.affectsQualificationCutoff);
+    const cutoffPendingTeamCodes = new Set(cutoffDiagnostic?.teamCodes || []);
+    if (thirdPlaceBoundaryUnresolved) {
+      unresolvedTies.push(cutoffDiagnostic?.message || UNRESOLVED_REASON);
+    }
     for (const [index, entry] of thirdPlacedTeams.entries()) {
-      if (thirdPlaceBoundaryUnresolved && isNearThirdPlaceCutoff(index)) {
+      if (
+        thirdPlaceBoundaryUnresolved
+        && (cutoffPendingTeamCodes.has(entry.teamCode) || (cutoffPendingTeamCodes.size === 0 && isNearThirdPlaceCutoff(index)))
+      ) {
         entry.status = 'third_place_pending';
       } else if (index < 8) {
         entry.status = 'third_place_qualified';
@@ -143,8 +168,56 @@ export function calculateWorldCupQualification(
     eliminatedTeamCodes: unique(eliminatedTeamCodes),
     statusByTeam,
     teamTournamentStatusSuggestions: suggestTeamTournamentStatuses(statusByTeam),
-    unresolvedTies,
+    unresolvedTies: unique(unresolvedTies),
+    thirdPlaceTieDiagnostics,
   };
+}
+
+export function buildThirdPlaceTieDiagnostics(
+  entries: ThirdPlaceEntry[],
+): ThirdPlaceTieDiagnostic[] {
+  const groups = new Map<string, Array<{ entry: ThirdPlaceEntry; position: number }>>();
+  entries.forEach((entry, index) => {
+    const key = `${entry.points}|${entry.goalDifference}|${entry.goalsFor}`;
+    groups.set(key, [...(groups.get(key) || []), { entry, position: index + 1 }]);
+  });
+
+  return Array.from(groups.values())
+    .filter((tied) => tied.length > 1 && tied.some(({ entry }) => entry.unresolvedTiebreaker))
+    .map((tied) => {
+      const positions = tied.map(({ position }) => position).sort((left, right) => left - right);
+      const teamCodes = tied.map(({ entry }) => entry.teamCode).sort();
+      const fairPlayPointsMissing = tied.some(({ entry }) => entry.fairPlayScore === null);
+      const fifaRankingMissing = tied.some(({ entry }) => entry.fifaRanking === null);
+      const allFairPlayEqual = !fairPlayPointsMissing
+        && new Set(tied.map(({ entry }) => entry.fairPlayScore)).size === 1;
+      const allRankingsEqual = !fifaRankingMissing
+        && new Set(tied.map(({ entry }) => entry.fifaRanking)).size === 1;
+      const drawingOfLotsRequired = allFairPlayEqual && allRankingsEqual;
+      const affectsQualificationCutoff = positions[0] <= 8 && positions[positions.length - 1] >= 9;
+      const missingCriterion = fairPlayPointsMissing
+        ? 'faltan datos de fair play'
+        : fifaRankingMissing
+          ? 'falta ranking FIFA'
+          : 'los criterios disponibles siguen igualados';
+
+      return {
+        teamCodes,
+        positions,
+        equalPoints: true,
+        equalGoalDifference: true,
+        equalGoalsScored: true,
+        headToHeadApplicable: false as const,
+        fairPlayPointsMissing,
+        fifaRankingMissing,
+        drawingOfLotsRequired,
+        affectsQualificationCutoff,
+        manualAdminResolutionRequired: affectsQualificationCutoff,
+        message: `Desempate de mejores terceros entre ${teamCodes.join(', ')}: ${missingCriterion}.${
+          affectsQualificationCutoff ? ' Afecta el corte entre clasificados y eliminados.' : ' No altera el grupo de ocho clasificados.'
+        }`,
+      };
+    });
 }
 
 export function calculateGroupStandings(

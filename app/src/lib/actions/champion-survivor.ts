@@ -29,6 +29,8 @@ import {
 import {
   buildChampionStatusInitializationPlan,
   buildGroupStageChampionStatusUpdates,
+  buildKnockoutChampionStatusUpdates,
+  buildRoundOf32ChampionStatusUpdates,
 } from '../champion-status-sync';
 import { calculateWorldCupQualification } from '../fifa-qualification';
 import { isConsistentFinalMatchResult } from '../match-result';
@@ -645,13 +647,8 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
   const leagueResult = await requireChampionSurvivorLeague(leagueId);
   if (isActionError(leagueResult)) return leagueResult;
 
-  const [eligibleTeamCodes, snapshots, existingStatuses, matches, teams] = await Promise.all([
+  const [eligibleTeamCodes, existingStatuses, matches, teams] = await Promise.all([
     getEligibleChampionPickTeamCodes(leagueId),
-    prisma.championOddsSnapshot.findMany({
-      where: { leagueId, sourceMarket: 'outright_winner' },
-      select: { teamCode: true, team: { select: { code: true, name: true } } },
-      distinct: ['teamCode'],
-    }),
     prisma.teamTournamentStatus.findMany({
       where: { leagueId },
       select: { teamCode: true, status: true },
@@ -659,15 +656,14 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
     prisma.match.findMany({ orderBy: { kickoffUtc: 'asc' } }),
     prisma.team.findMany({ select: { code: true, name: true } }),
   ]);
-  const initializationPlan = buildChampionStatusInitializationPlan(
-    eligibleTeamCodes,
-    snapshots
-      .filter((snapshot) => classifyTeamPickType(snapshot.team) === 'real_team')
-      .map((snapshot) => snapshot.teamCode),
-    existingStatuses,
-  );
-  if (initializationPlan.targetTeamCodes.length === 0) {
-    return { error: 'No hay equipos elegibles con cuotas outright_winner para sincronizar.' };
+  const tournamentTeamCodes = Array.from(new Set(
+    matches
+      .filter((match) => match.phase === 'groups')
+      .flatMap((match) => [match.homeTeamCode, match.awayTeamCode])
+      .filter((teamCode) => eligibleTeamCodes.has(teamCode)),
+  ));
+  if (tournamentTeamCodes.length !== 48) {
+    return { error: `Se esperaban 48 selecciones reales de fase de grupos y se encontraron ${tournamentTeamCodes.length}.` };
   }
 
   const qualification = calculateWorldCupQualification(matches, teams);
@@ -681,82 +677,64 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
       error: `La fase de grupos no está completa. Bloquean: ${blockingMatches.join(', ') || 'faltan grupos configurados'}.`,
     };
   }
-  if (qualification.unresolvedTies.length > 0) {
+  const r32TeamCodes = matches
+    .filter((match) => match.phase === 'r32')
+    .flatMap((match) => [match.homeTeamCode, match.awayTeamCode])
+    .filter((teamCode) => eligibleTeamCodes.has(teamCode));
+  const r32FullyMaterialized = matches.filter((match) => match.phase === 'r32').length === 16
+    && new Set(r32TeamCodes).size === 32;
+  if (!r32FullyMaterialized && qualification.unresolvedTies.length > 0) {
     return { error: qualification.unresolvedTies[0] };
   }
 
-  const groupPlan = buildGroupStageChampionStatusUpdates(
-    initializationPlan.targetTeamCodes,
+  const groupPlan = r32FullyMaterialized
+    ? buildRoundOf32ChampionStatusUpdates(
+        tournamentTeamCodes,
+        existingStatuses,
+        r32TeamCodes,
+      )
+    : buildGroupStageChampionStatusUpdates(
+        tournamentTeamCodes,
+        existingStatuses,
+        qualification.teamTournamentStatusSuggestions,
+      );
+  const knockoutPlan = buildKnockoutChampionStatusUpdates(
+    tournamentTeamCodes,
     existingStatuses,
-    qualification.teamTournamentStatusSuggestions,
+    matches,
   );
-  const finalMatch = matches.find((match) => (
-    match.phase === 'final' && isConsistentFinalMatchResult(match) && Boolean(match.winnerTeamCode)
-  ));
-  const existingByTeam = new Map(existingStatuses.map((status) => [status.teamCode, status.status]));
-  const finalWinner = finalMatch?.winnerTeamCode || null;
-  const finalRunnerUp = finalMatch && finalWinner
-    ? (finalWinner === finalMatch.homeTeamCode ? finalMatch.awayTeamCode : finalMatch.homeTeamCode)
-    : null;
-  const conflictingChampion = existingStatuses.find((status) => (
-    status.status === 'champion' && status.teamCode !== finalWinner
-  ));
-  if (finalWinner && conflictingChampion) {
-    return { error: `Ya existe otro campeón manual registrado: ${conflictingChampion.teamCode}.` };
+  if (knockoutPlan.conflicts.length > 0) {
+    return { error: knockoutPlan.conflicts[0] };
   }
-  if (finalWinner && finalRunnerUp && (
-    !eligibleTeamCodes.has(finalWinner) || !eligibleTeamCodes.has(finalRunnerUp)
-  )) {
-    return { error: 'La final contiene una selección que no pertenece al roster elegible de Champion Survivor.' };
-  }
-  const winnerCurrentStatus = finalWinner ? existingByTeam.get(finalWinner) : null;
-  if (finalWinner && winnerCurrentStatus && !['active', 'unknown', 'champion'].includes(winnerCurrentStatus)) {
-    return { error: `${finalWinner} tiene un estado manual terminal (${winnerCurrentStatus}) que debe revisarse antes de sincronizar la final.` };
-  }
-  const runnerCurrentStatus = finalRunnerUp ? existingByTeam.get(finalRunnerUp) : null;
-  if (finalRunnerUp && runnerCurrentStatus && !['active', 'unknown', 'runner_up'].includes(runnerCurrentStatus)) {
-    return { error: `${finalRunnerUp} tiene un estado manual terminal (${runnerCurrentStatus}) que debe revisarse antes de sincronizar la final.` };
-  }
+  const updatesByTeam = new Map(groupPlan.updates.map((update) => [update.teamCode, update]));
+  for (const update of knockoutPlan.updates) updatesByTeam.set(update.teamCode, update);
+  const updates = Array.from(updatesByTeam.values());
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    for (const update of groupPlan.updates) {
+    for (const update of updates) {
+      const isEliminated = update.status === 'eliminated' || update.status === 'runner_up';
       await tx.teamTournamentStatus.upsert({
         where: { teamCode_leagueId: { teamCode: update.teamCode, leagueId } },
         update: {
           status: update.status,
-          eliminatedAt: update.status === 'eliminated' ? now : null,
-          notes: update.status === 'eliminated'
-            ? 'Sin clasificación a la fase eliminatoria según resultados finales de grupos.'
-            : 'Clasificado o activo según resultados finales de grupos.',
+          eliminatedAt: isEliminated ? now : null,
+          eliminatedInMatchId: isEliminated ? update.eliminatedInMatchId || null : null,
+          finalRank: update.finalRank ?? null,
+          notes: statusSyncNote(update.status, update.eliminatedInMatchId),
           updatedById: adminResult.user.id,
         },
         create: {
           leagueId,
           teamCode: update.teamCode,
           status: update.status,
-          eliminatedAt: update.status === 'eliminated' ? now : null,
-          notes: update.status === 'eliminated'
-            ? 'Sin clasificación a la fase eliminatoria según resultados finales de grupos.'
-            : 'Clasificado o activo según resultados finales de grupos.',
+          eliminatedAt: isEliminated ? now : null,
+          eliminatedInMatchId: isEliminated ? update.eliminatedInMatchId || null : null,
+          finalRank: update.finalRank ?? null,
+          notes: statusSyncNote(update.status, update.eliminatedInMatchId),
           updatedById: adminResult.user.id,
         },
       });
-    }
-
-    if (finalWinner && finalRunnerUp) {
-      await tx.teamTournamentStatus.upsert({
-        where: { teamCode_leagueId: { teamCode: finalWinner, leagueId } },
-        update: { status: 'champion', finalRank: 1, eliminatedAt: null, notes: 'Campeón según resultado final.', updatedById: adminResult.user.id },
-        create: { leagueId, teamCode: finalWinner, status: 'champion', finalRank: 1, notes: 'Campeón según resultado final.', updatedById: adminResult.user.id },
-      });
-      if (!runnerCurrentStatus || runnerCurrentStatus === 'active' || runnerCurrentStatus === 'unknown') {
-        await tx.teamTournamentStatus.upsert({
-          where: { teamCode_leagueId: { teamCode: finalRunnerUp, leagueId } },
-          update: { status: 'runner_up', finalRank: 2, eliminatedAt: now, notes: 'Subcampeón según resultado final.', updatedById: adminResult.user.id },
-          create: { leagueId, teamCode: finalRunnerUp, status: 'runner_up', finalRank: 2, eliminatedAt: now, notes: 'Subcampeón según resultado final.', updatedById: adminResult.user.id },
-        });
-      }
     }
 
     await tx.adminActionLog.create({
@@ -765,10 +743,10 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
         action: 'champion_survivor_statuses_synced',
         target: `league:${leagueId}`,
         details: JSON.stringify({
-          updates: groupPlan.updates,
+          updates,
           preservedManual: groupPlan.preservedManual,
-          finalWinner,
-          finalRunnerUp,
+          resolvedKnockoutMatches: knockoutPlan.resolvedMatches,
+          r32FullyMaterialized,
         }),
       },
     });
@@ -778,12 +756,19 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
   return {
     success: true,
     data: {
-      updated: groupPlan.updates.length,
+      updated: updates.length,
       preservedManual: groupPlan.preservedManual,
-      champion: finalWinner,
-      runnerUp: finalRunnerUp,
+      resolvedKnockoutMatches: knockoutPlan.resolvedMatches.length,
     },
   };
+}
+
+function statusSyncNote(status: string, matchId?: string | null): string {
+  if (status === 'champion') return 'Campeón sincronizado desde el resultado final.';
+  if (status === 'runner_up') return 'Subcampeón sincronizado desde el resultado final.';
+  if (status === 'eliminated' && matchId) return `Eliminado según resultado final de ${matchId}.`;
+  if (status === 'eliminated') return 'Sin clasificación a la fase eliminatoria según el r32 materializado.';
+  return 'Activo según clasificación y resultados eliminatorios.';
 }
 
 export async function adminSetTeamTournamentStatus(

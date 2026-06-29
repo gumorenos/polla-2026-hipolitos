@@ -9,7 +9,6 @@ import {
   calculateChampionProbability,
   calculatePrizePool,
   getChampionPickStatus,
-  normalizeTeamStatus,
   calculateIndividualExpectedValue,
   classifyChampionPick,
   simulateChampionOdds,
@@ -23,7 +22,7 @@ import { PublicDashboardTabs } from '../components/ui/PublicDashboardTabs';
 import { FlagDisc } from '../components/ui/FlagDisc';
 import type { TeamTournamentStatus, ChampionOddsSnapshot } from '@prisma/client';
 import { TeamMarketAnalysisTable } from '../components/public/TeamMarketAnalysisTable';
-import { filterRealTeams } from '../lib/public-team-market-analysis';
+import { derivePublicTournamentStatus, filterRealTeams } from '../lib/public-team-market-analysis';
 import { getVisibleChampionTeamCodes } from '../lib/champion-team-eligibility';
 import { isConsistentFinalMatchResult } from '../lib/match-result';
 
@@ -347,7 +346,15 @@ export default async function PublicHome() {
 
   // Champion Survivor State
   const championSurvivorState = isChampionSurvivor
-    ? await buildChampionSurvivorState(league, approvedParticipants, teamStatuses, realTeams, championOddsSnapshots, approvedUserIds)
+    ? await buildChampionSurvivorState(
+        league,
+        approvedParticipants,
+        teamStatuses,
+        realTeams,
+        championOddsSnapshots,
+        approvedUserIds,
+        qualification.statusByTeam,
+      )
     : null;
 
   // Tabs layout
@@ -981,11 +988,24 @@ async function buildChampionSurvivorState(
   teamStatuses: TeamTournamentStatus[],
   teams: Array<{ code: string; name: string }>,
   championOddsSnapshots: ChampionOddsSnapshot[],
-  approvedUserIds: Set<string>
+  approvedUserIds: Set<string>,
+  qualificationStatusByTeam: Record<string, string>,
 ) {
   const realTeamCodes = new Set(teams.map((team) => team.code));
   const teamNames = Object.fromEntries(teams.map((team) => [team.code, team.name]));
-  const realTeamStatuses = teamStatuses.filter((status) => realTeamCodes.has(status.teamCode));
+  const storedStatusByTeam = new Map(
+    teamStatuses
+      .filter((status) => realTeamCodes.has(status.teamCode))
+      .map((status) => [status.teamCode, status]),
+  );
+  const realTeamStatuses = teams.map((team) => {
+    const stored = storedStatusByTeam.get(team.code);
+    return {
+      teamCode: team.code,
+      status: derivePublicTournamentStatus(stored?.status, qualificationStatusByTeam[team.code]),
+      eliminatedAt: stored?.eliminatedAt || null,
+    };
+  });
   const statusByTeam = new Map(realTeamStatuses.map((status) => [status.teamCode, status]));
 
   const picks = await prisma.championPick.findMany({
@@ -1079,7 +1099,7 @@ async function buildChampionSurvivorState(
     const pickCount = picksCounts.get(team.code) || 0;
     const pickPercentage = approvedParticipants > 0 ? pickCount / approvedParticipants : 0;
     const teamStatus = statusByTeam.get(team.code) || null;
-    const status = normalizeTeamStatus(teamStatus?.status);
+    const status = derivePublicTournamentStatus(teamStatus?.status, qualificationStatusByTeam[team.code]);
     const oddsSnapshot = latestOddsByTeam.get(team.code) || null;
     
     const probabilityResult = calculateChampionProbability(oddsSnapshot, prizePool.amount);

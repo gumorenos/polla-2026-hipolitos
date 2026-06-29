@@ -368,3 +368,15 @@ We implement the following 6 tie-breakers sequentially:
 - `LeagueMember` grants membership and may grant owner/admin permissions.
 - Only approved members with `isParticipant = true` compete and contribute to the estimated prize pool.
 - Guest navigation must not advertise authenticated-only pages while Better Auth is unresolved or absent.
+
+## ADR-020 — Result-driven knockout and Survivor propagation
+
+**Date:** 2026-06-28
+**Status:** Accepted
+
+**Decision:** Keep knockout slot resolution as a pure, previewable plan and invoke one server-side application service after every consistent knockout result, regardless of whether the result came from a provider, CSV, or manual fallback. The same service synchronizes initialized Champion Survivor statuses.
+
+**Rationale:**
+- Match IDs and predictions remain stable while `Wxx` and `RUxx` participants are materialized.
+- Conflicting real teams and manual terminal Survivor statuses are reported instead of overwritten.
+- A best-third tie blocks classification only when it crosses the eighth/ninth cutoff; exact ordering inside the same side of the cutoff remains diagnostic.

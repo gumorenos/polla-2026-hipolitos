@@ -241,7 +241,7 @@ export function classifyChampionPick(input: {
   if (probability === null || probability === undefined) {
     return pickCount > 0
       ? { key: 'popularity_only', label: 'Popularidad disponible' }
-      : { key: 'unclassified', label: 'Sin clasificación' };
+      : { key: 'unclassified', label: 'Sin señal de mercado' };
   }
 
   // Thresholds are intentionally simple and transparent for a lightweight user-facing heuristic.
@@ -254,9 +254,9 @@ export function classifyChampionPick(input: {
   if (highProbability && (isExclusive || pickPercentage < 0.2)) {
     return { key: 'attractive_differential', label: 'Diferencial atractivo' };
   }
-  if (manyPicks && probability < pickPercentage) return { key: 'saturated', label: 'Saturado' };
+  if (manyPicks && probability < pickPercentage) return { key: 'saturated', label: 'Alta concentración de picks' };
 
-  return { key: 'unclassified', label: 'Sin clasificación' };
+  return { key: 'unclassified', label: 'Sin señal destacada' };
 }
 
 export function simulateChampionOdds(input: {

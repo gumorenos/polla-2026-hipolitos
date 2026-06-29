@@ -364,12 +364,11 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
     const summary = result.data as {
       updated: number;
       preservedManual: number;
-      champion: string | null;
-      runnerUp: string | null;
+      resolvedKnockoutMatches: number;
     };
     setMessage({
       type: 'success',
-      text: `Sincronización completada: ${summary.updated} estados actualizados y ${summary.preservedManual} estados manuales preservados.${summary.champion ? ` Campeón: ${summary.champion}; subcampeón: ${summary.runnerUp}.` : ''}`,
+      text: `Sincronización completada: ${summary.updated} estados actualizados, ${summary.preservedManual} estados manuales preservados y ${summary.resolvedKnockoutMatches} resultados eliminatorios procesados.`,
     });
     router.refresh();
   };
@@ -410,6 +409,17 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
   if (!activeData) {
     return null;
   }
+
+  const statusCounts = activeData.teams.reduce(
+    (counts, row) => {
+      if (row.status === 'active') counts.active++;
+      else if (row.status === 'eliminated') counts.eliminated++;
+      else if (row.status === 'runner_up') counts.runnerUp++;
+      else if (row.status === 'champion') counts.champion++;
+      return counts;
+    },
+    { active: 0, eliminated: 0, runnerUp: 0, champion: 0 },
+  );
 
   return (
     <div className="space-y-6">
@@ -457,6 +467,20 @@ export const AdminChampionSurvivorClient: React.FC<AdminChampionSurvivorClientPr
             <Download className="w-4 h-4" /> Exportar CSV
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          ['Activos', statusCounts.active],
+          ['Eliminados', statusCounts.eliminated],
+          ['Campeón', statusCounts.champion],
+          ['Subcampeón', statusCounts.runnerUp],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="card-base p-3">
+            <p className="text-[10px] uppercase font-mono text-text-muted">{label}</p>
+            <p className="font-display text-2xl text-text-primary">{value}</p>
+          </div>
+        ))}
       </div>
 
       {message && (

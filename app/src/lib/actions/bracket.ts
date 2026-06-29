@@ -4,6 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { buildRoundOf32Resolution } from '../knockout-bracket';
+import {
+  applyKnockoutProgressionAndSurvivorSync,
+  syncMaterializedRoundOf32SurvivorStatuses,
+} from '../knockout-propagation-service';
 
 type ApplyRoundOf32ResolutionResult =
   | {
@@ -63,12 +67,51 @@ export async function applyRoundOf32ResolutionAction(): Promise<ApplyRoundOf32Re
       },
     });
   });
+  await syncMaterializedRoundOf32SurvivorStatuses(user.id);
 
   revalidatePath('/admin/resultados');
   revalidatePath('/admin/partidos');
+  revalidatePath('/admin/supervivencia');
   revalidatePath('/pronosticos');
   revalidatePath('/');
   revalidatePath('/invitado');
 
   return { success: true, changed: changed.length };
+}
+
+type ApplyKnockoutPropagationResult =
+  | { error: string }
+  | {
+      success: true;
+      propagatedSlots: number;
+      groupStatusUpdates: number;
+      statusUpdates: number;
+      conflicts: string[];
+      pendingReferences: string[];
+    };
+
+export async function applyKnockoutPropagationAction(): Promise<ApplyKnockoutPropagationResult> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado' };
+
+  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  if (!user?.isSuperadmin) return { error: 'No tienes permisos de superadministrador' };
+
+  try {
+    const result = await applyKnockoutProgressionAndSurvivorSync(user.id);
+    revalidatePath('/admin/resultados');
+    revalidatePath('/admin/partidos');
+    revalidatePath('/admin/supervivencia');
+    revalidatePath('/pronosticos');
+    revalidatePath('/ranking');
+    revalidatePath('/');
+    revalidatePath('/invitado');
+    return { success: true, ...result };
+  } catch (error) {
+    return {
+      error: error instanceof Error
+        ? `No se pudo propagar el bracket: ${error.message}`
+        : 'No se pudo propagar el bracket.',
+    };
+  }
 }

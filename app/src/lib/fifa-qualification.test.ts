@@ -151,6 +151,7 @@ describe('FIFA 2026 qualification engine', () => {
     expect(qualification.thirdPlacedTeams).toHaveLength(12);
     expect(qualification.thirdPlacedTeams.slice(0, 8).every((entry) => entry.status === 'third_place_qualified')).toBe(true);
     expect(qualification.thirdPlacedTeams.slice(8).every((entry) => entry.status === 'eliminated')).toBe(true);
+    expect(qualification.thirdPlaceTieDiagnostics.every((diagnostic) => !diagnostic.affectsQualificationCutoff)).toBe(true);
   });
 
   it('keeps third-place cutoff pending when the eighth and ninth teams need unavailable tiebreakers', () => {
@@ -168,6 +169,14 @@ describe('FIFA 2026 qualification engine', () => {
 
     expect(qualification.thirdPlacedTeams[7].status).toBe('third_place_pending');
     expect(qualification.thirdPlacedTeams[8].status).toBe('third_place_pending');
+    expect(qualification.thirdPlaceTieDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        affectsQualificationCutoff: true,
+        manualAdminResolutionRequired: true,
+        headToHeadApplicable: false,
+        fairPlayPointsMissing: true,
+      }),
+    ]));
   });
 
   it('keeps partial groups pending instead of overclaiming qualification', () => {

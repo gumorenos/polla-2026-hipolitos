@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '../auth';
 import { randomUUID } from 'crypto';
 import { isConsistentFinalMatchResult, normalizeFinalMatchResult } from '../match-result';
+import { applyKnockoutProgressionAndSurvivorSync } from '../knockout-propagation-service';
 
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
 
@@ -356,16 +357,32 @@ export async function updateMatchResultInternal(
   // Now recalculate standings for all users
   await recalculateAllStandings();
 
+  let progressionWarning: string | null = null;
+  if (isKnockout) {
+    try {
+      const progression = await applyKnockoutProgressionAndSurvivorSync(logUserId);
+      if (progression.conflicts.length > 0) {
+        progressionWarning = progression.conflicts.join(' ');
+      }
+    } catch (error) {
+      progressionWarning = error instanceof Error
+        ? `El resultado se guardó, pero no se pudo propagar el bracket: ${error.message}`
+        : 'El resultado se guardó, pero no se pudo propagar el bracket.';
+    }
+  }
+
   try {
     revalidatePath('/admin/resultados');
     revalidatePath('/admin/partidos');
     revalidatePath('/pronosticos');
     revalidatePath('/ranking');
+    revalidatePath('/admin/supervivencia');
+    revalidatePath('/');
   } catch {
     // revalidatePath fails outside of requests, ignore in CLI
   }
   
-  return { success: true };
+  return { success: true, progressionWarning };
 }
 
 export async function updateMatchResultAction(

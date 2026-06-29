@@ -260,3 +260,4 @@ The hybrid approach gives us the best of both: the reference's production-qualit
 - [x] Add encrypted provider credential management, environment fallback, manual connection tests, and quota diagnostics in `/admin/odds`.
 - [x] Add persistent provider team aliases, unmatched outcome diagnostics, and conservative manual mapping in `/admin/odds`.
 - [x] Add a persistent superadmin admin/participant visual mode without changing authorization.
+- [x] Propagate final knockout winners/semifinal losers and synchronize Champion Survivor eliminations.

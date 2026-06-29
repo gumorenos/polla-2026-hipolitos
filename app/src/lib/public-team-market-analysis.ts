@@ -22,6 +22,8 @@ export type TeamMarketAnalysisRow = {
 
 export type TeamMarketFilter =
   | 'all'
+  | 'alive'
+  | 'eliminated'
   | 'with_picks'
   | 'without_picks'
   | 'with_market_odds'
@@ -39,6 +41,25 @@ export type TeamMarketSortKey =
   | 'individualExpectedValue';
 
 export type SortDirection = 'asc' | 'desc';
+
+export function derivePublicTournamentStatus(
+  storedStatus: string | null | undefined,
+  qualificationStatus: string | null | undefined,
+): 'unknown' | 'active' | 'eliminated' | 'runner_up' | 'champion' {
+  if (storedStatus === 'champion') return 'champion';
+  if (storedStatus === 'runner_up') return 'runner_up';
+  if (storedStatus === 'eliminated') return 'eliminated';
+  if (storedStatus === 'active') return 'active';
+  if (qualificationStatus === 'eliminated') return 'eliminated';
+  if (
+    qualificationStatus === 'group_winner'
+    || qualificationStatus === 'group_runner_up'
+    || qualificationStatus === 'third_place_qualified'
+  ) {
+    return 'active';
+  }
+  return 'unknown';
+}
 
 function normalizeLabel(value: string): string {
   return value
@@ -108,6 +129,10 @@ export function filterTeamMarketRows(
   filter: TeamMarketFilter,
 ): TeamMarketAnalysisRow[] {
   switch (filter) {
+    case 'alive':
+      return rows.filter((row) => row.status === 'active' || row.status === 'champion');
+    case 'eliminated':
+      return rows.filter((row) => row.status === 'eliminated' || row.status === 'runner_up');
     case 'with_picks':
       return rows.filter((row) => row.pickCount > 0);
     case 'without_picks':

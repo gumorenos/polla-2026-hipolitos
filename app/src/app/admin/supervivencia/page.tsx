@@ -227,7 +227,7 @@ function serializeTeamRows(
     const status = statusByTeam.get(team.code);
     return {
       team,
-      status: normalizeTeamStatus(status?.status),
+      status: normalizeTeamStatus(status?.status || qualificationSuggestions[team.code] || 'unknown'),
       eliminatedAt: status?.eliminatedAt ? status.eliminatedAt.toISOString() : null,
       eliminatedInMatchId: status?.eliminatedInMatchId || null,
       finalRank: status?.finalRank || null,

@@ -5,7 +5,26 @@ export type ExistingChampionTeamStatus = {
 
 export type ChampionStatusUpdate = {
   teamCode: string;
-  status: 'active' | 'eliminated';
+  status: 'active' | 'eliminated' | 'runner_up' | 'champion';
+  eliminatedInMatchId?: string | null;
+  finalRank?: number | null;
+};
+
+export type KnockoutStatusSyncPlan = {
+  updates: ChampionStatusUpdate[];
+  conflicts: string[];
+  resolvedMatches: string[];
+};
+
+type FinalKnockoutMatch = {
+  id: string;
+  phase: string;
+  homeTeamCode: string;
+  awayTeamCode: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  resultStatus?: string | null;
+  winnerTeamCode?: string | null;
 };
 
 const MANUAL_TERMINAL_STATUSES = new Set(['eliminated', 'runner_up', 'champion']);
@@ -55,6 +74,123 @@ export function buildGroupStageChampionStatusUpdates(
   }
 
   return { updates, preservedManual };
+}
+
+export function buildRoundOf32ChampionStatusUpdates(
+  targetTeamCodes: Iterable<string>,
+  existingStatuses: ExistingChampionTeamStatus[],
+  roundOf32TeamCodes: Iterable<string>,
+): { updates: ChampionStatusUpdate[]; preservedManual: number } {
+  const qualified = new Set(Array.from(roundOf32TeamCodes, normalizeCode));
+  const suggestions = Object.fromEntries(
+    Array.from(targetTeamCodes, normalizeCode).map((teamCode) => [
+      teamCode,
+      qualified.has(teamCode) ? 'active' : 'eliminated',
+    ]),
+  );
+  return buildGroupStageChampionStatusUpdates(targetTeamCodes, existingStatuses, suggestions);
+}
+
+export function buildKnockoutChampionStatusUpdates(
+  targetTeamCodes: Iterable<string>,
+  existingStatuses: ExistingChampionTeamStatus[],
+  matches: FinalKnockoutMatch[],
+): KnockoutStatusSyncPlan {
+  const targets = new Set(Array.from(targetTeamCodes, normalizeCode));
+  const existingByTeam = new Map(
+    existingStatuses.map((status) => [normalizeCode(status.teamCode), status.status]),
+  );
+  const desired = new Map<string, ChampionStatusUpdate>();
+  const conflicts: string[] = [];
+  const resolvedMatches: string[] = [];
+  const phaseOrder: Record<string, number> = { r32: 1, r16: 2, quarters: 3, semis: 4, final: 5 };
+  const finalMatches = matches
+    .filter((match) => match.id !== '3rd' && phaseOrder[match.phase])
+    .sort((left, right) => phaseOrder[left.phase] - phaseOrder[right.phase]);
+
+  for (const match of finalMatches) {
+    const outcome = getOutcome(match);
+    if (!outcome) continue;
+    resolvedMatches.push(match.id);
+    if (targets.has(outcome.winnerTeamCode)) {
+      desired.set(outcome.winnerTeamCode, { teamCode: outcome.winnerTeamCode, status: 'active' });
+    }
+    if (targets.has(outcome.loserTeamCode)) {
+      desired.set(outcome.loserTeamCode, {
+        teamCode: outcome.loserTeamCode,
+        status: 'eliminated',
+        eliminatedInMatchId: match.id,
+      });
+    }
+
+    if (match.phase === 'final') {
+      for (const teamCode of targets) {
+        desired.set(teamCode, {
+          teamCode,
+          status: 'eliminated',
+          eliminatedInMatchId: teamCode === outcome.loserTeamCode ? match.id : null,
+        });
+      }
+      desired.set(outcome.winnerTeamCode, {
+        teamCode: outcome.winnerTeamCode,
+        status: 'champion',
+        finalRank: 1,
+      });
+      desired.set(outcome.loserTeamCode, {
+        teamCode: outcome.loserTeamCode,
+        status: 'runner_up',
+        eliminatedInMatchId: match.id,
+        finalRank: 2,
+      });
+    }
+  }
+
+  const updates: ChampionStatusUpdate[] = [];
+  for (const update of desired.values()) {
+    const current = existingByTeam.get(update.teamCode);
+    if (current === update.status) continue;
+    if (current === 'champion' && update.status !== 'champion') {
+      conflicts.push(`${update.teamCode} figura como campeón manual y no se sobrescribió.`);
+      continue;
+    }
+    if (current === 'runner_up' && update.status !== 'runner_up' && update.status !== 'champion') {
+      conflicts.push(`${update.teamCode} figura como subcampeón manual y no se sobrescribió.`);
+      continue;
+    }
+    if (current === 'eliminated' && update.status === 'active') {
+      conflicts.push(`${update.teamCode} figura eliminado y no se reactivó automáticamente.`);
+      continue;
+    }
+    updates.push(update);
+  }
+
+  return { updates, conflicts, resolvedMatches };
+}
+
+function getOutcome(match: FinalKnockoutMatch): { winnerTeamCode: string; loserTeamCode: string } | null {
+  if (
+    match.resultStatus !== 'final'
+    || match.homeScore === null
+    || match.awayScore === null
+  ) {
+    return null;
+  }
+  const winnerTeamCode = normalizeCode(match.winnerTeamCode || (
+    match.homeScore > match.awayScore
+      ? match.homeTeamCode
+      : match.awayScore > match.homeScore
+        ? match.awayTeamCode
+        : ''
+  ));
+  if (winnerTeamCode !== normalizeCode(match.homeTeamCode) && winnerTeamCode !== normalizeCode(match.awayTeamCode)) {
+    return null;
+  }
+  return {
+    winnerTeamCode,
+    loserTeamCode: winnerTeamCode === normalizeCode(match.homeTeamCode)
+      ? normalizeCode(match.awayTeamCode)
+      : normalizeCode(match.homeTeamCode),
+  };
 }
 
 function normalizeCode(value: string): string {

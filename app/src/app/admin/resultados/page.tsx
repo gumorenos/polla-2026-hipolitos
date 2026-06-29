@@ -6,6 +6,8 @@ import MatchesAdminClient from './MatchesAdminClient';
 import Link from 'next/link';
 import { calculateWorldCupQualification } from '../../../lib/fifa-qualification';
 import { buildRoundOf32Resolution } from '../../../lib/knockout-bracket';
+import { buildKnockoutPropagationPlan } from '../../../lib/knockout-propagation';
+import { previewTournamentStateRepair } from '../../../lib/knockout-propagation-service';
 
 export const metadata = {
   title: 'Admin - Resultados | La Polla 2026',
@@ -34,6 +36,8 @@ export default async function AdminResultadosPage() {
 
   const qualification = calculateWorldCupQualification(matches, teams);
   const bracketResolution = buildRoundOf32Resolution(matches, teams);
+  const knockoutPropagation = buildKnockoutPropagationPlan(matches);
+  const tournamentRepairPreview = await previewTournamentStateRepair();
 
   return (
     <div className="w-full space-y-6">
@@ -53,6 +57,8 @@ export default async function AdminResultadosPage() {
           matches={matches}
           qualification={qualification}
           bracketResolution={bracketResolution}
+          knockoutPropagation={knockoutPropagation}
+          tournamentRepairPreview={tournamentRepairPreview}
         />
       </div>
     </div>

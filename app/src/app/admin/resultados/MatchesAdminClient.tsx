@@ -3,13 +3,14 @@
 import { useState, useRef, useCallback } from 'react';
 import { updateMatchResultAction, manuallyRecalculateStandingsAction } from '../../../lib/actions/admin';
 import { diagnoseMatchResultProvidersAction, fetchAndSaveMatchResultAction, markMatchStatusAction, validateCSVRows, applyCSVResultsAction, CSVValidationResult, CSVResultRow } from '../../../lib/actions/results';
-import { applyRoundOf32ResolutionAction } from '../../../lib/actions/bracket';
+import { applyKnockoutPropagationAction, applyRoundOf32ResolutionAction } from '../../../lib/actions/bracket';
 import { Match } from '@prisma/client';
 import { AlertCircle, CheckCircle, RefreshCw, PauseCircle, XCircle, Upload, Download, ChevronDown, Search } from 'lucide-react';
 import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { getComputedMatchStatus, getComputedStatusDisplay } from '../../../lib/utils/matchStatus';
 import type { QualificationStatus, WorldCupQualification } from '../../../lib/fifa-qualification';
 import type { RoundOf32Resolution } from '../../../lib/knockout-bracket';
+import type { KnockoutPropagationPlan, TournamentRepairPreview } from '../../../lib/knockout-propagation';
 import type { ProviderDiagnostic } from '../../../lib/odds/football-data';
 import { useRouter } from 'next/navigation';
 function parseCSV(text: string): Record<string, string>[] {
@@ -282,10 +283,14 @@ export default function MatchesAdminClient({
   matches,
   qualification,
   bracketResolution,
+  knockoutPropagation,
+  tournamentRepairPreview,
 }: {
   matches: Match[];
   qualification: WorldCupQualification;
   bracketResolution: RoundOf32Resolution;
+  knockoutPropagation: KnockoutPropagationPlan;
+  tournamentRepairPreview: TournamentRepairPreview;
 }) {
   const router = useRouter();
   const [loadingMatchId, setLoadingMatchId] = useState<string | null>(null);
@@ -297,6 +302,7 @@ export default function MatchesAdminClient({
   const [providerDiagnostics, setProviderDiagnostics] = useState<ProviderDiagnostic[]>([]);
   const [diagnosticMatchId, setDiagnosticMatchId] = useState<string | null>(null);
   const [applyingBracket, setApplyingBracket] = useState(false);
+  const [applyingPropagation, setApplyingPropagation] = useState(false);
 
   // CSV/Excel state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -386,6 +392,22 @@ export default function MatchesAdminClient({
       router.refresh();
     }
     setApplyingBracket(false);
+  };
+
+  const handleApplyPropagation = async () => {
+    setApplyingPropagation(true);
+    setError(null);
+    setSuccess(null);
+    const result = await applyKnockoutPropagationAction();
+    if ('error' in result) setError(result.error);
+    else {
+      const conflictSuffix = result.conflicts.length > 0
+        ? ` Conflictos no aplicados: ${result.conflicts.join(' ')}`
+        : '';
+      setSuccess(`Reparación aplicada: ${result.propagatedSlots} cruce(s), ${result.groupStatusUpdates} estado(s) de grupos y ${result.statusUpdates} estado(s) eliminatorios actualizados.${conflictSuffix}`);
+      router.refresh();
+    }
+    setApplyingPropagation(false);
   };
 
   const handleMarkStatus = async (matchId: string, status: 'postponed' | 'cancelled') => {
@@ -562,6 +584,12 @@ export default function MatchesAdminClient({
         resolution={bracketResolution}
         applying={applyingBracket}
         onApply={handleApplyBracket}
+      />
+      <KnockoutPropagationPanel
+        plan={knockoutPropagation}
+        repairPreview={tournamentRepairPreview}
+        applying={applyingPropagation}
+        onApply={handleApplyPropagation}
       />
 
       {/* Match Table */}
@@ -826,6 +854,107 @@ function BracketResolutionPanel({
   );
 }
 
+function KnockoutPropagationPanel({
+  plan,
+  repairPreview,
+  applying,
+  onApply,
+}: {
+  plan: KnockoutPropagationPlan;
+  repairPreview: TournamentRepairPreview;
+  applying: boolean;
+  onApply: () => Promise<void>;
+}) {
+  const safeRepairChanges = repairPreview.changes.filter((change) => change.safe);
+  return (
+    <div className="rounded-lg border border-border-subtle bg-background/35 p-4 space-y-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Reparar / sincronizar estado del torneo</h3>
+          <p className="text-xs text-text-secondary">
+            Materializa Wxx/RUxx y sincroniza eliminaciones de grupos y fases eliminatorias con resultados locales.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={safeRepairChanges.length === 0 || applying}
+          onClick={onApply}
+          className="px-4 py-2 rounded bg-gold text-background text-xs font-semibold disabled:opacity-40"
+        >
+          {applying ? 'Aplicando…' : 'Aplicar reparación / sync'}
+        </button>
+      </div>
+      {safeRepairChanges.length === 0 ? (
+        <p className="text-xs text-text-secondary">No hay cambios seguros pendientes para reparar.</p>
+      ) : (
+        <p className="text-xs text-green-400">{safeRepairChanges.length} cambio(s) seguro(s) listos para aplicar.</p>
+      )}
+      {plan.conflicts.map((conflict) => (
+        <p key={`${conflict.matchId}-${conflict.side}`} className="text-xs text-amber-300">
+          Conflicto {conflict.matchId} ({conflict.side}): {conflict.currentTeamCode} no se reemplazará por {conflict.resolvedTeamCode}.
+        </p>
+      ))}
+      {repairPreview.blocked.map((reason) => (
+        <p key={reason} className="text-xs text-amber-300">Bloqueado: {reason}</p>
+      ))}
+      {repairPreview.changes.length > 0 && (
+        <details open>
+          <summary className="cursor-pointer text-xs text-gold">
+            Vista previa completa ({repairPreview.changes.length} cambio(s))
+          </summary>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-text-muted">
+                <tr>
+                  <th className="p-2">Tipo</th>
+                  <th className="p-2">Partido</th>
+                  <th className="p-2">Equipo</th>
+                  <th className="p-2">De</th>
+                  <th className="p-2">A</th>
+                  <th className="p-2">Motivo</th>
+                  <th className="p-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repairPreview.changes.map((change, index) => (
+                  <tr key={`${change.changeType}-${change.leagueId}-${change.matchId}-${change.teamCode}-${index}`} className="border-t border-border-subtle">
+                    <td className="p-2">{change.changeType}</td>
+                    <td className="p-2 font-mono">{change.matchId || '—'}</td>
+                    <td className="p-2 font-mono">{change.teamCode}</td>
+                    <td className="p-2">{change.from}</td>
+                    <td className="p-2">{change.to}</td>
+                    <td className="p-2 text-text-secondary">{change.reason}</td>
+                    <td className={`p-2 ${change.safe ? 'text-green-400' : 'text-amber-300'}`}>
+                      {change.safe ? 'Seguro' : 'Bloqueado'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      <details>
+        <summary className="cursor-pointer text-xs text-gold">
+          Ver diagnóstico ({plan.proposals.length} resueltos, {plan.pendingReferences.length} pendientes)
+        </summary>
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-text-secondary">
+          {plan.proposals.map((proposal) => (
+            <div key={`${proposal.matchId}-${proposal.side}`} className="rounded border border-border-subtle bg-surface/40 p-2">
+              <p className="font-mono text-text-primary">{proposal.matchId} · {proposal.side}</p>
+              <p>{proposal.placeholder}: {proposal.currentTeamCode} → {proposal.resolvedTeamCode}</p>
+              <p className="text-[10px] text-text-muted">{proposal.reason}</p>
+            </div>
+          ))}
+        </div>
+        {plan.pendingReferences.length > 0 && (
+          <p className="mt-2 text-[10px] text-text-muted">Pendientes: {plan.pendingReferences.join(', ')}</p>
+        )}
+      </details>
+    </div>
+  );
+}
+
 function QualificationPanel({ qualification }: { qualification: WorldCupQualification }) {
   if (qualification.groups.length === 0) {
     return (
@@ -854,6 +983,26 @@ function QualificationPanel({ qualification }: { qualification: WorldCupQualific
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
           {qualification.unresolvedTies[0]}
           {qualification.unresolvedTies.length > 1 ? ` +${qualification.unresolvedTies.length - 1} desempate(s) pendiente(s)` : ''}
+        </div>
+      )}
+
+      {qualification.thirdPlaceTieDiagnostics.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {qualification.thirdPlaceTieDiagnostics.map((diagnostic) => (
+            <div key={diagnostic.teamCodes.join('-')} className="rounded-lg border border-blue-500/25 bg-blue-500/5 p-3 text-xs space-y-1">
+              <p className="font-semibold text-text-primary">Empate: {diagnostic.teamCodes.join(', ')}</p>
+              <p className="text-text-secondary">Posiciones: {diagnostic.positions.join(', ')}</p>
+              <p className="text-text-secondary">Puntos iguales: sí · DG igual: sí · GF igual: sí</p>
+              <p className="text-text-secondary">Head-to-head aplicable: no, son equipos de grupos distintos.</p>
+              <p className="text-text-secondary">Fair play faltante: {diagnostic.fairPlayPointsMissing ? 'sí' : 'no'}</p>
+              <p className="text-text-secondary">Ranking FIFA faltante: {diagnostic.fifaRankingMissing ? 'sí' : 'no'}</p>
+              <p className={diagnostic.affectsQualificationCutoff ? 'text-amber-300' : 'text-green-400'}>
+                {diagnostic.affectsQualificationCutoff
+                  ? 'Requiere resolución administrativa porque afecta el corte 8/9.'
+                  : 'El orden exacto sigue pendiente, pero ambos lados conservan su estado de clasificación.'}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
@@ -948,7 +1097,7 @@ function QualificationBadge({
   status: QualificationStatus;
   unresolved?: boolean;
 }) {
-  if (unresolved) {
+  if (unresolved && (status === 'pending' || status === 'third_place_pending')) {
     return (
       <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono uppercase text-amber-200">
         Desempate pendiente

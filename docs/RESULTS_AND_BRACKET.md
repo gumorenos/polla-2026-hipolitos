@@ -24,4 +24,16 @@ Best-third allocation uses the complete 495-row Annex C table from the [official
 
 `/admin/resultados` previews current and resolved team codes, the Annex C reason, and whether each match changes. Applying the bracket remains an explicit superadmin action. It updates only changed Round-of-32 matches by ID, preserves predictions, and writes `AdminActionLog`. Missing group results or a missing Annex C key block the entire apply operation.
 
+## FIFA tiebreak diagnostics
+
+The best-third table distinguishes an unresolved exact order from an unresolved qualification cutoff. Equal points, goal difference, and goals scored are reported together with missing fair-play and FIFA-ranking data. Head-to-head is not applicable between third-placed teams from different groups. A tie wholly inside the top eight does not replace `third_place_qualified` with a pending status; a tie crossing positions 8 and 9 remains blocked and requires reviewed source data or an explicit future override workflow.
+
+## Knockout propagation
+
+Later rounds keep `Wxx` and `RUxx` placeholders until the referenced knockout match has a consistent final result. The shared result-save path used by provider refresh, CSV import, and manual fallback propagates winners from r32 through the final and semifinal losers into the third-place match. A superadmin can also preview and apply the same plan explicitly in `/admin/resultados`.
+
+Propagation updates match participants by existing match ID. It never deletes matches or predictions, and it refuses to overwrite a different already-materialized team. Knockout draws without a valid winner remain pending. The repair/sync panel previews bracket and Survivor changes with current value, proposed value, reason, and safe/blocked status before an explicit apply.
+
+The public Team & Market Analysis defaults to active teams. `Todos` and `Eliminados` remain available. When a persisted status is missing, completed group qualification supplies a read-only fallback so group-stage eliminations are not mislabeled as pending while the database backfill is awaiting execution.
+
 The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi and is never committed to GitHub.

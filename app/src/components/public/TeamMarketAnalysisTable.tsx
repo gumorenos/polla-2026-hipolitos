@@ -18,7 +18,9 @@ type TeamMarketAnalysisTableProps = {
 };
 
 const FILTER_OPTIONS: Array<{ value: TeamMarketFilter; label: string; requiresOdds?: boolean }> = [
-  { value: 'all', label: 'Todos los equipos reales' },
+  { value: 'alive', label: 'Vivos / activos' },
+  { value: 'all', label: 'Todos' },
+  { value: 'eliminated', label: 'Eliminados' },
   { value: 'with_picks', label: 'Con picks' },
   { value: 'without_picks', label: 'Sin picks' },
   { value: 'with_market_odds', label: 'Con cuota de mercado', requiresOdds: true },
@@ -52,6 +54,7 @@ function classificationTone(classificationKey: string): string {
   if (classificationKey === 'attractive_differential') return 'border-green-500/30 bg-green-500/10 text-green-300';
   if (classificationKey === 'high_risk') return 'border-red-500/30 bg-red-500/10 text-red-300';
   if (classificationKey === 'longshot') return 'border-purple-500/30 bg-purple-500/10 text-purple-300';
+  if (classificationKey === 'saturated') return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
   return 'border-border-subtle bg-surface/50 text-text-muted';
 }
 
@@ -60,7 +63,7 @@ export function TeamMarketAnalysisTable({
   currency,
   showOdds,
 }: TeamMarketAnalysisTableProps) {
-  const [filter, setFilter] = useState<TeamMarketFilter>('all');
+  const [filter, setFilter] = useState<TeamMarketFilter>('alive');
   const [sortKey, setSortKey] = useState<TeamMarketSortKey>('pickCount');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 

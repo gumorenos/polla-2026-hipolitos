@@ -415,3 +415,7 @@ Provider team identity is resolved through `TeamAlias`. `ProviderTeamOutcome` st
 # Visual mode boundary
 
 The `viewMode` cookie stores `admin` or `participant` for superadmin presentation. The application combines it with the authenticated session before showing admin navigation or preview indicators. This cookie is not an authorization input; routes and actions continue to enforce permissions through Better Auth session data and database roles.
+
+# Knockout progression boundary
+
+All final result sources converge on `updateMatchResultInternal`. For knockout matches it invokes the server-only progression service, which builds a pure `Wxx`/`RUxx` plan, updates only placeholder-compatible match sides, and synchronizes initialized `TeamTournamentStatus` rows. The public application reads the resulting match and status data but never performs propagation writes.

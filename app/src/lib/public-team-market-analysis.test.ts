@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyTeamPickType,
   collectRealTeamCodesFromSources,
+  derivePublicTournamentStatus,
   filterRealTeams,
   filterTeamMarketRows,
   sortTeamMarketRows,
@@ -94,6 +95,20 @@ describe('public team market analysis', () => {
     expect(filterTeamMarketRows(rows, 'with_market_odds').map((item) => item.teamCode)).toEqual(['ARG', 'BRA']);
     expect(filterTeamMarketRows(rows, 'without_market_odds').map((item) => item.teamCode)).toEqual(['BIH']);
     expect(filterTeamMarketRows(rows, 'positive_ev').map((item) => item.teamCode)).toEqual(['ARG']);
+  });
+
+  it('separates active and eliminated teams for the public default view', () => {
+    const active = row('ARG', 1, 4, 10);
+    const eliminated = { ...row('BRA', 1, 5, 8), status: 'eliminated' };
+    const runnerUp = { ...row('FRA', 1, 6, 7), status: 'runner_up' };
+    expect(filterTeamMarketRows([active, eliminated, runnerUp], 'alive').map((item) => item.teamCode)).toEqual(['ARG']);
+    expect(filterTeamMarketRows([active, eliminated, runnerUp], 'eliminated').map((item) => item.teamCode)).toEqual(['BRA', 'FRA']);
+  });
+
+  it('derives missing group-stage status as eliminated instead of pending', () => {
+    expect(derivePublicTournamentStatus(null, 'eliminated')).toBe('eliminated');
+    expect(derivePublicTournamentStatus(null, 'third_place_qualified')).toBe('active');
+    expect(derivePublicTournamentStatus('eliminated', 'group_winner')).toBe('eliminated');
   });
 
   it('sorts numeric columns without mutating the source', () => {

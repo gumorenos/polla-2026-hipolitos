@@ -175,7 +175,7 @@ function QualificationBadge({
   status: QualificationStatus;
   unresolved?: boolean;
 }) {
-  if (unresolved) {
+  if (unresolved && (status === 'pending' || status === 'third_place_pending')) {
     return (
       <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-mono uppercase text-amber-200 whitespace-nowrap">
         Desempate pendiente

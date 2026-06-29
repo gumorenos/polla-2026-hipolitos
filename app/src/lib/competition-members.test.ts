@@ -54,12 +54,16 @@ describe('competition membership counts', () => {
     expect(isCompetitionParticipant(updatedOwner)).toBe(true);
     expect(updatedOwner.role).toBe('owner');
 
-    const updatedAdmin = {
+    const existingAdmin = {
       userId: 'admin-1',
       role: 'admin',
       isParticipant: false,
+    };
+    const updatedAdmin = {
+      ...existingAdmin,
       ...getCompetitionParticipationUpdate(true),
     };
+    expect(isCompetitionParticipant(existingAdmin)).toBe(false);
     expect(isCompetitionParticipant(updatedAdmin)).toBe(true);
     expect(updatedAdmin.role).toBe('admin');
   });

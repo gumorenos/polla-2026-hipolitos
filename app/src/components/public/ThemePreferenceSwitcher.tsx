@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
 import {
   getLegacyThemeClass,
@@ -24,25 +24,25 @@ function persistCookie(name: string, value: string) {
   document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secure}`;
 }
 
-function applyScheme(scheme: ThemeScheme) {
-  document.documentElement.dataset.themeScheme = scheme;
-  document.documentElement.classList.remove('theme-black', 'theme-dark', 'theme-light');
-  document.documentElement.classList.add(getLegacyThemeClass(scheme));
-}
-
 export function ThemePreferenceSwitcher({ initialPreferences }: ThemePreferenceSwitcherProps) {
   const [scheme, setScheme] = useState<ThemeScheme>(initialPreferences.scheme);
   const [palette, setPalette] = useState<ThemePalette>(initialPreferences.palette);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-theme-scheme', scheme);
+    root.setAttribute('data-theme-palette', palette);
+    root.classList.remove('theme-black', 'theme-dark', 'theme-light');
+    root.classList.add(getLegacyThemeClass(scheme));
+  }, [palette, scheme]);
+
   const selectScheme = (nextScheme: ThemeScheme) => {
     setScheme(nextScheme);
-    applyScheme(nextScheme);
     persistCookie(THEME_SCHEME_COOKIE_NAME, nextScheme);
   };
 
   const selectPalette = (nextPalette: ThemePalette) => {
     setPalette(nextPalette);
-    document.documentElement.dataset.themePalette = nextPalette;
     persistCookie(THEME_PALETTE_COOKIE_NAME, nextPalette);
   };
 

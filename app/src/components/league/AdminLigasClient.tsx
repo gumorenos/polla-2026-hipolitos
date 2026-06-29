@@ -4,7 +4,14 @@ import React, { useState } from 'react';
 import { Shield, Settings, Archive, Trash2, ArrowLeft, Users, X, ArrowUp, ArrowDown, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { archiveLeagueAction, deleteLeagueAction, addMemberAction, manageMemberAction, updateLeagueSettingsAction } from '../../lib/actions/leagues';
+import {
+  archiveLeagueAction,
+  deleteLeagueAction,
+  addMemberAction,
+  manageMemberAction,
+  updateLeagueSettingsAction,
+  updateMemberParticipationAction,
+} from '../../lib/actions/leagues';
 import { summarizeCompetitionMembers } from '../../lib/competition-members';
 import { parseLimaDateTimeToUtc, getLimaDateTimeLocalString } from '../../lib/utils/dates';
 
@@ -225,6 +232,26 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
     }
   };
 
+  const handleToggleParticipation = async (userId: string, currentValue: boolean) => {
+    if (!activeLeague) return;
+
+    setIsSubmitting(true);
+    setModalError(null);
+    setModalSuccess(null);
+    const nextValue = !currentValue;
+    const res = await updateMemberParticipationAction(activeLeague.id, userId, nextValue);
+    setIsSubmitting(false);
+
+    if (res.error) {
+      setModalError(res.error);
+      return;
+    }
+    setModalSuccess(nextValue
+      ? 'El miembro ahora participa en la competencia; su rol no cambió.'
+      : 'El miembro dejó de competir; su rol y permisos se conservaron.');
+    router.refresh();
+  };
+
   const eligibleUsers = activeLeague
     ? approvedUsers.filter((u) => !activeLeague.members.some((m) => m.userId === u.id))
     : [];
@@ -385,7 +412,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                 MIEMBROS Y PARTICIPANTES: {activeLeague.name}
               </h3>
               <p className="text-xs text-text-secondary">
-                Administra membresías y roles. Un owner o administrador puede no competir.
+                El rol controla permisos. La opción Participa define si el miembro compite, sin cambiar su rol.
               </p>
             </div>
 
@@ -423,7 +450,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
             {/* Add Member Form */}
             <form onSubmit={handleAddMember} className="bg-bg-secondary/40 p-3.5 border border-border-subtle rounded-xl space-y-2">
               <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                Agregar Participante Aprobado
+                Agregar miembro participante aprobado
               </label>
               <div className="flex gap-2">
                 <select
@@ -475,29 +502,38 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          <span
-                            className={`text-[8px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
-                              m.isParticipant
-                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                                : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
-                            }`}
-                          >
-                            {m.isParticipant ? 'Participa' : 'No participa'}
-                          </span>
+                        <div className="flex items-end justify-end gap-3 flex-wrap">
+                          <div className="space-y-1 text-center">
+                            <span className="block text-[8px] font-mono uppercase text-text-muted">Rol</span>
+                            <span
+                              className={`block text-[8px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
+                                isOwner
+                                  ? 'bg-gold-500/10 text-gold-400 border-gold-500/30'
+                                  : isAdmin
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                  : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                              }`}
+                            >
+                              {roleLabel}
+                            </span>
+                          </div>
 
-                          {/* Role Badge */}
-                          <span
-                            className={`text-[8px] font-mono font-semibold px-2 py-0.5 rounded-full border uppercase ${
-                              isOwner
-                                ? 'bg-gold-500/10 text-gold-400 border-gold-500/30'
-                                : isAdmin
-                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                                : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
-                            }`}
-                          >
-                            {roleLabel}
-                          </span>
+                          <label className="space-y-1 text-center cursor-pointer">
+                            <span className="block text-[8px] font-mono uppercase text-text-muted">Participa</span>
+                            <span className="flex items-center justify-center gap-1.5 min-h-5">
+                              <input
+                                type="checkbox"
+                                checked={m.isParticipant}
+                                onChange={() => handleToggleParticipation(m.userId, m.isParticipant)}
+                                disabled={isSubmitting || m.user.status !== 'approved'}
+                                aria-label={`Participa en la competencia: ${m.user.displayName || m.user.name}`}
+                                className="h-4 w-4 accent-gold-400 disabled:opacity-50"
+                              />
+                              <span className={m.isParticipant ? 'text-[9px] text-green-400' : 'text-[9px] text-text-muted'}>
+                                {m.isParticipant ? 'Sí' : 'No'}
+                              </span>
+                            </span>
+                          </label>
 
                           {/* Member Operations */}
                           {!isOwner && (

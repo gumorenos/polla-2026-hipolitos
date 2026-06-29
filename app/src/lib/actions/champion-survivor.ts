@@ -26,6 +26,7 @@ import {
   getEligibleChampionPickTeamCodes,
   getEligibleChampionTeams,
 } from '../champion-team-eligibility';
+import { isCompetitionParticipant } from '../competition-members';
 import {
   buildChampionStatusInitializationPlan,
   buildGroupStageChampionStatusUpdates,
@@ -264,7 +265,7 @@ export async function getChampionSurvivorState(leagueId: string): ActionResult<u
     where: { leagueId_userId: { leagueId, userId } },
   });
 
-  if (!membership || !membership.isParticipant) {
+  if (!isCompetitionParticipant(membership)) {
     return { error: 'Debes estar inscrito como participante para elegir campeón.' };
   }
 
@@ -352,7 +353,7 @@ export async function submitChampionPick(leagueId: string, teamCode: string): Ac
     }),
   ]);
 
-  if (!membership || !membership.isParticipant) {
+  if (!isCompetitionParticipant(membership)) {
     return { error: 'Debes estar inscrito como participante para elegir campeón.' };
   }
   if (existing?.lockedAt) {
@@ -459,7 +460,7 @@ export async function adminChangeChampionPick(
     }),
   ]);
 
-  if (!targetMembership || !targetMembership.isParticipant || targetUser?.status !== 'approved') {
+  if (!isCompetitionParticipant(targetMembership) || targetUser?.status !== 'approved') {
     return { error: 'El usuario objetivo debe ser participante aprobado de esta polla.' };
   }
   try {

@@ -220,6 +220,8 @@ Champion Survivor is a separate competition type from full prediction mode. It u
 
 `/competencia` is the canonical user-facing route for competition creation and detail pages. `/liga` remains as a legacy compatibility alias for existing links. Competition type is selected during creation and is read-only afterward. Creators are always owners/admins, while counting as a participant is explicit through `LeagueMember.isParticipant`.
 
+Administrative role and participation are independent. Updating `isParticipant` never writes `role`; approved owners and admins may compete, receive standings, submit eligible picks, and contribute to participant counts and prize-pool estimates while retaining their permissions.
+
 ```
 User requests Champion Survivor state
   → Server Action validates approved session and league membership

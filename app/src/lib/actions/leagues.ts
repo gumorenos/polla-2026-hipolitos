@@ -4,6 +4,10 @@ import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { revalidatePath } from 'next/cache';
 import { recalculateAllStandings } from './admin';
+import {
+  getCompetitionParticipationUpdate,
+  wouldRemoveLastCompetitionAdministrator,
+} from '../competition-members';
 
 /**
  * Creates a new private competition. The creator always becomes owner, but participant status is explicit.
@@ -370,6 +374,16 @@ export async function manageMemberAction(
       }
     }
 
+    if (action === 'remove' || action === 'demote') {
+      const memberships = await prisma.leagueMember.findMany({
+        where: { leagueId },
+        select: { userId: true, role: true },
+      });
+      if (wouldRemoveLastCompetitionAdministrator(memberships, targetUserId, action)) {
+        return { error: 'La competencia debe conservar al menos un owner o administrador.' };
+      }
+    }
+
     if (action === 'remove') {
       await prisma.leagueMember.delete({
         where: { leagueId_userId: { leagueId, userId: targetUserId } },
@@ -417,6 +431,116 @@ export async function manageMemberAction(
   } catch (error) {
     console.error('Error in manageMemberAction:', error);
     return { error: 'Ocurrió un error al gestionar al miembro.' };
+  }
+}
+
+/** Updates competition participation without changing the membership role or permissions. */
+export async function updateMemberParticipationAction(
+  leagueId: string,
+  targetUserId: string,
+  isParticipant: boolean,
+) {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado.' };
+  if (typeof isParticipant !== 'boolean') return { error: 'Estado de participación inválido.' };
+
+  const actorUserId = session.user.id;
+  try {
+    const [league, callerMember, targetMember, targetUser] = await Promise.all([
+      prisma.league.findUnique({ where: { id: leagueId }, select: { id: true, slug: true } }),
+      prisma.leagueMember.findUnique({
+        where: { leagueId_userId: { leagueId, userId: actorUserId } },
+        select: { role: true },
+      }),
+      prisma.leagueMember.findUnique({
+        where: { leagueId_userId: { leagueId, userId: targetUserId } },
+        select: { userId: true, role: true, isParticipant: true },
+      }),
+      prisma.user.findUnique({ where: { id: targetUserId }, select: { status: true } }),
+    ]);
+
+    if (!league) return { error: 'Competencia no encontrada.' };
+    if (!targetMember) return { error: 'El usuario no es miembro de esta competencia.' };
+
+    const isSuperadmin = session.user.isSuperadmin === true;
+    const callerRole = callerMember?.role;
+    if (!isSuperadmin && callerRole !== 'owner' && callerRole !== 'admin') {
+      return { error: 'No tienes permisos para cambiar la participación.' };
+    }
+    if (
+      !isSuperadmin
+      && callerRole === 'admin'
+      && targetUserId !== actorUserId
+      && targetMember.role !== 'member'
+    ) {
+      return { error: 'Un administrador solo puede cambiar su participación o la de miembros regulares.' };
+    }
+    if (isParticipant && targetUser?.status !== 'approved') {
+      return { error: 'Solo los usuarios aprobados pueden competir.' };
+    }
+    if (targetMember.isParticipant === isParticipant) {
+      return { success: true, data: targetMember };
+    }
+
+    const participationUpdate = getCompetitionParticipationUpdate(isParticipant);
+    const updated = await prisma.$transaction(async (tx) => {
+      const membership = await tx.leagueMember.update({
+        where: { leagueId_userId: { leagueId, userId: targetUserId } },
+        data: participationUpdate,
+        select: { userId: true, role: true, isParticipant: true },
+      });
+
+      if (isParticipant) {
+        for (const block of ['groups', 'knockout', 'global']) {
+          await tx.standing.upsert({
+            where: { leagueId_userId_block: { leagueId, userId: targetUserId, block } },
+            update: {},
+            create: {
+              leagueId,
+              userId: targetUserId,
+              block,
+              points: 0,
+              exacts: 0,
+              tendencies: 0,
+              consolations: 0,
+              misses: 0,
+              rank: 0,
+              previousRank: 0,
+            },
+          });
+        }
+      }
+
+      await tx.adminActionLog.create({
+        data: {
+          userId: actorUserId,
+          action: 'member_participation_change',
+          target: `user:${targetUserId}`,
+          details: JSON.stringify({
+            leagueId,
+            role: targetMember.role,
+            previousIsParticipant: targetMember.isParticipant,
+            isParticipant,
+          }),
+        },
+      });
+      return membership;
+    });
+
+    revalidatePath(`/liga/${league.slug}`);
+    revalidatePath(`/competencia/${league.slug}`);
+    revalidatePath('/admin/competencias');
+    revalidatePath('/admin/ligas');
+    revalidatePath('/admin');
+    revalidatePath('/pronosticos');
+    revalidatePath('/ranking');
+    revalidatePath('/');
+    revalidatePath('/invitado');
+    await recalculateAllStandings();
+    return { success: true, data: updated };
+  } catch (error) {
+    console.error('Error in updateMemberParticipationAction:', error);
+    return { error: 'No se pudo actualizar la participación del miembro.' };
   }
 }
 
@@ -689,6 +813,7 @@ export async function addMemberAction(leagueId: string, targetUserId: string) {
         leagueId,
         userId: targetUserId,
         role: 'member',
+        isParticipant: true,
       },
     });
 

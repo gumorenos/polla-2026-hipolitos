@@ -79,6 +79,12 @@ export default async function RankingPage({
       block: 'global',
       user: {
         status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+        memberships: {
+          some: {
+            leagueId: selectedLeague.id,
+            isParticipant: true,
+          },
+        },
       }
     },
     include: {
@@ -130,12 +136,24 @@ export default async function RankingPage({
     };
   });
 
+  const participantMemberships = serializedStandings.length === 0
+    ? await prisma.leagueMember.findMany({
+        where: {
+          leagueId: selectedLeague.id,
+          isParticipant: true,
+          user: {
+            status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+          },
+        },
+        include: { user: true },
+        orderBy: { joinedAt: 'asc' },
+      })
+    : [];
+
   // Fallback standings if not computed yet
   const finalStandings = serializedStandings.length > 0 
     ? serializedStandings 
-    : memberships
-        .filter(m => m.leagueId === selectedLeague.id)
-        .filter(m => showDisabled ? (m.user.status === 'approved' || m.user.status === 'disabled') : m.user.status === 'approved')
+    : participantMemberships
         .map((m, index) => ({
           userId: m.userId,
           displayName: m.user.displayName || m.user.name || '',

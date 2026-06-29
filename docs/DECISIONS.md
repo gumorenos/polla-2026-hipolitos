@@ -367,6 +367,8 @@ We implement the following 6 tie-breakers sequentially:
 **Rationale:**
 - `LeagueMember` grants membership and may grant owner/admin permissions.
 - Only approved members with `isParticipant = true` compete and contribute to the estimated prize pool.
+- Owner and admin roles can independently set `isParticipant = true`; participation changes never demote or remove permissions.
+- Role changes cannot remove or demote the last owner/admin membership.
 - Guest navigation must not advertise authenticated-only pages while Better Auth is unresolved or absent.
 
 ## ADR-020 — Result-driven knockout and Survivor propagation

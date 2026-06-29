@@ -63,13 +63,15 @@ export type ChampionRankingEntry = {
 };
 
 export type ChampionPickClassificationKey =
-  | 'favorite_popular'
-  | 'attractive_differential'
-  | 'longshot'
-  | 'high_risk'
-  | 'saturated'
-  | 'popularity_only'
-  | 'unclassified';
+  | 'out'
+  | 'no_picks'
+  | 'picked_no_odds'
+  | 'favorite_differential'
+  | 'favorite_shared'
+  | 'longshot_exclusive'
+  | 'longshot_shared'
+  | 'medium_market_pick'
+  | 'concentrated_pick';
 
 export type ChampionPickClassification = {
   key: ChampionPickClassificationKey;
@@ -240,29 +242,33 @@ export function classifyChampionPick(input: {
   pickPercentage: number;
   popularityRank?: number | null;
   isExclusive?: boolean;
+  status?: string | null;
 }): ChampionPickClassification {
-  const { probability, pickCount, pickPercentage, popularityRank, isExclusive } = input;
-  const manyPicks = pickPercentage >= 0.2 || (popularityRank !== null && popularityRank !== undefined && popularityRank <= 3);
+  const { probability, pickCount, pickPercentage, status } = input;
 
-  if (probability === null || probability === undefined) {
-    return pickCount > 0
-      ? { key: 'popularity_only', label: 'Popularidad disponible' }
-      : { key: 'unclassified', label: 'Sin señal de mercado' };
+  if (status === 'eliminated' || status === 'runner_up') {
+    return { key: 'out', label: 'Fuera de carrera' };
+  }
+  if (pickCount <= 0) return { key: 'no_picks', label: 'Sin picks' };
+  if (probability === null || probability === undefined || !Number.isFinite(probability)) {
+    return { key: 'picked_no_odds', label: 'Pick sin cuota' };
+  }
+  if (probability >= 0.1) {
+    return pickCount === 1
+      ? { key: 'favorite_differential', label: 'Favorito diferencial' }
+      : { key: 'favorite_shared', label: 'Favorito compartido' };
+  }
+  if (probability < 0.05) {
+    return pickCount === 1
+      ? { key: 'longshot_exclusive', label: 'Longshot exclusivo' }
+      : { key: 'longshot_shared', label: 'Longshot compartido' };
   }
 
-  // Thresholds are intentionally simple and transparent for a lightweight user-facing heuristic.
-  const highProbability = probability >= 0.1;
-  const lowProbability = probability < 0.05;
-
-  if (lowProbability && manyPicks) return { key: 'high_risk', label: 'Riesgo alto' };
-  if (lowProbability) return { key: 'longshot', label: 'Longshot' };
-  if (highProbability && manyPicks) return { key: 'favorite_popular', label: 'Favorito popular' };
-  if (highProbability && (isExclusive || pickPercentage < 0.2)) {
-    return { key: 'attractive_differential', label: 'Diferencial atractivo' };
+  // Concentration is meaningful inside the medium market band; high/low bands keep their explicit labels.
+  if (pickCount >= 2 && pickPercentage > probability + 0.05) {
+    return { key: 'concentrated_pick', label: 'Pick concentrado' };
   }
-  if (manyPicks && probability < pickPercentage) return { key: 'saturated', label: 'Alta concentración de picks' };
-
-  return { key: 'unclassified', label: 'Sin señal destacada' };
+  return { key: 'medium_market_pick', label: 'Pick de mercado medio' };
 }
 
 export function simulateChampionOdds(input: {

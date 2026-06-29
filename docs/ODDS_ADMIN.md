@@ -18,4 +18,4 @@ Match odds are stored in `OddsSnapshot` with `marketType = match_winner`. Champi
 
 ## Public labels
 
-The public Team & Market Analysis defaults to **Vivos / activos** and keeps **Todos** and **Eliminados** filters. **Alta concentración de picks** means many participants selected that team, so a shared prize would be divided among more people. **Sin cuota** means no champion outright price is available. EV values are estimates, not guaranteed payouts.
+The public Team & Market Analysis defaults to **Vivos / activos** and keeps **Todos** and **Eliminados** filters. Pick labels distinguish favorite, longshot, medium-market, concentrated, no-pick, missing-odds, and eliminated cases using actual pick counts. **Pick sin cuota** means a selected team has no champion outright price. EV values are estimates, not guaranteed payouts.

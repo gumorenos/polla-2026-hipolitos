@@ -12,6 +12,20 @@ Every consistent knockout result eliminates the loser for Champion Survivor and 
 
 The provider, CSV, and manual result paths share the same automatic propagation/sync service. The repair action in `/admin/resultados` previews and applies bracket materialization, group elimination backfill, and knockout status updates; this supports results that were saved before automatic propagation existed. Administrators retain initialization, explicit sync, and manual status controls in `/admin/supervivencia`; all operations are idempotent and audited when they change persisted state.
 
+### Completed-result backfill
+
+The explicit repair action scans all locally finalized knockout matches, not only results saved after propagation was introduced. For example, a stored `r32_01` result with Canada over South Africa resolves `W73` to `CAN`, updates `r16_01.homeTeamCode`, keeps Canada active, and marks `RSA` eliminated. Re-running the action produces no duplicate matches or status changes. Public display also derives a conservative elimination fallback from finalized knockout results so a stale `active` row cannot expose a known loser while the admin backfill is pending.
+
+## Public pick taxonomy
+
+Pick type is separate from tournament status. The public taxonomy uses actual pick counts and champion-market probability, never popularity rank by itself:
+
+- `Favorito diferencial` / `Favorito compartido`: probability at least 10%, with one or multiple picks.
+- `Longshot exclusivo` / `Longshot compartido`: probability below 5%, with one or multiple picks.
+- `Pick de mercado medio`: probability from 5% to below 10%.
+- `Pick concentrado`: multiple picks materially above the medium-band market probability.
+- `Sin picks`, `Pick sin cuota`, and `Fuera de carrera` cover explicit empty, missing-market, and eliminated states.
+
 ## Champion market display
 
 Admin probability, decimal odds, expected value, individual expected value, and simulation read only league-scoped `ChampionOddsSnapshot` rows where `sourceMarket = outright_winner`. Match `OddsSnapshot` rows are not champion odds. Missing tournament-status rows are treated as unknown/active for simulation rather than hiding saved champion odds.

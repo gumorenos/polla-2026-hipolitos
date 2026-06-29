@@ -130,36 +130,26 @@ describe('Champion Survivor business logic', () => {
     expect(calculateIndividualExpectedValue(1000, 0.2, 0)).toBeNull();
   });
 
-  it('classifies popular, differential, and longshot champion picks with simple thresholds', () => {
-    expect(classifyChampionPick({
-      probability: 0.18,
-      pickCount: 5,
-      pickPercentage: 0.25,
-      popularityRank: 1,
-    }).label).toBe('Favorito popular');
+  it('classifies champion picks with the explicit market and sharing taxonomy', () => {
+    const classify = (
+      probability: number | null,
+      pickCount: number,
+      pickPercentage = 0.1,
+      status?: string,
+      popularityRank?: number,
+    ) => classifyChampionPick({ probability, pickCount, pickPercentage, status, popularityRank });
 
-    expect(classifyChampionPick({
-      probability: 0.12,
-      pickCount: 1,
-      pickPercentage: 0.05,
-      popularityRank: 6,
-      isExclusive: true,
-    }).label).toBe('Diferencial atractivo');
-
-    expect(classifyChampionPick({
-      probability: 0.03,
-      pickCount: 1,
-      pickPercentage: 0.05,
-      popularityRank: 8,
-      isExclusive: true,
-    }).label).toBe('Longshot');
-
-    expect(classifyChampionPick({
-      probability: 0.08,
-      pickCount: 5,
-      pickPercentage: 0.25,
-      popularityRank: 2,
-    }).label).toBe('Alta concentración de picks');
+    expect(classify(0.12, 1, 0.1, undefined, 1).label).toBe('Favorito diferencial');
+    expect(classify(0.12, 2, 0.14).label).toBe('Favorito compartido');
+    expect(classify(0.03, 1).label).toBe('Longshot exclusivo');
+    expect(classify(0.03, 2).label).toBe('Longshot compartido');
+    expect(classify(0.07, 1).label).toBe('Pick de mercado medio');
+    expect(classify(0.07, 3, 0.2).label).toBe('Pick concentrado');
+    expect(classify(0.12, 0, 0).label).toBe('Sin picks');
+    expect(classify(null, 1).label).toBe('Pick sin cuota');
+    expect(classify(0.12, 1, 0.1, 'eliminated').label).toBe('Fuera de carrera');
+    expect(classify(0.12, 1, 0.1, 'runner_up').label).toBe('Fuera de carrera');
+    expect(classify(0.07, 1, 0.1, undefined, 1).key).toBe('medium_market_pick');
   });
 
   it('normalizes outright champion implied probabilities for simulation', () => {

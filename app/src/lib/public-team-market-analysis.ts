@@ -47,10 +47,14 @@ export type SortDirection = 'asc' | 'desc';
 export function derivePublicTournamentStatus(
   storedStatus: string | null | undefined,
   qualificationStatus: string | null | undefined,
+  knockoutStatus?: string | null,
 ): 'unknown' | 'active' | 'eliminated' | 'runner_up' | 'champion' {
   if (storedStatus === 'champion') return 'champion';
   if (storedStatus === 'runner_up') return 'runner_up';
   if (storedStatus === 'eliminated') return 'eliminated';
+  if (knockoutStatus === 'champion') return 'champion';
+  if (knockoutStatus === 'runner_up') return 'runner_up';
+  if (knockoutStatus === 'eliminated') return 'eliminated';
   if (storedStatus === 'active') return 'active';
   if (qualificationStatus === 'eliminated') return 'eliminated';
   if (

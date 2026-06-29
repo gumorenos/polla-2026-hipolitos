@@ -169,6 +169,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Added `/invitado` public read-only view for the principal competition, with login CTA and `showOdds`/`showH2H` respected.
 - [x] Hardened Champion Survivor participant validation, writable team eligibility, runner-up handling, unique champion status, and league-scoped champion odds imports.
 - [x] Added result consistency guards, explicit provider diagnostics, manual result fallback repair, conservative Round-of-32 resolution, and Champion Survivor status initialization/sync.
+- [x] Added completed-knockout backfill coverage, stale-status public fallback, and explicit Champion Survivor pick taxonomy.
 - [ ] Full Champion Survivor visual dashboard with simulations and advanced views.
 
 ---

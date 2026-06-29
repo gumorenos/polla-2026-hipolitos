@@ -51,22 +51,30 @@ function statusTone(status?: string | null): string {
 }
 
 function classificationTone(classificationKey: string): string {
-  if (classificationKey === 'favorite_popular') return 'border-blue-500/30 bg-blue-500/10 text-blue-300';
-  if (classificationKey === 'attractive_differential') return 'border-green-500/30 bg-green-500/10 text-green-300';
-  if (classificationKey === 'high_risk') return 'border-red-500/30 bg-red-500/10 text-red-300';
-  if (classificationKey === 'longshot') return 'border-purple-500/30 bg-purple-500/10 text-purple-300';
-  if (classificationKey === 'saturated') return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
+  if (classificationKey === 'out') return 'border-red-500/30 bg-red-500/10 text-red-300';
+  if (classificationKey === 'favorite_differential') return 'border-green-500/30 bg-green-500/10 text-green-300';
+  if (classificationKey === 'favorite_shared') return 'border-blue-500/30 bg-blue-500/10 text-blue-300';
+  if (classificationKey === 'longshot_exclusive') return 'border-purple-500/30 bg-purple-500/10 text-purple-300';
+  if (classificationKey === 'longshot_shared') return 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300';
+  if (classificationKey === 'medium_market_pick') return 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300';
+  if (classificationKey === 'concentrated_pick') return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
+  if (classificationKey === 'picked_no_odds') return 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300';
   return 'border-border-subtle bg-surface/50 text-text-muted';
 }
 
 function classificationDescription(classificationKey: string): string {
-  if (classificationKey === 'saturated') {
-    return 'Muchos participantes eligieron este equipo; un premio compartido se dividiría entre más personas.';
-  }
-  if (classificationKey === 'unclassified') {
-    return 'Este equipo no destaca con las reglas actuales de popularidad y mercado.';
-  }
-  return 'Clasificación orientativa basada en popularidad y, cuando está disponible, cuota de campeón.';
+  const descriptions: Record<string, string> = {
+    out: 'El equipo ya no puede ser campeón.',
+    no_picks: 'Ningún participante eligió este equipo.',
+    picked_no_odds: 'Hay picks, pero no existe una cuota de campeón disponible.',
+    favorite_differential: 'Alta probabilidad de mercado y solo un participante lo eligió.',
+    favorite_shared: 'Alta probabilidad de mercado, pero el premio se compartiría.',
+    longshot_exclusive: 'Baja probabilidad de mercado y un único participante lo eligió.',
+    longshot_shared: 'Baja probabilidad de mercado y el premio se compartiría.',
+    medium_market_pick: 'Probabilidad de mercado intermedia.',
+    concentrated_pick: 'Tiene más picks de lo esperable frente a su probabilidad de mercado.',
+  };
+  return descriptions[classificationKey] || 'Clasificación orientativa del pick.';
 }
 
 export function TeamMarketAnalysisTable({
@@ -150,10 +158,14 @@ export function TeamMarketAnalysisTable({
       <details className="border-b border-border-subtle bg-bg-secondary/20 px-4 py-2 text-xs text-text-secondary">
         <summary className="cursor-pointer font-semibold text-text-primary">Qué significan las etiquetas</summary>
         <div className="mt-2 grid gap-1 sm:grid-cols-2">
-          <p><strong>Alta concentración de picks:</strong> muchos participantes eligieron el equipo; un premio compartido se dividiría entre más personas.</p>
-          <p><strong>Sin cuota:</strong> no hay cuota de campeón disponible para ese equipo.</p>
-          <p><strong>Vivo:</strong> el equipo todavía puede ser campeón. <strong>Eliminado:</strong> ya no puede serlo.</p>
-          <p><strong>EV positivo:</strong> valor esperado estimado mayor a cero; no representa un pago garantizado.</p>
+          <p><strong>Favorito diferencial / compartido:</strong> alta probabilidad con uno o varios picks.</p>
+          <p><strong>Longshot exclusivo / compartido:</strong> baja probabilidad con uno o varios picks.</p>
+          <p><strong>Pick de mercado medio:</strong> probabilidad intermedia.</p>
+          <p><strong>Pick concentrado:</strong> más picks de lo esperable frente a su probabilidad.</p>
+          <p><strong>Sin picks / Pick sin cuota:</strong> nadie lo eligió, o fue elegido sin cuota disponible.</p>
+          <p><strong>Fuera de carrera:</strong> el equipo ya no puede ser campeón.</p>
+          <p><strong>Vivo / Eliminado:</strong> estado deportivo actual del equipo.</p>
+          <p><strong>EV positivo:</strong> estimación mayor a cero; no representa un pago garantizado.</p>
         </div>
       </details>
 

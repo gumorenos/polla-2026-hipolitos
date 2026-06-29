@@ -393,3 +393,15 @@ We implement the following 6 tie-breakers sequentially:
 - Existing cooldown and fallback behavior remains centralized in the provider layer.
 - Structured summaries expose operational outcomes without returning API keys or raw provider errors.
 - `OddsSnapshot` match odds remain separate from `ChampionOddsSnapshot` outright champion odds.
+
+## ADR-022 — Result-aware public status and explicit pick taxonomy
+
+**Date:** 2026-06-29
+**Status:** Accepted
+
+**Decision:** Final knockout results override stale public `active` display state until the audited database backfill is applied. Pick classification uses tournament status, actual pick count, pick share, and champion probability; relative popularity rank is not a proxy for multiple picks.
+
+**Rationale:**
+- Known knockout losers must not appear in the default active-team view.
+- One-pick teams receive consistent exclusive labels regardless of their rank among sparse picks.
+- Every displayed label has a direct user-facing meaning and documented threshold.

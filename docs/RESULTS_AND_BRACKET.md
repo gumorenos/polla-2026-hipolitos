@@ -36,6 +36,8 @@ Propagation updates match participants by existing match ID. It never deletes ma
 
 The public Team & Market Analysis defaults to active teams. `Todos` and `Eliminados` remain available. When a persisted status is missing, completed group qualification supplies a read-only fallback so group-stage eliminations are not mislabeled as pending while the database backfill is awaiting execution.
 
-Public market labels avoid internal shorthand: `saturated` is displayed as **Alta concentración de picks**, unknown tournament state is **Sin estado confirmado**, and an inline legend explains active/eliminated status, missing champion odds, and estimated EV. Match-odds bulk refresh remains an explicit admin operation and does not run from this public view.
+The repair action scans existing final knockout results as a backfill. A final `r32_01` result resolving `W73` therefore updates the existing `r16_01` row by ID even if the result predates automatic propagation; predictions are untouched and repeated runs are idempotent. The same operation synchronizes the losing and winning teams in Champion Survivor and writes `AdminActionLog` when persisted state changes.
+
+Public market labels use explicit favorite, longshot, medium, concentrated, no-pick, no-odds, and out-of-race categories. Popularity rank alone never turns a one-pick team into a popular/shared pick. The default `Vivos / activos` filter excludes persisted or safely derived knockout losers, while `Todos` and `Eliminados` remain available.
 
 The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi and is never committed to GitHub.

@@ -26,6 +26,7 @@ import { TeamMarketAnalysisTable } from '../components/public/TeamMarketAnalysis
 import { derivePublicTournamentStatus, filterRealTeams } from '../lib/public-team-market-analysis';
 import { getVisibleChampionTeamCodes } from '../lib/champion-team-eligibility';
 import { isConsistentFinalMatchResult } from '../lib/match-result';
+import { buildKnockoutChampionStatusUpdates } from '../lib/champion-status-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -295,6 +296,15 @@ export default async function PublicHome() {
     name: t.name,
   }));
   const qualification = calculateWorldCupQualification(fifaMatches, fifaTeams);
+  const knockoutStatusByTeam: Record<string, string> = isChampionSurvivor
+    ? Object.fromEntries(
+        buildKnockoutChampionStatusUpdates(
+          realTeams.map((team) => team.code),
+          [],
+          matches,
+        ).updates.map((update) => [update.teamCode, update.status]),
+      )
+    : {};
 
   // Full prediction standings & winner predictions distribution
   const standings = isChampionSurvivor ? [] : await buildFullPredictionStandings(league.id);
@@ -355,6 +365,7 @@ export default async function PublicHome() {
         championOddsSnapshots,
         approvedUserIds,
         qualification.statusByTeam,
+        knockoutStatusByTeam,
       )
     : null;
 
@@ -991,6 +1002,7 @@ async function buildChampionSurvivorState(
   championOddsSnapshots: ChampionOddsSnapshot[],
   approvedUserIds: Set<string>,
   qualificationStatusByTeam: Record<string, string>,
+  knockoutStatusByTeam: Record<string, string>,
 ) {
   const realTeamCodes = new Set(teams.map((team) => team.code));
   const teamNames = Object.fromEntries(teams.map((team) => [team.code, team.name]));
@@ -1003,7 +1015,11 @@ async function buildChampionSurvivorState(
     const stored = storedStatusByTeam.get(team.code);
     return {
       teamCode: team.code,
-      status: derivePublicTournamentStatus(stored?.status, qualificationStatusByTeam[team.code]),
+      status: derivePublicTournamentStatus(
+        stored?.status,
+        qualificationStatusByTeam[team.code],
+        knockoutStatusByTeam[team.code],
+      ),
       eliminatedAt: stored?.eliminatedAt || null,
     };
   });
@@ -1069,16 +1085,6 @@ async function buildChampionSurvivorState(
     }
   }
 
-  const sortedByPicks = Array.from(teams)
-    .map(t => ({ code: t.code, count: picksCounts.get(t.code) || 0 }))
-    .sort((a, b) => b.count - a.count);
-  const popularityRankByTeam = new Map<string, number>();
-  sortedByPicks.forEach((item, index) => {
-    if (item.count > 0) {
-      popularityRankByTeam.set(item.code, index + 1);
-    }
-  });
-
   const simulation = league.showOdds
     ? simulateChampionOdds({
         leagueId: league.id,
@@ -1108,8 +1114,7 @@ async function buildChampionSurvivorState(
       probability: probabilityResult.impliedProbability,
       pickCount,
       pickPercentage,
-      popularityRank: popularityRankByTeam.get(team.code) || null,
-      isExclusive: pickCount === 1,
+      status,
     });
 
     const simEntry = simulationEntryByTeam.get(team.code) || null;

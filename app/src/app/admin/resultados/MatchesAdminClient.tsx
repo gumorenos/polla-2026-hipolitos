@@ -872,7 +872,7 @@ function KnockoutPropagationPanel({
         <div>
           <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Reparar / sincronizar estado del torneo</h3>
           <p className="text-xs text-text-secondary">
-            Materializa Wxx/RUxx y sincroniza eliminaciones de grupos y fases eliminatorias con resultados locales.
+            Revisa todos los resultados finalizados, incluidos los guardados antes de la propagación automática, materializa Wxx/RUxx y sincroniza eliminaciones.
           </p>
         </div>
         <button

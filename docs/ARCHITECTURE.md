@@ -256,7 +256,8 @@ Champion Survivor also includes aggregate social and market panels for participa
 
 - `Mi pick vs mercado` uses only `ChampionOddsSnapshot` outright winner rows for champion probability, decimal odds, provider/bookmaker, captured time, and expected value.
 - `Riesgo social` shows aggregate same-team pick counts, pick exclusivity, and individual estimated EV as `prizePool * championProbability / samePickCount` when market aids are enabled.
-- `Pick popular vs pick diferencial` classifies picks with simple probability and popularity thresholds. Probability-based classification is hidden when `showOdds` is disabled.
+- `Pick popular vs pick diferencial` classifies picks with explicit champion-probability and pick-count thresholds. Probability-based classification is hidden when `showOdds` is disabled.
+- Public pick classification uses explicit favorite, longshot, medium, concentrated, no-pick, missing-odds, and out-of-race labels based on actual pick counts and champion probability. Final knockout results provide a read-only elimination fallback when a persisted `active` status is stale.
 - `Mapa de supervivencia` shows survival counts, pick distribution by team, exclusive picks, and combined alive probability when all alive teams have champion odds.
 - Social counts and distribution are aggregate-only; participant names are not exposed in these panels. Simulations remain pending.
 

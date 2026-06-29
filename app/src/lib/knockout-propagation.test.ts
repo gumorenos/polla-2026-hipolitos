@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildKnockoutPropagationPlan } from './knockout-propagation';
+import { buildKnockoutChampionStatusUpdates } from './champion-status-sync';
 
 describe('knockout propagation', () => {
   it('maps final r32 winners into the configured r16 slots without mutating matches', () => {
@@ -19,14 +20,37 @@ describe('knockout propagation', () => {
   });
 
   it('backfills the production r32_01 result as CAN into r16_01 home', () => {
-    const plan = buildKnockoutPropagationPlan([
+    const matches = [
       finalMatch('r32_01', 'RSA', 'CAN', 'CAN'),
       pendingMatch('r16_01', 'W73', 'W75'),
-    ]);
+    ];
+    const plan = buildKnockoutPropagationPlan(matches);
+    const statuses = buildKnockoutChampionStatusUpdates(
+      ['RSA', 'CAN'],
+      [{ teamCode: 'RSA', status: 'active' }, { teamCode: 'CAN', status: 'active' }],
+      matches,
+    );
+
     expect(findResolved(plan, 'r16_01', 'home')).toBe('CAN');
     expect(plan.proposals.find((proposal) => (
       proposal.matchId === 'r16_01' && proposal.side === 'away'
     ))).toBeUndefined();
+    expect(statuses.updates).toEqual([
+      expect.objectContaining({ teamCode: 'RSA', status: 'eliminated', eliminatedInMatchId: 'r32_01' }),
+    ]);
+    expect(statuses.conflicts).toEqual([]);
+
+    const rerunPropagation = buildKnockoutPropagationPlan([
+      finalMatch('r32_01', 'RSA', 'CAN', 'CAN'),
+      pendingMatch('r16_01', 'CAN', 'W75'),
+    ]);
+    const rerunStatuses = buildKnockoutChampionStatusUpdates(
+      ['RSA', 'CAN'],
+      [{ teamCode: 'RSA', status: 'eliminated' }, { teamCode: 'CAN', status: 'active' }],
+      matches,
+    );
+    expect(rerunPropagation.changedCount).toBe(0);
+    expect(rerunStatuses.updates).toEqual([]);
   });
 
   it('uses the complete official r32 winner-slot mapping', () => {

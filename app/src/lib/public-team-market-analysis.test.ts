@@ -21,8 +21,8 @@ const row = (
   status: 'active',
   pickCount,
   pickPercentage: pickCount / 10,
-  classificationLabel: 'Sin clasificar',
-  classificationKey: 'unclassified',
+  classificationLabel: 'Sin picks',
+  classificationKey: 'no_picks',
   marketProbability: decimalOdds === null ? null : 1 / decimalOdds,
   decimalOdds,
   simulatedProbability: decimalOdds === null ? null : 1 / decimalOdds,
@@ -108,10 +108,19 @@ describe('public team market analysis', () => {
     expect(DEFAULT_TEAM_MARKET_FILTER).toBe('alive');
   });
 
+  it('hides RSA from the active view after elimination but keeps it in all and eliminated views', () => {
+    const rsa = { ...row('RSA', 1, 80, 1), status: 'eliminated' };
+    const can = { ...row('CAN', 1, 65, 2), status: 'active' };
+    expect(filterTeamMarketRows([rsa, can], 'alive').map((item) => item.teamCode)).toEqual(['CAN']);
+    expect(filterTeamMarketRows([rsa, can], 'eliminated').map((item) => item.teamCode)).toEqual(['RSA']);
+    expect(filterTeamMarketRows([rsa, can], 'all').map((item) => item.teamCode)).toEqual(['RSA', 'CAN']);
+  });
+
   it('derives missing group-stage status as eliminated instead of pending', () => {
     expect(derivePublicTournamentStatus(null, 'eliminated')).toBe('eliminated');
     expect(derivePublicTournamentStatus(null, 'third_place_qualified')).toBe('active');
     expect(derivePublicTournamentStatus('eliminated', 'group_winner')).toBe('eliminated');
+    expect(derivePublicTournamentStatus('active', 'group_winner', 'eliminated')).toBe('eliminated');
   });
 
   it('sorts numeric columns without mutating the source', () => {

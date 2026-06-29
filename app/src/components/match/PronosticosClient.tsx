@@ -767,9 +767,6 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
         const selectedDistributionItem = consideredTeamCode
           ? distribution?.byTeam.find(item => item.teamCode === consideredTeamCode) || null
           : null;
-        const selectedPopularityRank = selectedDistributionItem && distribution
-          ? distribution.byTeam.findIndex(item => item.teamCode === selectedDistributionItem.teamCode) + 1
-          : null;
         const selectedSamePickCount = selectedDistributionItem?.count ?? 0;
         const selectedPickPercentage = selectedDistributionItem?.percentage ?? 0;
         const selectedIndividualEv = activeLeague.showOdds && championOdds && activeChampionInfo
@@ -779,19 +776,18 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
               selectedSamePickCount
             )
           : null;
-        const selectedClassification = activeLeague.showOdds && selectedDistributionItem
+        const selectedClassification = activeLeague.showOdds && consideredTeamCode
           ? classifyChampionPick({
               probability: championOdds?.impliedProbability ?? null,
-              pickCount: selectedDistributionItem.count,
-              pickPercentage: selectedDistributionItem.percentage,
-              popularityRank: selectedPopularityRank,
-              isExclusive: selectedDistributionItem.count === 1,
+              pickCount: selectedSamePickCount,
+              pickPercentage: selectedPickPercentage,
+              status: teamStatus?.status,
             })
           : null;
         const topPopularPicks = distribution?.byTeam.slice(0, 3) ?? [];
         const topDifferentialPicks = activeLeague.showOdds && distribution
           ? distribution.byTeam
-              .map((item, index) => {
+              .map((item) => {
                 const odds = activeChampionInfo?.championOdds[item.teamCode];
                 return {
                   ...item,
@@ -800,12 +796,11 @@ export const PronosticosClient: React.FC<PronosticosClientProps> = ({
                     probability: odds?.impliedProbability ?? null,
                     pickCount: item.count,
                     pickPercentage: item.percentage,
-                    popularityRank: index + 1,
-                    isExclusive: item.count === 1,
+                    status: activeChampionInfo?.teamStatuses[item.teamCode]?.status,
                   }),
                 };
               })
-              .filter(item => item.classification.key === 'attractive_differential')
+              .filter(item => item.classification.key === 'favorite_differential')
               .slice(0, 3)
           : [];
         const simulation = activeChampionInfo?.simulation || null;

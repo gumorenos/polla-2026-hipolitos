@@ -18,36 +18,32 @@ describe('Public guest dashboard components constraints', () => {
   });
 
   it('classifies champion picks according to social and probability rules', () => {
-    // Favorito popular (high prob, many picks)
     expect(classifyChampionPick({
       probability: 0.15,
       pickCount: 10,
       pickPercentage: 0.3,
       popularityRank: 1,
-    }).key).toBe('favorite_popular');
+    }).key).toBe('favorite_shared');
 
-    // Diferencial atractivo (high prob, exclusive or few picks)
     expect(classifyChampionPick({
       probability: 0.15,
       pickCount: 1,
       pickPercentage: 0.05,
       isExclusive: true,
-    }).key).toBe('attractive_differential');
+    }).key).toBe('favorite_differential');
 
-    // Riesgo alto (low prob, many picks)
     expect(classifyChampionPick({
       probability: 0.03,
       pickCount: 12,
       pickPercentage: 0.25,
       popularityRank: 2,
-    }).key).toBe('high_risk');
+    }).key).toBe('longshot_shared');
 
-    // Longshot (low prob, few picks)
     expect(classifyChampionPick({
       probability: 0.04,
-      pickCount: 2,
+      pickCount: 1,
       pickPercentage: 0.05,
-    }).key).toBe('longshot');
+    }).key).toBe('longshot_exclusive');
   });
 
   it('hides probability metrics if no odds snapshot is provided', () => {

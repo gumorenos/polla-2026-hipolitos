@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_TEAM_MARKET_FILTER,
   classifyTeamPickType,
   collectRealTeamCodesFromSources,
   derivePublicTournamentStatus,
@@ -103,6 +104,8 @@ describe('public team market analysis', () => {
     const runnerUp = { ...row('FRA', 1, 6, 7), status: 'runner_up' };
     expect(filterTeamMarketRows([active, eliminated, runnerUp], 'alive').map((item) => item.teamCode)).toEqual(['ARG']);
     expect(filterTeamMarketRows([active, eliminated, runnerUp], 'eliminated').map((item) => item.teamCode)).toEqual(['BRA', 'FRA']);
+    expect(filterTeamMarketRows([active, eliminated, runnerUp], 'all')).toHaveLength(3);
+    expect(DEFAULT_TEAM_MARKET_FILTER).toBe('alive');
   });
 
   it('derives missing group-stage status as eliminated instead of pending', () => {

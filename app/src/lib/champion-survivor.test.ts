@@ -153,6 +153,13 @@ describe('Champion Survivor business logic', () => {
       popularityRank: 8,
       isExclusive: true,
     }).label).toBe('Longshot');
+
+    expect(classifyChampionPick({
+      probability: 0.08,
+      pickCount: 5,
+      pickPercentage: 0.25,
+      popularityRank: 2,
+    }).label).toBe('Alta concentración de picks');
   });
 
   it('normalizes outright champion implied probabilities for simulation', () => {

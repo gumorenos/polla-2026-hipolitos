@@ -151,6 +151,7 @@ Rationale: The reference app has an excellent UI layer and correct match data, b
 - [x] Resolve all 495 FIFA Annex C best-third combinations for explicit Round-of-32 preview and apply.
 - [x] Admin competition management: configure settings, distinguish members from participants, archive/delete, and preserve `/admin/ligas` compatibility.
 - [x] Session-aware shared navigation hides competition, prediction, ranking, profile, and admin links from guests.
+- [x] Added explicit bulk match-odds refresh modes for future missing/all matches with cooldown-aware structured summaries.
 - [x] Admin user management: view all users, toggle superadmin, approve/reject/disable users, create users manually.
 - [x] Commit: "feat: admin panel with match results and league management"
 

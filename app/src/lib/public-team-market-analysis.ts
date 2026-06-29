@@ -30,6 +30,8 @@ export type TeamMarketFilter =
   | 'without_market_odds'
   | 'positive_ev';
 
+export const DEFAULT_TEAM_MARKET_FILTER: TeamMarketFilter = 'alive';
+
 export type TeamMarketSortKey =
   | 'teamName'
   | 'pickCount'

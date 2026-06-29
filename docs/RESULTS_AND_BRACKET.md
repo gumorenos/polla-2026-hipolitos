@@ -36,4 +36,6 @@ Propagation updates match participants by existing match ID. It never deletes ma
 
 The public Team & Market Analysis defaults to active teams. `Todos` and `Eliminados` remain available. When a persisted status is missing, completed group qualification supplies a read-only fallback so group-stage eliminations are not mislabeled as pending while the database backfill is awaiting execution.
 
+Public market labels avoid internal shorthand: `saturated` is displayed as **Alta concentración de picks**, unknown tournament state is **Sin estado confirmado**, and an inline legend explains active/eliminated status, missing champion odds, and estimated EV. Match-odds bulk refresh remains an explicit admin operation and does not run from this public view.
+
 The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi and is never committed to GitHub.

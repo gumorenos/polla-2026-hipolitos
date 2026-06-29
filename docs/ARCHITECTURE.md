@@ -310,6 +310,12 @@ User visits /join/[code] (or inputs inviteCode in the UI)
 
 ---
 
+### Admin match-odds refresh flow
+
+`/admin/odds` invokes an explicit superadmin Server Action for either future matches missing global match-winner odds or all future matches. A pure selector excludes past and final matches, then each candidate uses the existing `getMatchWinnerOdds` and `saveOddsSnapshot` services. Cooldowns are checked between requests, provider calls are paced, the existing development-only simulation flag remains unchanged, and the client receives only a redacted structured summary.
+
+Public pages only read stored snapshots. `OddsSnapshot` remains the match-winner market store; `ChampionOddsSnapshot` remains the outright champion market store.
+
 ## 7. Deployment Architecture (Raspberry Pi 5)
 
 ```

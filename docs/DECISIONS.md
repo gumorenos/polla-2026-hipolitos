@@ -380,3 +380,16 @@ We implement the following 6 tie-breakers sequentially:
 - Match IDs and predictions remain stable while `Wxx` and `RUxx` participants are materialized.
 - Conflicting real teams and manual terminal Survivor statuses are reported instead of overwritten.
 - A best-third tie blocks classification only when it crosses the eighth/ninth cutoff; exact ordering inside the same side of the cutoff remains diagnostic.
+
+## ADR-021 — Explicit bulk refresh for match odds
+
+**Date:** 2026-06-29
+**Status:** Accepted
+
+**Decision:** Bulk match-odds refresh is an explicit superadmin action that reuses the single-match provider and persistence path. Candidate selection is pure and excludes past or final matches; separate modes cover missing global match-winner snapshots and all future matches.
+
+**Rationale:**
+- Provider calls never occur during public rendering.
+- Existing cooldown and fallback behavior remains centralized in the provider layer.
+- Structured summaries expose operational outcomes without returning API keys or raw provider errors.
+- `OddsSnapshot` match odds remain separate from `ChampionOddsSnapshot` outright champion odds.

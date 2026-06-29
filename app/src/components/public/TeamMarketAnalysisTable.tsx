@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  DEFAULT_TEAM_MARKET_FILTER,
   filterTeamMarketRows,
   sortTeamMarketRows,
   type SortDirection,
@@ -37,7 +38,7 @@ function getTournamentStatusLabel(status?: string | null): string {
   if (status === 'runner_up') return 'Subcampeón';
   if (status === 'eliminated') return 'Eliminado';
   if (status === 'active') return 'Vivo';
-  return 'Pendiente';
+  return 'Sin estado confirmado';
 }
 
 function statusTone(status?: string | null): string {
@@ -58,12 +59,22 @@ function classificationTone(classificationKey: string): string {
   return 'border-border-subtle bg-surface/50 text-text-muted';
 }
 
+function classificationDescription(classificationKey: string): string {
+  if (classificationKey === 'saturated') {
+    return 'Muchos participantes eligieron este equipo; un premio compartido se dividiría entre más personas.';
+  }
+  if (classificationKey === 'unclassified') {
+    return 'Este equipo no destaca con las reglas actuales de popularidad y mercado.';
+  }
+  return 'Clasificación orientativa basada en popularidad y, cuando está disponible, cuota de campeón.';
+}
+
 export function TeamMarketAnalysisTable({
   teamsReport,
   currency,
   showOdds,
 }: TeamMarketAnalysisTableProps) {
-  const [filter, setFilter] = useState<TeamMarketFilter>('alive');
+  const [filter, setFilter] = useState<TeamMarketFilter>(DEFAULT_TEAM_MARKET_FILTER);
   const [sortKey, setSortKey] = useState<TeamMarketSortKey>('pickCount');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -136,6 +147,16 @@ export function TeamMarketAnalysisTable({
         </div>
       )}
 
+      <details className="border-b border-border-subtle bg-bg-secondary/20 px-4 py-2 text-xs text-text-secondary">
+        <summary className="cursor-pointer font-semibold text-text-primary">Qué significan las etiquetas</summary>
+        <div className="mt-2 grid gap-1 sm:grid-cols-2">
+          <p><strong>Alta concentración de picks:</strong> muchos participantes eligieron el equipo; un premio compartido se dividiría entre más personas.</p>
+          <p><strong>Sin cuota:</strong> no hay cuota de campeón disponible para ese equipo.</p>
+          <p><strong>Vivo:</strong> el equipo todavía puede ser campeón. <strong>Eliminado:</strong> ya no puede serlo.</p>
+          <p><strong>EV positivo:</strong> valor esperado estimado mayor a cero; no representa un pago garantizado.</p>
+        </div>
+      </details>
+
       {visibleRows.length === 0 ? (
         <p className="p-6 text-sm text-text-secondary">No hay equipos reales que coincidan con este filtro.</p>
       ) : (
@@ -176,7 +197,10 @@ export function TeamMarketAnalysisTable({
                   </td>
                   <td className="px-3 py-2.5 text-center font-mono text-text-secondary">{formatPercent(team.pickPercentage)}</td>
                   <td className="px-3 py-2.5">
-                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${classificationTone(team.classificationKey)}`}>
+                    <span
+                      title={classificationDescription(team.classificationKey)}
+                      className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${classificationTone(team.classificationKey)}`}
+                    >
                       {team.classificationLabel}
                     </span>
                   </td>

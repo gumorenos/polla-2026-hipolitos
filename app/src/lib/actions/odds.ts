@@ -1,11 +1,17 @@
 'use server';
 
 import { prisma } from '../db';
-import { Prisma } from '@prisma/client';
 import { getCurrentSession } from '../auth-helpers';
 import { getMatchWinnerOdds, saveOddsSnapshot, getProviderCooldown } from '../odds/providers';
 import { getHeadToHeadStats, saveHeadToHeadSnapshot } from '../odds/h2h';
 import { revalidatePath } from 'next/cache';
+import {
+  selectBulkMatchOddsCandidates,
+  type BulkMatchOddsCandidate,
+  type BulkMatchOddsMode,
+  type BulkMatchOddsResult,
+  type BulkMatchOddsSummary,
+} from '../odds/bulk-match-odds';
 
 // Helper to get America/Lima date key (YYYY-MM-DD)
 export async function getLimaDateKey(date: Date): Promise<string> {
@@ -203,125 +209,285 @@ export async function refreshUserOddsAction(matchId: string) {
   }
 }
 
-// Refresh global odds (Superadmin only)
+type MatchOddsRefreshOutcome =
+  | { status: 'updated'; provider: string; sourceType: 'api' | 'manual' }
+  | { status: 'failed'; reason: string };
+
+async function refreshGlobalMatchOdds(matchId: string): Promise<MatchOddsRefreshOutcome> {
+  try {
+    const odds = await getMatchWinnerOdds(matchId);
+    if (!odds) {
+      return {
+        status: 'failed',
+        reason: 'No se pudieron obtener cuotas reales para este partido.',
+      };
+    }
+
+    await saveOddsSnapshot(matchId, odds, { visibility: 'global' });
+    return { status: 'updated', provider: odds.provider, sourceType: odds.sourceType };
+  } catch (error: unknown) {
+    console.error(
+      `Failed to refresh global odds for match ${matchId}:`,
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return {
+      status: 'failed',
+      reason: 'No se pudieron actualizar las cuotas de este partido.',
+    };
+  }
+}
+
+async function getActiveOddsProviderCooldowns(providerNames: string[]) {
+  const uniqueProviders = Array.from(new Set(providerNames));
+  const cooldowns = await Promise.all(
+    uniqueProviders.map(async (provider) => ({
+      provider,
+      cooldownUntil: await getProviderCooldown(provider),
+    })),
+  );
+  return cooldowns.filter(
+    (item): item is { provider: string; cooldownUntil: Date } => item.cooldownUntil !== null,
+  );
+}
+
+async function runBulkMatchOddsRefresh(options: {
+  mode: BulkMatchOddsMode;
+  limit?: number;
+  lookaheadHours?: number;
+}): Promise<BulkMatchOddsSummary> {
+  const now = new Date();
+  const matches = await prisma.match.findMany({
+    where: { kickoffUtc: { gt: now } },
+    orderBy: { kickoffUtc: 'asc' },
+    select: {
+      id: true,
+      homeTeamCode: true,
+      awayTeamCode: true,
+      kickoffUtc: true,
+      status: true,
+      resultStatus: true,
+      oddsSnapshots: {
+        where: { visibility: 'global', marketType: 'match_winner' },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+
+  const candidates: BulkMatchOddsCandidate[] = matches.map((match) => ({
+    id: match.id,
+    homeTeamCode: match.homeTeamCode,
+    awayTeamCode: match.awayTeamCode,
+    kickoffUtc: match.kickoffUtc,
+    status: match.status,
+    resultStatus: match.resultStatus,
+    hasGlobalMatchWinnerOdds: match.oddsSnapshots.length > 0,
+  }));
+  const allEligible = selectBulkMatchOddsCandidates(candidates, options.mode, now, {
+    lookaheadHours: options.lookaheadHours,
+  });
+  const selected = options.limit ? allEligible.slice(0, options.limit) : allEligible;
+  const results: BulkMatchOddsResult[] = [];
+  const providersUsed = new Set<string>();
+  const cooldownNotes = new Set<string>();
+  const providerNames = Array.from(new Set([
+    process.env.ODDS_PRIMARY_PROVIDER || 'odds-api-io',
+    process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api',
+  ]));
+  let updated = 0;
+  let failed = 0;
+  let stoppedEarly = false;
+  let skipped = Math.max(0, allEligible.length - selected.length);
+
+  for (let index = 0; index < selected.length; index += 1) {
+    const match = selected[index];
+    if (!match) continue;
+    const activeCooldowns = await getActiveOddsProviderCooldowns(providerNames);
+    for (const cooldown of activeCooldowns) {
+      cooldownNotes.add(`${cooldown.provider}: enfriamiento hasta ${cooldown.cooldownUntil.toISOString()}`);
+    }
+    if (activeCooldowns.length === providerNames.length) {
+      stoppedEarly = true;
+      const remaining = selected.slice(index);
+      skipped += remaining.length;
+      results.push(...remaining.map((pendingMatch) => ({
+        matchId: pendingMatch.id,
+        homeTeamCode: pendingMatch.homeTeamCode,
+        awayTeamCode: pendingMatch.awayTeamCode,
+        status: 'skipped' as const,
+        reason: 'Actualización detenida porque los proveedores están en enfriamiento.',
+      })));
+      break;
+    }
+
+    const outcome = await refreshGlobalMatchOdds(match.id);
+    if (outcome.status === 'updated') {
+      updated += 1;
+      providersUsed.add(outcome.provider);
+      results.push({
+        matchId: match.id,
+        homeTeamCode: match.homeTeamCode,
+        awayTeamCode: match.awayTeamCode,
+        status: 'updated',
+        provider: outcome.provider,
+      });
+      if (outcome.sourceType === 'api') {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      continue;
+    }
+
+    failed += 1;
+    results.push({
+      matchId: match.id,
+      homeTeamCode: match.homeTeamCode,
+      awayTeamCode: match.awayTeamCode,
+      status: 'failed',
+      reason: outcome.reason,
+    });
+
+    const cooldownsAfterFailure = await getActiveOddsProviderCooldowns(providerNames);
+    if (cooldownsAfterFailure.length === providerNames.length) {
+      stoppedEarly = true;
+      for (const cooldown of cooldownsAfterFailure) {
+        cooldownNotes.add(`${cooldown.provider}: enfriamiento hasta ${cooldown.cooldownUntil.toISOString()}`);
+      }
+    }
+    if (stoppedEarly) {
+      const remaining = selected.slice(index + 1);
+      skipped += remaining.length;
+      results.push(...remaining.map((pendingMatch) => ({
+        matchId: pendingMatch.id,
+        homeTeamCode: pendingMatch.homeTeamCode,
+        awayTeamCode: pendingMatch.awayTeamCode,
+        status: 'skipped' as const,
+        reason: 'Actualización detenida por límite o enfriamiento del proveedor.',
+      })));
+      break;
+    }
+  }
+
+  return {
+    eligible: allEligible.length,
+    processed: updated + failed,
+    updated,
+    skipped,
+    failed,
+    stoppedEarly,
+    providersUsed: Array.from(providersUsed),
+    cooldownNotes: Array.from(cooldownNotes),
+    results,
+  };
+}
+
+export async function adminRefreshMatchOddsBulkAction(options: {
+  mode: BulkMatchOddsMode;
+  limit?: number;
+  lookaheadHours?: number;
+}): Promise<
+  | { success: true; summary: BulkMatchOddsSummary }
+  | { success: false; error: string }
+> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { success: false, error: 'No autorizado.' };
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { isSuperadmin: true },
+  });
+  if (!user?.isSuperadmin) {
+    return { success: false, error: 'Acción permitida solo para superadministradores.' };
+  }
+  if (options.mode !== 'future_missing' && options.mode !== 'future_all') {
+    return { success: false, error: 'Modo de actualización de cuotas no válido.' };
+  }
+
+  try {
+    const summary = await runBulkMatchOddsRefresh({
+      mode: options.mode,
+      limit: options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 100) : undefined,
+      lookaheadHours: options.lookaheadHours && options.lookaheadHours > 0
+        ? Math.min(options.lookaheadHours, 24 * 30)
+        : undefined,
+    });
+    revalidatePath('/pronosticos');
+    revalidatePath('/admin/odds');
+    revalidatePath('/');
+    return { success: true, summary };
+  } catch (error: unknown) {
+    console.error(
+      'Error in adminRefreshMatchOddsBulkAction:',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return { success: false, error: 'Ocurrió un error al actualizar las cuotas globales.' };
+  }
+}
+
+// Refresh global odds (Superadmin only). Keeps the existing single-match action contract.
 export async function refreshGlobalOddsAction(options?: {
   matchId?: string;
   limit?: number;
   lookaheadHours?: number;
 }) {
   const session = await getCurrentSession();
-  if (!session || !session.user) {
-    return { error: 'No autorizado.' };
-  }
+  if (!session?.user) return { error: 'No autorizado.' };
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
+    select: { isSuperadmin: true },
   });
-
   if (!user?.isSuperadmin) {
     return { error: 'Acción permitida solo para superadministradores.' };
   }
 
   try {
-    const primaryProvider = process.env.ODDS_PRIMARY_PROVIDER || 'odds-api-io';
-    const fallbackProvider = process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api';
+    if (options?.matchId) {
+      const outcome = await refreshGlobalMatchOdds(options.matchId);
+      if (outcome.status === 'failed') return { error: outcome.reason };
+      const fallbackProvider = process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api';
+      const fallbackUsed = outcome.provider === fallbackProvider;
 
-    let matchesProcessed = 0;
-    let snapshotsCreated = 0;
-    let skipped = 0;
-    let primaryProviderErrors = 0;
-    let fallbackSuccesses = 0;
-
-    const matchId = options?.matchId;
-
-    if (matchId) {
-      // Refresh single match
-      const odds = await getMatchWinnerOdds(matchId);
-      if (!odds) {
-        return { error: 'No se pudieron obtener probabilidades del mercado reales para este partido.' };
-      }
-      const isFallbackUsed = odds.provider === fallbackProvider;
-      if (isFallbackUsed) {
-        fallbackSuccesses++;
-        primaryProviderErrors++;
-      }
-      await saveOddsSnapshot(matchId, odds, { visibility: 'global' });
-      snapshotsCreated++;
-      matchesProcessed = 1;
-    } else {
-      // Scan matches
-      const limit = options?.limit ?? 5;
-      const lookaheadHours = options?.lookaheadHours;
-      const now = new Date();
-
-      const whereClause: Prisma.MatchWhereInput = {
-        status: { in: ['open', 'soon'] },
-        kickoffUtc: { gt: now }
+      revalidatePath('/pronosticos');
+      revalidatePath('/admin/odds');
+      revalidatePath('/');
+      return {
+        success: true,
+        summary: {
+          matchesConsidered: 1,
+          matchesProcessed: 1,
+          snapshotsCreated: 1,
+          skipped: 0,
+          primaryProviderErrors: fallbackUsed ? 1 : 0,
+          fallbackSuccesses: fallbackUsed ? 1 : 0,
+        },
       };
-
-      if (lookaheadHours) {
-        const maxKickoff = new Date(now.getTime() + lookaheadHours * 60 * 60 * 1000);
-        whereClause.kickoffUtc = {
-          gt: now,
-          lt: maxKickoff
-        };
-      }
-
-      const matches = await prisma.match.findMany({
-        where: whereClause,
-        orderBy: { kickoffUtc: 'asc' },
-        take: limit
-      });
-
-      for (const m of matches) {
-        try {
-          const odds = await getMatchWinnerOdds(m.id);
-          if (odds) {
-            const isFallbackUsed = odds.provider === fallbackProvider;
-            if (isFallbackUsed) {
-              fallbackSuccesses++;
-              primaryProviderErrors++;
-            }
-            await saveOddsSnapshot(m.id, odds, { visibility: 'global' });
-            snapshotsCreated++;
-          } else {
-            primaryProviderErrors++;
-            skipped++;
-          }
-          matchesProcessed++;
-
-          // Pace real provider calls regardless of whether the key came from DB or env.
-          if (odds?.sourceType === 'api') {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-        } catch (e) {
-          console.error(`Failed to refresh global odds for match ${m.id}:`, e);
-          primaryProviderErrors++;
-          skipped++;
-          matchesProcessed++;
-        }
-      }
     }
 
+    const summary = await runBulkMatchOddsRefresh({
+      mode: 'future_all',
+      limit: options?.limit ?? 5,
+      lookaheadHours: options?.lookaheadHours,
+    });
     revalidatePath('/pronosticos');
     revalidatePath('/admin/odds');
     revalidatePath('/');
-
     return {
       success: true,
       summary: {
-        matchesConsidered: matchesProcessed,
-        matchesProcessed,
-        snapshotsCreated,
-        skipped,
-        primaryProviderErrors,
-        fallbackSuccesses,
-      }
+        matchesConsidered: summary.eligible,
+        matchesProcessed: summary.processed,
+        snapshotsCreated: summary.updated,
+        skipped: summary.skipped,
+        primaryProviderErrors: summary.failed,
+        fallbackSuccesses: summary.results.filter((result) => result.provider === 'the-odds-api').length,
+      },
     };
   } catch (error: unknown) {
-    console.error('Error in refreshGlobalOddsAction:', error);
-    const message = error instanceof Error ? error.message : 'Ocurrió un error al actualizar las cuotas globales.';
-    return { error: message };
+    console.error(
+      'Error in refreshGlobalOddsAction:',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return { error: 'Ocurrió un error al actualizar las cuotas globales.' };
   }
 }
 

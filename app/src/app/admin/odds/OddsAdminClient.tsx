@@ -7,11 +7,16 @@ import { FlagDisc } from '../../../components/ui/FlagDisc';
 import { MatchOddsBar } from '../../../components/ui/MatchOddsBar';
 import { fmtDate, fmtTime } from '../../../lib/utils/dates';
 import {
+  adminRefreshMatchOddsBulkAction,
   refreshGlobalOddsAction,
   refreshH2HAction,
   fetchMissingH2HAction,
   cleanupSimulatedDataAction,
 } from '../../../lib/actions/odds';
+import {
+  type BulkMatchOddsMode,
+  type BulkMatchOddsSummary,
+} from '../../../lib/odds/bulk-match-odds';
 import {
   deactivateProviderCredentialAction,
   deleteProviderCredentialAction,
@@ -200,6 +205,7 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
   const [loadingMap, setLoadingMap] = useState<Record<string, 'odds' | 'h2h' | null>>({});
   const [globalLoading, setGlobalLoading] = useState<'odds' | 'h2h' | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [bulkOddsSummary, setBulkOddsSummary] = useState<BulkMatchOddsSummary | null>(null);
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [providerLoading, setProviderLoading] = useState<string | null>(null);
   const [aliasLoading, setAliasLoading] = useState<string | null>(null);
@@ -537,22 +543,39 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
     setLoadingMap(prev => ({ ...prev, [matchId]: null }));
   };
 
-  const handleRefreshGlobalOdds = async (limit?: number, lookaheadHours?: number) => {
+  const handleBulkOddsRefresh = async (
+    mode: BulkMatchOddsMode,
+    options?: { limit?: number; lookaheadHours?: number },
+  ) => {
+    if (
+      mode === 'future_all'
+      && !window.confirm('Esta acción consultará nuevamente las cuotas de los partidos futuros seleccionados. ¿Continuar?')
+    ) {
+      return;
+    }
+
     setGlobalLoading('odds');
     setStatusMsg(null);
-    const res = await refreshGlobalOddsAction({ limit, lookaheadHours });
-    if (res.error) {
-      setStatusMsg({ type: 'error', text: res.error });
-    } else if (res.summary) {
+    setBulkOddsSummary(null);
+    try {
+      const res = await adminRefreshMatchOddsBulkAction({ mode, ...options });
+      if (!res.success) {
+        setStatusMsg({ type: 'error', text: res.error });
+        return;
+      }
+
       const s = res.summary;
+      setBulkOddsSummary(s);
       setStatusMsg({
-        type: 'success',
-        text: `Procesados: ${s.matchesProcessed}. Snapshots creados: ${s.snapshotsCreated}. Errores proveedor principal: ${s.primaryProviderErrors}. Éxitos fallback: ${s.fallbackSuccesses}. Omitidos: ${s.skipped}.`
+        type: s.failed > 0 || s.stoppedEarly ? 'error' : 'success',
+        text: `Elegibles: ${s.eligible}. Procesados: ${s.processed}. Actualizados: ${s.updated}. Omitidos: ${s.skipped}. Fallidos: ${s.failed}.`,
       });
-    } else {
-      setStatusMsg({ type: 'success', text: 'Cuotas globales actualizadas.' });
+      router.refresh();
+    } catch {
+      setStatusMsg({ type: 'error', text: 'No se pudo completar la actualización masiva de cuotas.' });
+    } finally {
+      setGlobalLoading(null);
     }
-    setGlobalLoading(null);
   };
 
   const handleFetchMissingH2H = async (limit?: number, futureOnly?: boolean) => {
@@ -1251,23 +1274,23 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => handleRefreshGlobalOdds(1, undefined)}
+                onClick={() => handleBulkOddsRefresh('future_missing')}
                 disabled={globalLoading !== null}
                 className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
               >
-                <Play className="w-3 h-3" /> Próximo Partido
+                <Database className="w-3 h-3" /> Futuros sin cuotas
               </button>
               <button
                 type="button"
-                onClick={() => handleRefreshGlobalOdds(5, undefined)}
+                onClick={() => handleBulkOddsRefresh('future_all')}
                 disabled={globalLoading !== null}
                 className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
               >
-                <Play className="w-3 h-3" /> Próximos 5
+                <RefreshCw className={`w-3 h-3 ${globalLoading === 'odds' ? 'animate-spin' : ''}`} /> Todos los futuros
               </button>
               <button
                 type="button"
-                onClick={() => handleRefreshGlobalOdds(10, undefined)}
+                onClick={() => handleBulkOddsRefresh('future_all', { limit: 10 })}
                 disabled={globalLoading !== null}
                 className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
               >
@@ -1275,21 +1298,16 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => handleRefreshGlobalOdds(20, 24)}
+                onClick={() => handleBulkOddsRefresh('future_all', { lookaheadHours: 168 })}
                 disabled={globalLoading !== null}
                 className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
               >
-                <Play className="w-3 h-3" /> Próximas 24 Horas
-              </button>
-              <button
-                type="button"
-                onClick={() => handleRefreshGlobalOdds(30, 48)}
-                disabled={globalLoading !== null}
-                className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover border border-border-default hover:border-gold-500/40 text-text-primary rounded-lg text-xs font-mono uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
-              >
-                <Play className="w-3 h-3" /> Próximas 48 Horas
+                <Play className="w-3 h-3" /> Próximos 7 días
               </button>
             </div>
+            <p className="text-[10px] text-text-muted">
+              Solo consulta partidos futuros no finalizados. Los límites y enfriamientos del proveedor pueden detener el proceso antes de completar la lista.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -1322,6 +1340,57 @@ export const OddsAdminClient: React.FC<OddsAdminClientProps> = ({
             </div>
           </div>
         </div>
+
+        {bulkOddsSummary && (
+          <div className="border-t border-border-subtle pt-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+              {[
+                ['Elegibles', bulkOddsSummary.eligible],
+                ['Procesados', bulkOddsSummary.processed],
+                ['Actualizados', bulkOddsSummary.updated],
+                ['Omitidos', bulkOddsSummary.skipped],
+                ['Fallidos', bulkOddsSummary.failed],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded border border-border-subtle bg-bg-secondary/40 px-2 py-2">
+                  <span className="block text-lg font-semibold text-text-primary">{value}</span>
+                  <span className="text-[9px] font-mono uppercase text-text-muted">{label}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-xs text-text-secondary space-y-1">
+              <p>
+                Proveedores usados: {bulkOddsSummary.providersUsed.length > 0
+                  ? bulkOddsSummary.providersUsed.join(', ')
+                  : 'Ninguno'}.
+              </p>
+              {bulkOddsSummary.stoppedEarly && (
+                <p className="text-amber-400">La actualización se detuvo de forma segura por enfriamiento o límite del proveedor.</p>
+              )}
+              {bulkOddsSummary.cooldownNotes.map((note) => (
+                <p key={note} className="text-amber-400">{note}</p>
+              ))}
+            </div>
+
+            {bulkOddsSummary.results.length > 0 && (
+              <details className="rounded border border-border-subtle bg-black/10 p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-text-primary">Detalle por partido</summary>
+                <div className="mt-2 max-h-64 overflow-y-auto divide-y divide-border-subtle/50">
+                  {bulkOddsSummary.results.map((result) => (
+                    <div key={result.matchId} className="py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <span className="font-mono text-text-primary">
+                        {result.matchId}: {result.homeTeamCode} vs {result.awayTeamCode}
+                      </span>
+                      <span className={result.status === 'updated' ? 'text-green-400' : result.status === 'failed' ? 'text-red-400' : 'text-amber-400'}>
+                        {result.status === 'updated' ? `Actualizado${result.provider ? ` · ${result.provider}` : ''}` : result.reason}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
 
         <div className="pt-2 border-t border-border-subtle flex justify-end">
           <button

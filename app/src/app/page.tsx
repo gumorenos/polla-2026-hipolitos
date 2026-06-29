@@ -35,6 +35,7 @@ import {
   THEME_SCHEME_COOKIE_NAME,
 } from '../lib/theme-preferences';
 import { CHAMPION_SURVIVOR_HOME_SECTIONS } from '../lib/public-home-layout';
+import { getPublicMatchDisplayStatus } from '../lib/public-dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -287,8 +288,11 @@ export default async function PublicHome() {
   const relevantTeamCodes = await getVisibleChampionTeamCodes(league.id);
   const realTeams = filterRealTeams(teams).filter((t) => relevantTeamCodes.has(t.code));
   const publicMatches = await buildPublicMatches(matches, league.showOdds, league.showH2H);
-  const playedMatches = publicMatches.filter(isFinishedMatch);
-  const upcomingMatches = getUpcomingPublicMatches(publicMatches, requestNowMs);
+  
+  const playedMatches = publicMatches.filter((m) => getPublicMatchDisplayStatus(m, requestNowMs) === 'final');
+  const upcomingMatches = publicMatches.filter((m) => getPublicMatchDisplayStatus(m, requestNowMs) === 'upcoming');
+  const inProgressMatches = publicMatches.filter((m) => getPublicMatchDisplayStatus(m, requestNowMs) === 'in_progress');
+  const awaitingResultMatches = publicMatches.filter((m) => getPublicMatchDisplayStatus(m, requestNowMs) === 'awaiting_result');
   const prizePool = calculatePrizePool(league, approvedParticipants);
 
   const isChampionSurvivor = league.competitionType === 'champion_survivor';
@@ -444,21 +448,49 @@ export default async function PublicHome() {
           </div>
 
           {/* Tab 2: Fixture */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <MatchList
-              title="Próximos partidos"
-              emptyText="No hay próximos partidos disponibles."
-              matches={upcomingMatches}
-              showOdds={league.showOdds}
-              showH2H={league.showH2H}
-            />
-            <MatchList
-              title="Resultados recientes"
-              emptyText="Todavía no hay resultados registrados."
-              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
-              showOdds={league.showOdds}
-              showH2H={league.showH2H}
-            />
+          <div className="space-y-6">
+            {(inProgressMatches.length > 0 || awaitingResultMatches.length > 0) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                {inProgressMatches.length > 0 && (
+                  <MatchList
+                    title="Jugándose ahora"
+                    emptyText="No hay partidos jugándose ahora."
+                    matches={inProgressMatches}
+                    showOdds={league.showOdds}
+                    showH2H={league.showH2H}
+                    nowMs={requestNowMs}
+                  />
+                )}
+                {awaitingResultMatches.length > 0 && (
+                  <MatchList
+                    title="Esperando resultado oficial"
+                    emptyText="No hay partidos esperando resultado oficial."
+                    matches={awaitingResultMatches}
+                    showOdds={league.showOdds}
+                    showH2H={league.showH2H}
+                    nowMs={requestNowMs}
+                  />
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <MatchList
+                title="Próximos partidos"
+                emptyText="No hay próximos partidos disponibles."
+                matches={upcomingMatches}
+                showOdds={league.showOdds}
+                showH2H={league.showH2H}
+                nowMs={requestNowMs}
+              />
+              <MatchList
+                title="Resultados recientes"
+                emptyText="Todavía no hay resultados registrados."
+                matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
+                showOdds={league.showOdds}
+                showH2H={league.showH2H}
+                nowMs={requestNowMs}
+              />
+            </div>
           </div>
 
           {/* Tab 3: FIFA groups */}
@@ -483,21 +515,49 @@ export default async function PublicHome() {
           <FifaClassificationEngine qualification={qualification} />
 
           {/* Tab 4: Fixture y Resultados */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <MatchList
-              title="Próximos partidos"
-              emptyText="No hay próximos partidos disponibles."
-              matches={upcomingMatches}
-              showOdds={league.showOdds}
-              showH2H={league.showH2H}
-            />
-            <MatchList
-              title="Resultados recientes"
-              emptyText="Todavía no hay resultados registrados."
-              matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
-              showOdds={league.showOdds}
-              showH2H={league.showH2H}
-            />
+          <div className="space-y-6">
+            {(inProgressMatches.length > 0 || awaitingResultMatches.length > 0) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                {inProgressMatches.length > 0 && (
+                  <MatchList
+                    title="Jugándose ahora"
+                    emptyText="No hay partidos jugándose ahora."
+                    matches={inProgressMatches}
+                    showOdds={league.showOdds}
+                    showH2H={league.showH2H}
+                    nowMs={requestNowMs}
+                  />
+                )}
+                {awaitingResultMatches.length > 0 && (
+                  <MatchList
+                    title="Esperando resultado oficial"
+                    emptyText="No hay partidos esperando resultado oficial."
+                    matches={awaitingResultMatches}
+                    showOdds={league.showOdds}
+                    showH2H={league.showH2H}
+                    nowMs={requestNowMs}
+                  />
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <MatchList
+                title="Próximos partidos"
+                emptyText="No hay próximos partidos disponibles."
+                matches={upcomingMatches}
+                showOdds={league.showOdds}
+                showH2H={league.showH2H}
+                nowMs={requestNowMs}
+              />
+              <MatchList
+                title="Resultados recientes"
+                emptyText="Todavía no hay resultados registrados."
+                matches={[...playedMatches].sort((a, b) => b.kickoffUtc.getTime() - a.kickoffUtc.getTime())}
+                showOdds={league.showOdds}
+                showH2H={league.showH2H}
+                nowMs={requestNowMs}
+              />
+            </div>
           </div>
         </PublicDashboardTabs>
       )}
@@ -810,13 +870,16 @@ function MatchList({
   matches,
   showOdds,
   showH2H,
+  nowMs,
 }: {
   title: string;
   emptyText: string;
   matches: PublicMatch[];
   showOdds: boolean;
   showH2H: boolean;
+  nowMs?: number;
 }) {
+  const currentNow = nowMs ?? Date.now();
   return (
     <section className="card-base overflow-hidden">
       <div className="p-4 border-b border-border-subtle bg-bg-secondary/40">
@@ -826,56 +889,74 @@ function MatchList({
         <p className="p-6 text-sm text-text-secondary">{emptyText}</p>
       ) : (
         <div className="divide-y divide-border-subtle/40 max-h-[600px] overflow-y-auto pr-1">
-          {matches.map((match) => (
-            <div key={match.id} className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
-                    <FlagDisc code={match.homeTeamCode} size={16} />
-                    <span>{match.homeTeamName}</span>
-                    <span className="text-text-muted font-normal text-xs">vs</span>
-                    <FlagDisc code={match.awayTeamCode} size={16} />
-                    <span>{match.awayTeamName}</span>
+          {matches.map((match) => {
+            const displayStatus = getPublicMatchDisplayStatus(match, currentNow);
+            return (
+              <div key={match.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                      <FlagDisc code={match.homeTeamCode} size={16} />
+                      <span>{match.homeTeamName}</span>
+                      <span className="text-text-muted font-normal text-xs">vs</span>
+                      <FlagDisc code={match.awayTeamCode} size={16} />
+                      <span>{match.awayTeamName}</span>
+                    </div>
+                    <p className="text-[10px] text-text-muted font-mono">
+                      {matchPhaseLabel(match.phase)} · {match.jornada} · {formatDate(match.kickoffUtc)} (Hora Lima)
+                    </p>
+                    <p className="text-[10px] text-text-secondary">{match.venue} · {match.city}</p>
                   </div>
-                  <p className="text-[10px] text-text-muted font-mono">
-                    {matchPhaseLabel(match.phase)} · {match.jornada} · {formatDate(match.kickoffUtc)} (Hora Lima)
-                  </p>
-                  <p className="text-[10px] text-text-secondary">{match.venue} · {match.city}</p>
+                  {displayStatus === 'final' ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-mono text-sm font-bold text-gold-400 bg-gold-400/10 px-2.5 py-1 border border-gold-500/20 rounded-lg whitespace-nowrap">
+                        {match.homeScore ?? '-'} - {match.awayScore ?? '-'}
+                      </span>
+                      <span className="text-[9px] font-mono uppercase text-text-muted">
+                        Finalizado
+                      </span>
+                    </div>
+                  ) : displayStatus === 'in_progress' ? (
+                    <span className="text-[9px] font-mono uppercase text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full whitespace-nowrap animate-pulse">
+                      Partido en proceso
+                    </span>
+                  ) : displayStatus === 'awaiting_result' ? (
+                    <span className="text-[9px] font-mono uppercase text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                      Esperando resultado oficial
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-mono uppercase text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                      Próximo
+                    </span>
+                  )}
                 </div>
-                {isFinishedMatch(match) ? (
-                  <span className="font-mono text-sm font-bold text-gold-400 bg-gold-400/10 px-2.5 py-1 border border-gold-500/20 rounded-lg whitespace-nowrap">
-                    {match.homeScore ?? '-'} - {match.awayScore ?? '-'}
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-mono uppercase text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
-                    Próximo
-                  </span>
+                {showOdds && match.odds && displayStatus !== 'final' && (
+                  <div className="rounded-lg border border-border-subtle bg-black/15 p-2 text-[10px] font-mono text-text-secondary space-y-1">
+                    <p className="uppercase tracking-wider text-gold-400 font-bold text-[9px]">
+                      {displayStatus === 'upcoming' ? 'Odds del partido' : 'Cuotas previas al inicio (Congeladas)'}
+                    </p>
+                    <MatchOddsBar
+                      homeOdds={match.odds.homeOdds}
+                      drawOdds={match.odds.drawOdds}
+                      awayOdds={match.odds.awayOdds}
+                      homeProbability={match.odds.homeProbability}
+                      drawProbability={match.odds.drawProbability}
+                      awayProbability={match.odds.awayProbability}
+                      bookmaker={match.odds.bookmaker}
+                    />
+                  </div>
+                )}
+                {showH2H && match.h2h && displayStatus !== 'final' && (
+                  <div className="rounded-lg border border-border-subtle bg-black/15 p-2 text-[10px] font-mono text-text-secondary">
+                    <p className="uppercase tracking-wider text-gold-400 font-bold text-[9px] mb-1">Historial H2H</p>
+                    <p>
+                      Partidos: <strong className="text-text-primary">{match.h2h.totalMatches}</strong> · {match.homeTeamCode}: {match.h2h.homeWins} · Empates: {match.h2h.draws} · {match.awayTeamCode}: {match.h2h.awayWins}
+                    </p>
+                  </div>
                 )}
               </div>
-              {showOdds && match.odds && !isFinishedMatch(match) && (
-                <div className="rounded-lg border border-border-subtle bg-black/15 p-2 text-[10px] font-mono text-text-secondary space-y-1">
-                  <p className="uppercase tracking-wider text-gold-400 font-bold text-[9px]">Odds del partido</p>
-                  <MatchOddsBar
-                    homeOdds={match.odds.homeOdds}
-                    drawOdds={match.odds.drawOdds}
-                    awayOdds={match.odds.awayOdds}
-                    homeProbability={match.odds.homeProbability}
-                    drawProbability={match.odds.drawProbability}
-                    awayProbability={match.odds.awayProbability}
-                    bookmaker={match.odds.bookmaker}
-                  />
-                </div>
-              )}
-              {showH2H && match.h2h && !isFinishedMatch(match) && (
-                <div className="rounded-lg border border-border-subtle bg-black/15 p-2 text-[10px] font-mono text-text-secondary">
-                  <p className="uppercase tracking-wider text-gold-400 font-bold text-[9px] mb-1">Historial H2H</p>
-                  <p>
-                    Partidos: <strong className="text-text-primary">{match.h2h.totalMatches}</strong> · {match.homeTeamCode}: {match.h2h.homeWins} · Empates: {match.h2h.draws} · {match.awayTeamCode}: {match.h2h.awayWins}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

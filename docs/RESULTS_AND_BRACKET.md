@@ -43,3 +43,10 @@ The repair action scans existing final knockout results as a backfill. A final `
 Public market labels use explicit favorite, longshot, medium, concentrated, no-pick, no-odds, and out-of-race categories. Popularity rank alone never turns a one-pick team into a popular/shared pick. The default `Vivos / activos` filter excludes persisted or safely derived knockout losers, while `Todos` and `Eliminados` remain available.
 
 The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi and is never committed to GitHub.
+
+## Fixture Display & Odds during Match Play
+
+During active match play (until a final result is officially saved), the fixture on the public dashboard remains visible under "Jugándose ahora" (or "Esperando resultado oficial" if the estimated play window expires but no final score has been saved in the DB). 
+
+Match odds for ongoing or awaiting matches display the last stored pre-match odds, labeled as "Cuotas previas al inicio (Congeladas)", and no live odds are fetched or implied. Odds refresh actions for these matches are completely blocked after their kickoff time.
+

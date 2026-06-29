@@ -14,6 +14,13 @@ All comparisons use JavaScript epoch milliseconds derived from Prisma `Date` val
 
 A group result is complete when status/resultStatus are final and both scores exist. A knockout result additionally requires `winnerTeamCode`; a final knockout without a winner remains diagnostic and eligible for repair.
 
+## UX Display Windows vs. Fetching Windows
+
+It is important to distinguish between **Surgical Result Fetching Windows** and **Public UI Display Windows**:
+- **Surgical Fetching** is a backend operational scheduler (typically starting at kickoff + 125 min for groups / 195 min for knockouts) designed to call external APIs safely to retrieve final scores.
+- **Public UI Display** classifies display states on the home dashboard (in-progress window of 135 min for groups / 210 min for knockouts). These are solely frontend UX thresholds. The public page does not trigger API requests and shows frozen pre-match odds while a match is ongoing or awaiting results.
+
+
 ## Idempotency and post-result pipeline
 
 Before each provider request, the script reloads the match. It skips a complete final result, then atomically updates the existing `resultFetchedAt` field to claim the attempt. Concurrent or repeated runs therefore avoid duplicate calls, and failed/not-final attempts wait for the retry grace.

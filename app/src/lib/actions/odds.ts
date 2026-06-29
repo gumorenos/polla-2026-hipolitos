@@ -442,6 +442,15 @@ export async function refreshGlobalOddsAction(options?: {
 
   try {
     if (options?.matchId) {
+      const match = await prisma.match.findUnique({
+        where: { id: options.matchId },
+        select: { kickoffUtc: true },
+      });
+      if (!match) return { error: 'El partido no existe.' };
+      if (match.kickoffUtc.getTime() <= new Date().getTime()) {
+        return { error: 'El partido ya ha comenzado. No es posible actualizar probabilidades.' };
+      }
+
       const outcome = await refreshGlobalMatchOdds(options.matchId);
       if (outcome.status === 'failed') return { error: outcome.reason };
       const fallbackProvider = process.env.ODDS_FALLBACK_PROVIDER || 'the-odds-api';

@@ -22,3 +22,16 @@ The appearance control is available without authentication and never writes to t
 - Lifetime: one year, `SameSite=Lax`, path `/`.
 
 The server validates cookie values before rendering the `<html>` data attributes. Missing or invalid values fall back to `default/gold`, which reproduces the previous design. The legacy `themeMode` cookie remains a fallback for existing profile preferences.
+
+## In-Progress Fixture & Frozen Odds
+
+To prevent matches from disappearing from the homepage during active play, the fixture section has been expanded:
+
+1. **Jugándose ahora**: Shows matches that have kicked off but have no final score, within their estimated play window (135 min for groups, 210 min for knockouts/3rd place). Labelled clearly as "Partido en proceso".
+2. **Esperando resultado oficial**: If the play window expires but no final score is stored in the database, the match remains visible in a separate block and is labelled "Esperando resultado oficial" until the admin enters the final score.
+3. **Próximos partidos**: Matches before kickoff time (`now < kickoffUtc`).
+4. **Resultados recientes**: Only matches with a final result.
+
+### Odds Frozen Behavior
+During active play (`in_progress`) and official result waiting states (`awaiting_result`), the public page displays the stored pre-match odds in the database with a clear label: **"Cuotas previas al inicio (Congeladas)"** to prevent live odds implication. No external API calls are made from the client during these states.
+

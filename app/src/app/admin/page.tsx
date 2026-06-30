@@ -91,6 +91,53 @@ export default async function AdminDashboardPage() {
     (m) => new Date(m.kickoffUtc) < new Date()
   ).length;
 
+  // Surgical result fetch diagnostics
+  const unfinishedMatchesForCron = await prisma.match.findMany({
+    where: {
+      OR: [
+        { status: { not: 'result' } },
+        { resultStatus: { not: 'final' } },
+        { homeScore: null },
+        { awayScore: null },
+        { AND: [{ phase: { not: 'groups' } }, { winnerTeamCode: null }] },
+      ],
+    },
+    orderBy: { kickoffUtc: 'asc' },
+  });
+
+  const nowMs = new Date().getTime();
+  const dueCount = unfinishedMatchesForCron.filter(m => {
+    const kickoff = new Date(m.kickoffUtc).getTime();
+    const offsetMinutes = m.phase === 'groups' ? 125 : 195;
+    const dueTime = kickoff + offsetMinutes * 60 * 1000;
+    if (m.resultStatus === 'cancelled' || m.resultStatus === 'postponed') return false;
+    if (dueTime > nowMs) return false;
+    
+    if (m.resultFetchedAt) {
+      const retryAt = new Date(m.resultFetchedAt).getTime() + 15 * 60 * 1000;
+      if (retryAt > nowMs) return false;
+    }
+    return true;
+  }).length;
+
+  const nextMatch = unfinishedMatchesForCron[0];
+  let nextDueText = 'Ninguno';
+  if (nextMatch) {
+    const kickoff = new Date(nextMatch.kickoffUtc);
+    const offsetMinutes = nextMatch.phase === 'groups' ? 125 : 195;
+    const dueTime = new Date(kickoff.getTime() + offsetMinutes * 60 * 1000);
+    nextDueText = `${nextMatch.homeTeamCode} vs ${nextMatch.awayTeamCode} (${dueTime.toLocaleString('es-PE', { timeZone: 'America/Lima' })})`;
+  }
+
+  const lastFetchedMatch = await prisma.match.findFirst({
+    where: { resultFetchedAt: { not: null } },
+    orderBy: { resultFetchedAt: 'desc' },
+  });
+  
+  const lastFetchText = lastFetchedMatch?.resultFetchedAt
+    ? `${new Date(lastFetchedMatch.resultFetchedAt).toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Match: ${lastFetchedMatch.id})`
+    : 'Ninguna';
+
   // Fetch recent audit logs
   const logs = await prisma.adminActionLog.findMany({
     take: 8,
@@ -193,6 +240,39 @@ export default async function AdminDashboardPage() {
               <p className="text-2xl font-bold text-text-primary">{totalPredictions}</p>
               <p className="text-[9px] text-text-muted uppercase font-mono">
                 Sin Competencia: {usersWithoutPool} Aprobados
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Surgical Cron Diagnostics Panel */}
+        <div className="card-base p-5 space-y-4">
+          <div className="flex justify-between items-center border-b border-border-subtle pb-2">
+            <h3 className="font-display text-lg tracking-wide uppercase text-gold-400 flex items-center gap-1.5">
+              <ClipboardList className="w-5 h-5 text-gold-400" /> Diagnóstico del Cron Quirúrgico (results:fetch-surgical)
+            </h3>
+            <span className="text-[10px] font-mono bg-gold-400/10 text-gold-400 border border-gold-500/30 px-2.5 py-0.5 rounded-full uppercase">
+              Monitoreo
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono text-text-secondary">
+            <div className="space-y-1">
+              <span className="text-text-muted">Partidos Vencidos Pendientes:</span>
+              <p className={`font-bold text-sm ${dueCount > 0 ? 'text-yellow-400' : 'text-text-primary'}`}>
+                {dueCount} partidos
+              </p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-text-muted">Próximo Partido a Consultar:</span>
+              <p className="text-text-primary truncate" title={nextDueText}>
+                {nextDueText}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-text-muted">Último Intento de Fetch:</span>
+              <p className="text-text-primary truncate" title={lastFetchText}>
+                {lastFetchText}
               </p>
             </div>
           </div>

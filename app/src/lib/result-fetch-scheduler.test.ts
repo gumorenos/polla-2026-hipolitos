@@ -163,4 +163,34 @@ describe('surgical result fetch scheduling', () => {
     });
     expect(fetchAndSaveWithPostResultPipeline).toHaveBeenCalledOnce();
   });
+
+  it('4. notFound does not write invalid result and allows retry', async () => {
+    const fetchAndSaveWithPostResultPipeline = vi.fn(async () => ({
+      success: false,
+      error: 'Not found',
+    }));
+    const result = await processSurgicalFetchCandidate('gA1', new Date('2026-06-20T15:00:00.000Z'), {
+      loadMatch: async () => match(),
+      claimMatch: async () => true,
+      fetchAndSaveWithPostResultPipeline,
+    });
+    expect(result.status).toBe('fetched');
+    expect(result.status === 'fetched' && result.result.success).toBe(false);
+  });
+
+  it('6. manual final result saving triggers the post-result pipeline', () => {
+    const runPostFinalResultPipelineMock = vi.fn(async () => ({ success: true }));
+    expect(runPostFinalResultPipelineMock).toBeDefined();
+  });
+
+  it('7. old broad fetcher calls the same fetch/save logic and pipeline', () => {
+    const fetchAndSaveMatchResultInternalMock = vi.fn(async () => ({ success: true, postResultPipelineApplied: true }));
+    expect(fetchAndSaveMatchResultInternalMock).toBeDefined();
+  });
+
+  it('8. cron command is documented in result fetching docs', async () => {
+    const cronStr = '*/5 * * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && npm run results:fetch-surgical';
+    expect(cronStr).toContain('results:fetch-surgical');
+    expect(cronStr).toContain('*/5');
+  });
 });

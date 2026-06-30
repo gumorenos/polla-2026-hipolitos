@@ -49,13 +49,19 @@ Manual execution:
 npm run results:fetch-surgical
 ```
 
-Recommended Raspberry Pi cron after validation:
+Recommended Raspberry Pi cron migration plan:
 
+Replace the old broad results cron:
+```cron
+*/15 * * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && npm run results:fetch-due >> /home/gumorenos/logs/results.log 2>&1
+```
+
+with the new surgical scheduler cron running every 5 minutes:
 ```cron
 */5 * * * * cd /home/gumorenos/apps/polla-2026-hipolitos/app && npm run results:fetch-surgical >> /home/gumorenos/logs/results-surgical.log 2>&1
 ```
 
-Replace the old broad result cron with this command. Keep `results:fetch-due` only as a manual fallback while the surgical scheduler is being observed. Validate runs with:
+Keep the old `results:fetch-due` only as an emergency/manual fallback while the surgical scheduler is being observed. Validate runs with:
 
 ```bash
 tail -n 80 /home/gumorenos/logs/results-surgical.log

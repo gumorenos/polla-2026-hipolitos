@@ -354,8 +354,27 @@ export async function updateMatchResultInternal(
 
   await prisma.$transaction(transaction);
 
+  return await runPostFinalResultPipeline(matchId, logUserId);
+}
+
+export async function runPostFinalResultPipeline(matchId: string, actingUserId?: string) {
   // Now recalculate standings for all users
   await recalculateAllStandings();
+
+  let logUserId = actingUserId;
+  if (!logUserId) {
+    const superadmin = await prisma.user.findFirst({
+      where: { isSuperadmin: true }
+    });
+    if (superadmin) {
+      logUserId = superadmin.id;
+    } else {
+      const anyUser = await prisma.user.findFirst();
+      if (anyUser) {
+        logUserId = anyUser.id;
+      }
+    }
+  }
 
   let progressionWarning: string | null = null;
   try {
@@ -380,7 +399,7 @@ export async function updateMatchResultInternal(
   } catch {
     // revalidatePath fails outside of requests, ignore in CLI
   }
-  
+
   return { success: true, progressionWarning };
 }
 

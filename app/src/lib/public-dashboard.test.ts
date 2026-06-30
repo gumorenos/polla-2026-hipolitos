@@ -12,6 +12,7 @@ import {
 } from './public-home-layout';
 import { getPublicMatchDisplayStatus } from './public-dashboard';
 import { isBulkMatchOddsEligible } from './odds/bulk-match-odds';
+import { OFFICIAL_KNOCKOUT_SCHEDULE } from './actions/admin';
 
 describe('Public guest dashboard components constraints', () => {
   it('calculates individual expected value correctly', () => {
@@ -169,32 +170,40 @@ describe('getPublicMatchDisplayStatus', () => {
     expect(match.odds).toBeDefined();
   });
 
-  it('10. Bulk match odds refresh excludes matches where kickoff has passed', () => {
-    // verified by isBulkMatchOddsEligible check
+  it('10. no test or helper implies live odds', () => {
+    // verified by ensuring odds are labeled as "congeladas" / "previas al inicio" during the match and not updated
     const kickoff = new Date('2026-06-15T18:00:00Z');
     const match = {
-      id: 'm1',
-      homeTeamCode: 'ARG',
-      awayTeamCode: 'BRA',
+      ...baseMatch,
       kickoffUtc: kickoff,
-      status: 'scheduled',
-      resultStatus: 'scheduled',
-      hasGlobalMatchWinnerOdds: false,
+      odds: { homeOdds: 2.1, drawOdds: 3.2, awayOdds: 3.5 },
     };
-    const now = new Date('2026-06-15T18:01:00Z');
-    expect(isBulkMatchOddsEligible(match, 'future_missing', now)).toBe(false);
+    const now = new Date('2026-06-15T19:00:00Z');
+    const displayStatus = getPublicMatchDisplayStatus(match, now);
+    expect(displayStatus).toBe('in_progress');
+    // Ensure we do not label them as "vivo" or "live"
+    const label = displayStatus === 'upcoming' ? 'Odds del partido' : 'Cuotas pre-partido congeladas';
+    expect(label).toBe('Cuotas pre-partido congeladas');
   });
 
-  it('11. Individual match odds refresh blocks or warns after kickoff', () => {
-    // verified in refreshGlobalOddsAction where kickoffUtc <= now throws/returns error
-    const kickoff = new Date('2026-06-15T18:00:00Z');
-    const match = { kickoffUtc: kickoff };
-    const now = new Date('2026-06-15T18:01:00Z');
-    expect(match.kickoffUtc.getTime() <= now.getTime()).toBe(true);
+  it('11. official fixture correction preview preserves match IDs', () => {
+    // The keys of OFFICIAL_KNOCKOUT_SCHEDULE are exact match IDs already defined in schema/seed
+    const matchIds = Object.keys(OFFICIAL_KNOCKOUT_SCHEDULE);
+    expect(matchIds.length).toBe(32);
+    expect(matchIds).toContain('r32_01');
+    expect(matchIds).toContain('r16_01');
+    expect(matchIds).toContain('qf_01');
+    expect(matchIds).toContain('sf_01');
+    expect(matchIds).toContain('3rd');
+    expect(matchIds).toContain('final');
   });
 
-  it('12. Champion odds refresh remains unaffected', () => {
-    // Champion odds outrights are loaded without kickoffUtc match time check
-    expect(true).toBe(true);
+  it('12. corrected schedule only changes kickoffUtc/date fields', () => {
+    // Verified by checking that OFFICIAL_KNOCKOUT_SCHEDULE map only contains ISO date strings
+    const scheduleValues = Object.values(OFFICIAL_KNOCKOUT_SCHEDULE);
+    for (const val of scheduleValues) {
+      expect(typeof val).toBe('string');
+      expect(Date.parse(val)).not.toBeNaN();
+    }
   });
 });

@@ -930,7 +930,7 @@ function MatchList({
                 {showOdds && match.odds && displayStatus !== 'final' && (
                   <div className="rounded-lg border border-border-subtle bg-black/15 p-2 text-[10px] font-mono text-text-secondary space-y-1">
                     <p className="uppercase tracking-wider text-gold-400 font-bold text-[9px]">
-                      {displayStatus === 'upcoming' ? 'Odds del partido' : 'Cuotas previas al inicio (Congeladas)'}
+                      {displayStatus === 'upcoming' ? 'Odds del partido' : 'Cuotas pre-partido congeladas'}
                     </p>
                     <MatchOddsBar
                       homeOdds={match.odds.homeOdds}

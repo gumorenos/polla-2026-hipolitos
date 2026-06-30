@@ -48,5 +48,6 @@ The production database remains `/var/lib/la-polla-2026/prod.db` on Raspberry Pi
 
 During active match play (until a final result is officially saved), the fixture on the public dashboard remains visible under "Jugándose ahora" (or "Esperando resultado oficial" if the estimated play window expires but no final score has been saved in the DB). 
 
-Match odds for ongoing or awaiting matches display the last stored pre-match odds, labeled as "Cuotas previas al inicio (Congeladas)", and no live odds are fetched or implied. Odds refresh actions for these matches are completely blocked after their kickoff time.
+Match odds for ongoing or awaiting matches display the last stored pre-match odds, labeled as "Cuotas pre-partido congeladas", and no live odds are fetched or implied. Odds refresh actions for these matches are completely blocked after their kickoff time.
+
 

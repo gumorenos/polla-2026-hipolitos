@@ -2046,3 +2046,185 @@ export async function adminAddToLeagueAction(
   }
 }
 
+export const OFFICIAL_KNOCKOUT_SCHEDULE: Record<string, string> = {
+  // Round of 32
+  r32_01: '2026-06-28T19:00:00Z',
+  r32_02: '2026-06-29T17:00:00Z',
+  r32_03: '2026-06-29T20:30:00Z',
+  r32_04: '2026-06-30T01:00:00Z',
+  r32_05: '2026-06-30T17:00:00Z',
+  r32_06: '2026-06-30T21:00:00Z',
+  r32_07: '2026-07-01T01:00:00Z',
+  r32_08: '2026-07-01T16:00:00Z',
+  r32_09: '2026-07-02T23:00:00Z',
+  r32_10: '2026-07-02T19:00:00Z',
+  r32_11: '2026-07-02T00:00:00Z',
+  r32_12: '2026-07-01T20:00:00Z',
+  r32_13: '2026-07-03T03:00:00Z',
+  r32_14: '2026-07-03T22:00:00Z',
+  r32_15: '2026-07-04T01:30:00Z',
+  r32_16: '2026-07-03T18:00:00Z',
+
+  // Round of 16
+  r16_01: '2026-07-04T17:00:00Z',
+  r16_02: '2026-07-04T21:00:00Z',
+  r16_03: '2026-07-05T20:00:00Z',
+  r16_04: '2026-07-06T00:00:00Z',
+  r16_05: '2026-07-06T19:00:00Z',
+  r16_06: '2026-07-07T00:00:00Z',
+  r16_07: '2026-07-07T16:00:00Z',
+  r16_08: '2026-07-07T20:00:00Z',
+
+  // Quarter-Finals
+  qf_01: '2026-07-09T19:00:00Z',
+  qf_02: '2026-07-10T18:00:00Z',
+  qf_03: '2026-07-11T20:00:00Z',
+  qf_04: '2026-07-12T00:00:00Z',
+
+  // Semi-Finals
+  sf_01: '2026-07-14T19:00:00Z',
+  sf_02: '2026-07-15T19:00:00Z',
+
+  // Third Place & Final
+  '3rd': '2026-07-18T21:00:00Z',
+  final: '2026-07-19T19:00:00Z',
+};
+
+export type KickoffCorrectionProposal = {
+  matchId: string;
+  homeTeamCode: string;
+  awayTeamCode: string;
+  phase: string;
+  jornada: string;
+  currentKickoffUtc: Date;
+  proposedKickoffUtc: Date;
+  currentReadable: string;
+  proposedReadable: string;
+  changed: boolean;
+  status: string;
+};
+
+export async function previewKickoffCorrectionsAction(): Promise<
+  { success: true; proposals: KickoffCorrectionProposal[] } | { success: false; error: string }
+> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { success: false, error: 'No autorizado.' };
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { isSuperadmin: true },
+  });
+  if (!user?.isSuperadmin) {
+    return { success: false, error: 'Acción permitida solo para superadministradores.' };
+  }
+
+  try {
+    const matches = await prisma.match.findMany({
+      orderBy: { id: 'asc' },
+    });
+
+    const proposals: KickoffCorrectionProposal[] = [];
+
+    for (const match of matches) {
+      const proposedTimeStr = OFFICIAL_KNOCKOUT_SCHEDULE[match.id];
+      if (!proposedTimeStr) continue;
+
+      const proposedKickoffUtc = new Date(proposedTimeStr);
+      const currentKickoffTime = match.kickoffUtc.getTime();
+      const proposedKickoffTime = proposedKickoffUtc.getTime();
+      const changed = currentKickoffTime !== proposedKickoffTime;
+
+      const isFinal = isConsistentFinalMatchResult(match);
+
+      proposals.push({
+        matchId: match.id,
+        homeTeamCode: match.homeTeamCode,
+        awayTeamCode: match.awayTeamCode,
+        phase: match.phase,
+        jornada: match.jornada,
+        currentKickoffUtc: match.kickoffUtc,
+        proposedKickoffUtc,
+        currentReadable: match.kickoffUtc.toISOString(),
+        proposedReadable: proposedTimeStr,
+        changed,
+        status: isFinal ? 'final_skipped' : changed ? 'pending' : 'aligned',
+      });
+    }
+
+    return { success: true, proposals };
+  } catch (error: unknown) {
+    console.error('Error previewing kickoff corrections:', error);
+    return { success: false, error: 'Ocurrió un error al obtener la vista previa.' };
+  }
+}
+
+export async function applyKickoffCorrectionsAction(): Promise<
+  { success: true; updatedCount: number } | { success: false; error: string }
+> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { success: false, error: 'No autorizado.' };
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { isSuperadmin: true, name: true },
+  });
+  if (!user?.isSuperadmin) {
+    return { success: false, error: 'Acción permitida solo para superadministradores.' };
+  }
+
+  try {
+    const matches = await prisma.match.findMany({
+      where: {
+        id: { in: Object.keys(OFFICIAL_KNOCKOUT_SCHEDULE) },
+      },
+    });
+
+    let updatedCount = 0;
+    const logDetails: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const match of matches) {
+        const proposedTimeStr = OFFICIAL_KNOCKOUT_SCHEDULE[match.id];
+        if (!proposedTimeStr) continue;
+
+        const proposedKickoffUtc = new Date(proposedTimeStr);
+        const currentKickoffTime = match.kickoffUtc.getTime();
+        const proposedKickoffTime = proposedKickoffUtc.getTime();
+
+        const isFinal = isConsistentFinalMatchResult(match);
+
+        if (currentKickoffTime !== proposedKickoffTime && !isFinal) {
+          await tx.match.update({
+            where: { id: match.id },
+            data: { kickoffUtc: proposedKickoffUtc },
+          });
+          updatedCount++;
+          logDetails.push(
+            `Match ${match.id} (${match.homeTeamCode} vs ${match.awayTeamCode}) kickoff changed from ${match.kickoffUtc.toISOString()} to ${proposedTimeStr}`
+          );
+        }
+      }
+
+      if (updatedCount > 0) {
+        await tx.adminActionLog.create({
+          data: {
+            userId: session.user.id,
+            action: 'CORRECT_KICKOFF_SCHEDULE',
+            target: 'matches:knockout',
+            details: `Admin ${user.name || session.user.id} corrected kickoff times for ${updatedCount} knockout matches. Details: ${logDetails.join('; ')}`,
+          },
+        });
+      }
+    });
+
+    revalidatePath('/admin/partidos');
+    revalidatePath('/pronosticos');
+    revalidatePath('/');
+
+    return { success: true, updatedCount };
+  } catch (error: unknown) {
+    console.error('Error applying kickoff corrections:', error);
+    return { success: false, error: 'Ocurrió un error al aplicar las correcciones de fecha y hora.' };
+  }
+}
+

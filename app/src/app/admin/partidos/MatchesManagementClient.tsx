@@ -2,7 +2,12 @@
 
 import React, { useState } from 'react';
 import { Match } from '@prisma/client';
-import { updateMatchDetailsAction } from '../../../lib/actions/admin';
+import {
+  updateMatchDetailsAction,
+  previewKickoffCorrectionsAction,
+  applyKickoffCorrectionsAction,
+  type KickoffCorrectionProposal,
+} from '../../../lib/actions/admin';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { parseLimaDateTimeToUtc } from '../../../lib/utils/dates';
@@ -18,6 +23,60 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+
+  const [proposals, setProposals] = useState<KickoffCorrectionProposal[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [showCorrector, setShowCorrector] = useState(false);
+
+  const handleToggleCorrector = () => {
+    setShowCorrector(prev => !prev);
+    setProposals(null);
+  };
+
+  const handlePreviewCorrections = async () => {
+    setPreviewLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await previewKickoffCorrectionsAction();
+      if ('error' in res) {
+        setError(res.error);
+      } else if (res.success) {
+        setProposals(res.proposals);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Ocurrió un error inesperado al obtener la vista previa.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleApplyCorrections = async () => {
+    if (!confirm('¿Está seguro de que desea corregir las fechas de kickoff oficiales en la base de datos?')) {
+      return;
+    }
+    setApplyLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await applyKickoffCorrectionsAction();
+      if ('error' in res) {
+        setError(res.error);
+      } else if (res.success) {
+        setSuccess(`Se corrigieron con éxito ${res.updatedCount} partidos de fase eliminatoria.`);
+        setShowCorrector(false);
+        setProposals(null);
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Ocurrió un error inesperado al aplicar las correcciones.');
+    } finally {
+      setApplyLoading(false);
+    }
+  };
 
   const filteredMatches = matches.filter(m => {
     if (filter === 'all') return true;
@@ -89,6 +148,89 @@ export default function MatchesManagementClient({ matches }: { matches: Match[] 
           <span>{success}</span>
         </div>
       )}
+
+      {/* Schedule Correction Panel */}
+      <div className="bg-surface border border-border rounded-lg p-4 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Corrección de Horarios Oficiales (Knockouts)</h3>
+            <p className="text-xs text-text-muted">Compara la programación en BD con el calendario oficial de la FIFA 2026 y corrige kickoffUtc.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleCorrector}
+            className="px-3 py-1.5 bg-background border border-border rounded text-xs text-gold hover:text-white hover:border-gold transition-colors font-mono uppercase"
+          >
+            {showCorrector ? 'Ocultar Corrector' : 'Abrir Corrector'}
+          </button>
+        </div>
+
+        {showCorrector && (
+          <div className="space-y-4 pt-2 border-t border-border/50 animate-[slideDown_0.2s_ease-out]">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handlePreviewCorrections}
+                disabled={previewLoading || applyLoading}
+                className="px-3 py-1.5 bg-gold text-background rounded text-xs font-semibold hover:bg-gold/80 disabled:opacity-50 transition-colors"
+              >
+                {previewLoading ? 'Cargando propuesta...' : 'Ver propuesta de corrección'}
+              </button>
+              {proposals && proposals.some(p => p.status === 'pending') && (
+                <button
+                  type="button"
+                  onClick={handleApplyCorrections}
+                  disabled={applyLoading}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                >
+                  {applyLoading ? 'Aplicando...' : 'Aplicar correcciones'}
+                </button>
+              )}
+            </div>
+
+            {proposals && (
+              <div className="overflow-x-auto max-h-[300px] border border-border rounded divide-y divide-border bg-background/50">
+                {proposals.length === 0 ? (
+                  <p className="p-4 text-xs text-text-muted">No hay partidos de fase eliminatoria detectados.</p>
+                ) : (
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-surface text-text-muted">
+                      <tr>
+                        <th className="p-2">ID</th>
+                        <th className="p-2">Partido</th>
+                        <th className="p-2">Actual (UTC)</th>
+                        <th className="p-2">Propuesto (UTC)</th>
+                        <th className="p-2">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {proposals.map(p => (
+                        <tr key={p.matchId} className="hover:bg-surface transition-colors">
+                          <td className="p-2 font-bold text-gold">{p.matchId}</td>
+                          <td className="p-2 font-sans">
+                            {p.homeTeamCode} vs {p.awayTeamCode} ({p.phase === 'r32' ? '1/32 Final' : p.phase === 'r16' ? '1/16 Final' : p.phase === 'quarters' ? 'Cuartos' : p.phase === 'semis' ? 'Semis' : p.phase === 'final' ? 'Final' : p.phase} / {p.jornada})
+                          </td>
+                          <td className="p-2 text-red-400">{p.currentReadable}</td>
+                          <td className="p-2 text-green-400">{p.proposedReadable}</td>
+                          <td className="p-2">
+                            {p.status === 'final_skipped' ? (
+                              <span className="text-[10px] text-text-muted bg-surface border border-border px-1.5 py-0.5 rounded font-sans">Finalizado (Ignorado)</span>
+                            ) : p.status === 'pending' ? (
+                              <span className="text-[10px] text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded font-sans font-bold">Cambio pendiente</span>
+                            ) : (
+                              <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded font-sans">Alineado</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Filter Bar */}
       <div className="flex flex-wrap gap-1.5">

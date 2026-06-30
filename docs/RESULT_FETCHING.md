@@ -63,4 +63,16 @@ tail -n 80 /home/gumorenos/logs/results-surgical.log
 
 The structured final JSON reports `due`, `skippedFinal`, `fetched`, `savedFinal`, `notFinalYet`, `failed`, and `stoppedEarly`.
 
-An admin read-only scheduler dashboard is not implemented in this phase; logs remain the operational diagnostic source.
+## Knockout Fixture Schedule Correction Procedure
+
+To ensure kickoff times match the official FIFA World Cup 2026 schedule, the application maintains a static schedule map `OFFICIAL_KNOCKOUT_SCHEDULE` in `app/src/lib/actions/admin.ts`.
+
+- **Official Source**: Reviewed against the official FIFA World Cup 26™ match schedule.
+- **No Runtime Dependency**: The app uses static dates/times in UTC and does not make external network requests to retrieve the tournament schedule during page load.
+- **Admin Correction Tool**: Superadmins can visit `/admin/partidos` and use the "Corrección de Horarios Oficiales (Knockouts)" panel. This panel:
+  1. Compares the database kickoff times against the official static schedule map.
+  2. Previews all proposed changes (showing match ID, old/new dates and times).
+  3. Skips matches that already have final scores.
+  4. Applies changes atomically on admin confirmation and writes an `AdminActionLog` with details of the action.
+- **Static Seed Integration**: The Prisma seed script in `app/prisma/seed.ts` has also been updated with the corrected official dates/times to prevent future overrides.
+

@@ -33,5 +33,6 @@ To prevent matches from disappearing from the homepage during active play, the f
 4. **Resultados recientes**: Only matches with a final result.
 
 ### Odds Frozen Behavior
-During active play (`in_progress`) and official result waiting states (`awaiting_result`), the public page displays the stored pre-match odds in the database with a clear label: **"Cuotas previas al inicio (Congeladas)"** to prevent live odds implication. No external API calls are made from the client during these states.
+During active play (`in_progress`) and official result waiting states (`awaiting_result`), the public page displays the stored pre-match odds in the database with a clear label: **"Cuotas pre-partido congeladas"** to prevent live odds implication. No external API calls are made from the client during these states, and odds are hidden for finished (final) matches.
+
 

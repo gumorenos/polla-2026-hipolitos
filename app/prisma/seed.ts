@@ -259,46 +259,46 @@ const MATCHES: RawMatch[] = [
   { id: 'gL6', phase: 'groups', group: 'L', jornada: 'Fecha 3', home: 'CRO', away: 'GHA', vk: 'PHI', kickoff: '2026-06-27T20:00:00Z' },
 
   // ROUND OF 32
-  { id: 'r32_01', phase: 'r32', jornada: 'Dieciseisavos', home: '2A', away: '2B', vk: 'LAX', kickoff: '2026-06-28T21:00:00Z' },
+  { id: 'r32_01', phase: 'r32', jornada: 'Dieciseisavos', home: '2A', away: '2B', vk: 'LAX', kickoff: '2026-06-28T19:00:00Z' },
   { id: 'r32_02', phase: 'r32', jornada: 'Dieciseisavos', home: '1C', away: '2F', vk: 'HOU', kickoff: '2026-06-29T17:00:00Z' },
-  { id: 'r32_03', phase: 'r32', jornada: 'Dieciseisavos', home: '1E', away: '3ABCDF', vk: 'BOS', kickoff: '2026-06-29T19:30:00Z' },
-  { id: 'r32_04', phase: 'r32', jornada: 'Dieciseisavos', home: '1F', away: '2C', vk: 'MTY', kickoff: '2026-06-30T02:00:00Z' },
+  { id: 'r32_03', phase: 'r32', jornada: 'Dieciseisavos', home: '1E', away: '3ABCDF', vk: 'BOS', kickoff: '2026-06-29T20:30:00Z' },
+  { id: 'r32_04', phase: 'r32', jornada: 'Dieciseisavos', home: '1F', away: '2C', vk: 'MTY', kickoff: '2026-06-30T01:00:00Z' },
   { id: 'r32_05', phase: 'r32', jornada: 'Dieciseisavos', home: '2E', away: '2I', vk: 'DAL', kickoff: '2026-06-30T17:00:00Z' },
-  { id: 'r32_06', phase: 'r32', jornada: 'Dieciseisavos', home: '1I', away: '3CDFGH', vk: 'NYC', kickoff: '2026-06-30T20:00:00Z' },
-  { id: 'r32_07', phase: 'r32', jornada: 'Dieciseisavos', home: '1A', away: '3CEFHI', vk: 'MEX', kickoff: '2026-07-01T02:00:00Z' },
-  { id: 'r32_08', phase: 'r32', jornada: 'Dieciseisavos', home: '1L', away: '3EHIJK', vk: 'ATL', kickoff: '2026-07-01T15:00:00Z' },
-  { id: 'r32_09', phase: 'r32', jornada: 'Dieciseisavos', home: '1G', away: '3AEHIJ', vk: 'SEA', kickoff: '2026-07-01T22:00:00Z' },
-  { id: 'r32_10', phase: 'r32', jornada: 'Dieciseisavos', home: '1D', away: '3BEFIJ', vk: 'SFO', kickoff: '2026-07-02T02:00:00Z' },
-  { id: 'r32_11', phase: 'r32', jornada: 'Dieciseisavos', home: '1H', away: '2J', vk: 'LAX', kickoff: '2026-07-02T21:00:00Z' },
-  { id: 'r32_12', phase: 'r32', jornada: 'Dieciseisavos', home: '2K', away: '2L', vk: 'TOR', kickoff: '2026-07-02T22:00:00Z' },
-  { id: 'r32_13', phase: 'r32', jornada: 'Dieciseisavos', home: '1B', away: '3EFGIJ', vk: 'VAN', kickoff: '2026-07-03T05:00:00Z' },
-  { id: 'r32_14', phase: 'r32', jornada: 'Dieciseisavos', home: '2D', away: '2G', vk: 'DAL', kickoff: '2026-07-03T18:00:00Z' },
-  { id: 'r32_15', phase: 'r32', jornada: 'Dieciseisavos', home: '1J', away: '2H', vk: 'MIA', kickoff: '2026-07-03T21:00:00Z' },
-  { id: 'r32_16', phase: 'r32', jornada: 'Dieciseisavos', home: '1K', away: '3DEIJL', vk: 'KCY', kickoff: '2026-07-04T01:30:00Z' },
+  { id: 'r32_06', phase: 'r32', jornada: 'Dieciseisavos', home: '1I', away: '3CDFGH', vk: 'NYC', kickoff: '2026-06-30T21:00:00Z' },
+  { id: 'r32_07', phase: 'r32', jornada: 'Dieciseisavos', home: '1A', away: '3CEFHI', vk: 'MEX', kickoff: '2026-07-01T01:00:00Z' },
+  { id: 'r32_08', phase: 'r32', jornada: 'Dieciseisavos', home: '1L', away: '3EHIJK', vk: 'ATL', kickoff: '2026-07-01T16:00:00Z' },
+  { id: 'r32_09', phase: 'r32', jornada: 'Dieciseisavos', home: '1G', away: '3AEHIJ', vk: 'SEA', kickoff: '2026-07-02T23:00:00Z' },
+  { id: 'r32_10', phase: 'r32', jornada: 'Dieciseisavos', home: '1D', away: '3BEFIJ', vk: 'SFO', kickoff: '2026-07-02T19:00:00Z' },
+  { id: 'r32_11', phase: 'r32', jornada: 'Dieciseisavos', home: '1H', away: '2J', vk: 'LAX', kickoff: '2026-07-02T00:00:00Z' },
+  { id: 'r32_12', phase: 'r32', jornada: 'Dieciseisavos', home: '2K', away: '2L', vk: 'TOR', kickoff: '2026-07-01T20:00:00Z' },
+  { id: 'r32_13', phase: 'r32', jornada: 'Dieciseisavos', home: '1B', away: '3EFGIJ', vk: 'VAN', kickoff: '2026-07-03T03:00:00Z' },
+  { id: 'r32_14', phase: 'r32', jornada: 'Dieciseisavos', home: '2D', away: '2G', vk: 'DAL', kickoff: '2026-07-03T22:00:00Z' },
+  { id: 'r32_15', phase: 'r32', jornada: 'Dieciseisavos', home: '1J', away: '2H', vk: 'MIA', kickoff: '2026-07-04T01:30:00Z' },
+  { id: 'r32_16', phase: 'r32', jornada: 'Dieciseisavos', home: '1K', away: '3DEIJL', vk: 'KCY', kickoff: '2026-07-03T18:00:00Z' },
 
   // ROUND OF 16
   { id: 'r16_01', phase: 'r16', jornada: 'Octavos', home: 'W73', away: 'W75', vk: 'HOU', kickoff: '2026-07-04T17:00:00Z' },
-  { id: 'r16_02', phase: 'r16', jornada: 'Octavos', home: 'W74', away: 'W77', vk: 'PHI', kickoff: '2026-07-04T20:00:00Z' },
-  { id: 'r16_03', phase: 'r16', jornada: 'Octavos', home: 'W76', away: 'W78', vk: 'NYC', kickoff: '2026-07-05T19:00:00Z' },
-  { id: 'r16_04', phase: 'r16', jornada: 'Octavos', home: 'W79', away: 'W80', vk: 'MEX', kickoff: '2026-07-06T01:00:00Z' },
+  { id: 'r16_02', phase: 'r16', jornada: 'Octavos', home: 'W74', away: 'W77', vk: 'PHI', kickoff: '2026-07-04T21:00:00Z' },
+  { id: 'r16_03', phase: 'r16', jornada: 'Octavos', home: 'W76', away: 'W78', vk: 'NYC', kickoff: '2026-07-05T20:00:00Z' },
+  { id: 'r16_04', phase: 'r16', jornada: 'Octavos', home: 'W79', away: 'W80', vk: 'MEX', kickoff: '2026-07-06T00:00:00Z' },
   { id: 'r16_05', phase: 'r16', jornada: 'Octavos', home: 'W83', away: 'W84', vk: 'DAL', kickoff: '2026-07-06T19:00:00Z' },
-  { id: 'r16_06', phase: 'r16', jornada: 'Octavos', home: 'W81', away: 'W82', vk: 'SEA', kickoff: '2026-07-07T02:00:00Z' },
-  { id: 'r16_07', phase: 'r16', jornada: 'Octavos', home: 'W86', away: 'W88', vk: 'ATL', kickoff: '2026-07-07T15:00:00Z' },
-  { id: 'r16_08', phase: 'r16', jornada: 'Octavos', home: 'W85', away: 'W87', vk: 'VAN', kickoff: '2026-07-07T22:00:00Z' },
+  { id: 'r16_06', phase: 'r16', jornada: 'Octavos', home: 'W81', away: 'W82', vk: 'SEA', kickoff: '2026-07-07T00:00:00Z' },
+  { id: 'r16_07', phase: 'r16', jornada: 'Octavos', home: 'W86', away: 'W88', vk: 'ATL', kickoff: '2026-07-07T16:00:00Z' },
+  { id: 'r16_08', phase: 'r16', jornada: 'Octavos', home: 'W85', away: 'W87', vk: 'VAN', kickoff: '2026-07-07T20:00:00Z' },
 
   // QUARTERS
   { id: 'qf_01', phase: 'quarters', jornada: 'Cuartos', home: 'W89', away: 'W90', vk: 'BOS', kickoff: '2026-07-09T19:00:00Z' },
-  { id: 'qf_02', phase: 'quarters', jornada: 'Cuartos', home: 'W93', away: 'W94', vk: 'LAX', kickoff: '2026-07-10T21:00:00Z' },
+  { id: 'qf_02', phase: 'quarters', jornada: 'Cuartos', home: 'W93', away: 'W94', vk: 'LAX', kickoff: '2026-07-10T18:00:00Z' },
   { id: 'qf_03', phase: 'quarters', jornada: 'Cuartos', home: 'W91', away: 'W92', vk: 'MIA', kickoff: '2026-07-11T20:00:00Z' },
-  { id: 'qf_04', phase: 'quarters', jornada: 'Cuartos', home: 'W95', away: 'W96', vk: 'KCY', kickoff: '2026-07-12T01:00:00Z' },
+  { id: 'qf_04', phase: 'quarters', jornada: 'Cuartos', home: 'W95', away: 'W96', vk: 'KCY', kickoff: '2026-07-12T00:00:00Z' },
 
   // SEMIS
   { id: 'sf_01', phase: 'semis', jornada: 'Semis', home: 'W97', away: 'W98', vk: 'DAL', kickoff: '2026-07-14T19:00:00Z' },
-  { id: 'sf_02', phase: 'semis', jornada: 'Semis', home: 'W99', away: 'W100', vk: 'ATL', kickoff: '2026-07-15T18:00:00Z' },
+  { id: 'sf_02', phase: 'semis', jornada: 'Semis', home: 'W99', away: 'W100', vk: 'ATL', kickoff: '2026-07-15T19:00:00Z' },
 
   // 3RD PLACE & FINAL
-  { id: '3rd',  phase: 'semis', jornada: '3er Puesto', home: 'RU101', away: 'RU102', vk: 'MIA', kickoff: '2026-07-18T20:00:00Z' },
-  { id: 'final', phase: 'final', jornada: 'Final', home: 'W101', away: 'W102', vk: 'NYC', kickoff: '2026-07-19T18:00:00Z' },
+  { id: '3rd',  phase: 'semis', jornada: '3er Puesto', home: 'RU101', away: 'RU102', vk: 'MIA', kickoff: '2026-07-18T21:00:00Z' },
+  { id: 'final', phase: 'final', jornada: 'Final', home: 'W101', away: 'W102', vk: 'NYC', kickoff: '2026-07-19T19:00:00Z' },
 ];
 
 async function main() {

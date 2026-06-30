@@ -18,6 +18,12 @@ Both providers search a one-day UTC margin around kickoff to handle adjacent-dat
 
 When providers cannot locate a fixture, a superadmin can enter the final score in `/admin/resultados`. This also repairs legacy rows that currently have `status = result` but null scores.
 
+For knockout matches, a tied final score forces penalty inputs in the admin form. Both penalty scores are required and must identify a winner. A non-tied knockout score infers the winner directly and does not require penalties. Server errors and bracket progression warnings remain visible after save.
+
+[football-data v4 documents](https://docs.football-data.org/general/v4/overtime.html) `fullTime` as the cumulative final score, while `extraTime` and `penalties` contain only goals from those phases. The adapter uses `fullTime` directly for regular/extra-time finishes and separates the shootout when `regularTime`/`extraTime` or valid penalty data make that possible. If a penalty winner is explicit but the shootout scores are missing or ambiguous, the provider-only save path preserves the explicit winner, keeps `wentToPenalties = true`, leaves penalty scores null, and records a diagnostic note. Manual entry never receives this provider trust exception.
+
+If a provider reports success but persistence fails, run the one-match command with `--dryRun --force` and inspect `duration`, `winner`, `fullTime`, `regularTime`, `extraTime`, and `penalties` before saving. The API and manual paths both pass through the same final-result normalizer.
+
 ## Round of 32 resolver
 
 The resolver uses local final group results and the existing FIFA qualification engine. It reports blocking matches, resolves `1A`/`2A` placeholders, and proposes Round-of-32 updates without changing match IDs or predictions.

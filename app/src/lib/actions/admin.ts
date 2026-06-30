@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { isConsistentFinalMatchResult, normalizeFinalMatchResult } from '../match-result';
 import { applyKnockoutProgressionAndSurvivorSync } from '../knockout-propagation-service';
 import { recalculateAllStandings } from '../services/standings';
+import { OFFICIAL_KNOCKOUT_SCHEDULE } from '../official-knockout-schedule';
 
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
 
@@ -226,6 +227,7 @@ export async function updateMatchResultInternal(
     homePenaltyScore?: number | null;
     awayPenaltyScore?: number | null;
     winnerTeamCode?: string | null;
+    allowWinnerWithoutPenaltyScore?: boolean;
     resultStatus?: string | null;
     resultNotes?: string | null;
     resultSource?: string | null;
@@ -251,6 +253,8 @@ export async function updateMatchResultInternal(
     wentToPenalties: knockoutDetails?.wentToPenalties,
     homePenaltyScore: knockoutDetails?.homePenaltyScore,
     awayPenaltyScore: knockoutDetails?.awayPenaltyScore,
+    winnerTeamCode: knockoutDetails?.winnerTeamCode,
+    allowWinnerWithoutPenaltyScore: knockoutDetails?.allowWinnerWithoutPenaltyScore,
   });
   if (!normalizedResult.valid) {
     return { error: normalizedResult.error };
@@ -1843,49 +1847,6 @@ export async function adminAddToLeagueAction(
   }
 }
 
-export const OFFICIAL_KNOCKOUT_SCHEDULE: Record<string, string> = {
-  // Round of 32
-  r32_01: '2026-06-28T19:00:00Z',
-  r32_02: '2026-06-29T17:00:00Z',
-  r32_03: '2026-06-29T20:30:00Z',
-  r32_04: '2026-06-30T01:00:00Z',
-  r32_05: '2026-06-30T17:00:00Z',
-  r32_06: '2026-06-30T21:00:00Z',
-  r32_07: '2026-07-01T01:00:00Z',
-  r32_08: '2026-07-01T16:00:00Z',
-  r32_09: '2026-07-02T23:00:00Z',
-  r32_10: '2026-07-02T19:00:00Z',
-  r32_11: '2026-07-02T00:00:00Z',
-  r32_12: '2026-07-01T20:00:00Z',
-  r32_13: '2026-07-03T03:00:00Z',
-  r32_14: '2026-07-03T22:00:00Z',
-  r32_15: '2026-07-04T01:30:00Z',
-  r32_16: '2026-07-03T18:00:00Z',
-
-  // Round of 16
-  r16_01: '2026-07-04T17:00:00Z',
-  r16_02: '2026-07-04T21:00:00Z',
-  r16_03: '2026-07-05T20:00:00Z',
-  r16_04: '2026-07-06T00:00:00Z',
-  r16_05: '2026-07-06T19:00:00Z',
-  r16_06: '2026-07-07T00:00:00Z',
-  r16_07: '2026-07-07T16:00:00Z',
-  r16_08: '2026-07-07T20:00:00Z',
-
-  // Quarter-Finals
-  qf_01: '2026-07-09T19:00:00Z',
-  qf_02: '2026-07-10T18:00:00Z',
-  qf_03: '2026-07-11T20:00:00Z',
-  qf_04: '2026-07-12T00:00:00Z',
-
-  // Semi-Finals
-  sf_01: '2026-07-14T19:00:00Z',
-  sf_02: '2026-07-15T19:00:00Z',
-
-  // Third Place & Final
-  '3rd': '2026-07-18T21:00:00Z',
-  final: '2026-07-19T19:00:00Z',
-};
 
 export type KickoffCorrectionProposal = {
   matchId: string;

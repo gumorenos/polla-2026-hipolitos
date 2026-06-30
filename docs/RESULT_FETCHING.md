@@ -49,6 +49,15 @@ Manual execution:
 npm run results:fetch-surgical
 ```
 
+One-match diagnosis and save support both argument forms:
+
+```bash
+npm run results:fetch-match -- --matchId=r32_04 --dryRun --provider=auto --force
+npm run results:fetch-match -- r32_04 --dryRun --provider=auto --force
+```
+
+Remove `--dryRun` only after reviewing the full score details, provider winner, penalty fields, fallback provider, and diagnostics printed by the command. When football-data reports a penalty winner but does not provide a usable shootout score, the app stores the trusted team winner, leaves penalty scores null, and records a note instead of inventing penalty values. A finished knockout result without a resolvable winner is rejected.
+
 Recommended Raspberry Pi cron migration plan:
 
 Replace the old broad results cron:
@@ -71,7 +80,7 @@ The structured final JSON reports `due`, `skippedFinal`, `fetched`, `savedFinal`
 
 ## Knockout Fixture Schedule Correction Procedure
 
-To ensure kickoff times match the official FIFA World Cup 2026 schedule, the application maintains a static schedule map `OFFICIAL_KNOCKOUT_SCHEDULE` in `app/src/lib/actions/admin.ts`.
+To ensure kickoff times match the official FIFA World Cup 2026 schedule, the application maintains a static schedule map `OFFICIAL_KNOCKOUT_SCHEDULE` in `app/src/lib/official-knockout-schedule.ts`.
 
 - **Official Source**: Reviewed against the official FIFA World Cup 26™ match schedule.
 - **No Runtime Dependency**: The app uses static dates/times in UTC and does not make external network requests to retrieve the tournament schedule during page load.

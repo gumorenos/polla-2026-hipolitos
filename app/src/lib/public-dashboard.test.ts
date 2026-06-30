@@ -12,7 +12,7 @@ import {
 } from './public-home-layout';
 import { getPublicMatchDisplayStatus } from './public-dashboard';
 import { isBulkMatchOddsEligible } from './odds/bulk-match-odds';
-import { OFFICIAL_KNOCKOUT_SCHEDULE } from './actions/admin';
+import { OFFICIAL_KNOCKOUT_SCHEDULE } from './official-knockout-schedule';
 
 describe('Public guest dashboard components constraints', () => {
   it('calculates individual expected value correctly', () => {

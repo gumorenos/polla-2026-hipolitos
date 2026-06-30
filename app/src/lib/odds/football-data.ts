@@ -17,6 +17,7 @@ export interface ProviderResultDetails {
   homePenaltyScore: number | null;
   awayPenaltyScore: number | null;
   winnerTeamCode: string | null;
+  normalizationNote?: string;
 }
 
 export interface ProviderDiagnostic {
@@ -29,6 +30,7 @@ export interface ProviderDiagnostic {
   querySummary?: string;
   responseCount?: number;
   candidateSummaries?: string[];
+  scoreSummary?: string;
   matchedFixtureId?: string;
   failureCategory?: 'provider_disabled' | 'network' | 'rate_limit' | 'response_empty' | 'date_window_mismatch' | 'team_alias_mismatch' | 'not_final' | 'invalid_scores' | 'provider_error';
   statusCode?: number;
@@ -37,17 +39,20 @@ export interface ProviderDiagnostic {
   success: boolean;
 }
 
+export interface FootballDataScorePayload {
+  winner: string | null;
+  duration: string;
+  fullTime: { home: number | null; away: number | null };
+  regularTime?: { home: number | null; away: number | null };
+  extraTime?: { home: number | null; away: number | null };
+  penalties?: { home: number | null; away: number | null };
+}
+
 interface FDMatch {
   id: number;
   utcDate: string;
   status: string; // TIMED, SCHEDULED, LIVE, IN_PLAY, PAUSED, FINISHED, SUSPENDED, POSTPONED, CANCELLED, AWARDED
-  score: {
-    winner: string | null; // HOME_TEAM, AWAY_TEAM, DRAW
-    duration: string; // REGULAR, EXTRA_TIME, PENALTY_SHOOTOUT
-    fullTime: { home: number | null; away: number | null };
-    extraTime: { home: number | null; away: number | null };
-    penalties: { home: number | null; away: number | null };
-  };
+  score: FootballDataScorePayload;
   homeTeam: { name: string; shortName: string; tla: string };
   awayTeam: { name: string; shortName: string; tla: string };
 }
@@ -109,6 +114,112 @@ const FD_TLA_TO_FIFA: Record<string, string> = {
 
 function normalizeTla(tla: string): string {
   return FD_TLA_TO_FIFA[tla.toUpperCase()] ?? tla.toUpperCase();
+}
+
+function isScore(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function formatScorePair(score: { home: number | null; away: number | null } | undefined): string {
+  if (!score) return 'n/a';
+  return `${score.home ?? 'null'}-${score.away ?? 'null'}`;
+}
+
+export function summarizeFootballDataScore(score: FootballDataScorePayload): string {
+  return [
+    `duration=${score.duration}`,
+    `winner=${score.winner ?? 'null'}`,
+    `fullTime=${formatScorePair(score.fullTime)}`,
+    `regularTime=${formatScorePair(score.regularTime)}`,
+    `extraTime=${formatScorePair(score.extraTime)}`,
+    `penalties=${formatScorePair(score.penalties)}`,
+  ].join('; ');
+}
+
+export function normalizeFootballDataResult(
+  score: FootballDataScorePayload,
+  match: { homeTeamCode: string; awayTeamCode: string; phase: string },
+): { result: ProviderResultDetails } | { error: string } {
+  const fullTimeHome = score.fullTime.home;
+  const fullTimeAway = score.fullTime.away;
+  if (!isScore(fullTimeHome) || !isScore(fullTimeAway)) {
+    return { error: 'football-data.org: Marcadores no disponibles aún' };
+  }
+
+  const isKnockout = match.phase !== 'groups';
+  const wentToPenalties = score.duration === 'PENALTY_SHOOTOUT';
+  const wentToExtraTime = score.duration === 'EXTRA_TIME' || wentToPenalties;
+  const providerWinnerTeamCode = score.winner === 'HOME_TEAM'
+    ? match.homeTeamCode
+    : score.winner === 'AWAY_TEAM' ? match.awayTeamCode : null;
+
+  let homeScore = fullTimeHome;
+  let awayScore = fullTimeAway;
+  let homePenaltyScore: number | null = null;
+  let awayPenaltyScore: number | null = null;
+  let winnerTeamCode: string | null = null;
+  let normalizationNote: string | undefined;
+
+  if (wentToPenalties) {
+    if (!isKnockout || providerWinnerTeamCode === null) {
+      return { error: 'football-data.org: El partido finalizado por penales no tiene un ganador válido.' };
+    }
+
+    const regularHome = score.regularTime?.home;
+    const regularAway = score.regularTime?.away;
+    const extraHome = score.extraTime?.home;
+    const extraAway = score.extraTime?.away;
+    const penaltyHome = score.penalties?.home;
+    const penaltyAway = score.penalties?.away;
+    const hasRegularAndExtra = isScore(regularHome) && isScore(regularAway) && isScore(extraHome) && isScore(extraAway);
+    const hasValidPenaltyScores = isScore(penaltyHome) && isScore(penaltyAway) && penaltyHome !== penaltyAway;
+
+    if (hasRegularAndExtra) {
+      homeScore = regularHome + extraHome;
+      awayScore = regularAway + extraAway;
+    } else if (hasValidPenaltyScores && fullTimeHome >= penaltyHome && fullTimeAway >= penaltyAway) {
+      homeScore = fullTimeHome - penaltyHome;
+      awayScore = fullTimeAway - penaltyAway;
+    } else {
+      normalizationNote = 'football-data informó el ganador por penales, pero no permitió separar con certeza el marcador previo a la tanda; se conservó fullTime.';
+    }
+
+    if (hasValidPenaltyScores) {
+      const penaltyWinnerTeamCode = penaltyHome > penaltyAway ? match.homeTeamCode : match.awayTeamCode;
+      if (penaltyWinnerTeamCode !== providerWinnerTeamCode) {
+        return { error: 'football-data.org: El ganador informado no coincide con la tanda de penales.' };
+      }
+      homePenaltyScore = penaltyHome;
+      awayPenaltyScore = penaltyAway;
+    } else {
+      normalizationNote = normalizationNote
+        ?? 'football-data informó el ganador por penales, pero los marcadores de la tanda no estaban disponibles o eran ambiguos.';
+    }
+    winnerTeamCode = providerWinnerTeamCode;
+  } else {
+    if (homeScore > awayScore) winnerTeamCode = match.homeTeamCode;
+    else if (awayScore > homeScore) winnerTeamCode = match.awayTeamCode;
+
+    if (isKnockout && winnerTeamCode === null) {
+      return { error: 'football-data.org: El partido eliminatorio finalizó sin un ganador resoluble.' };
+    }
+    if (providerWinnerTeamCode !== null && winnerTeamCode !== providerWinnerTeamCode) {
+      return { error: 'football-data.org: El ganador informado no coincide con el marcador final.' };
+    }
+  }
+
+  return {
+    result: {
+      homeScore,
+      awayScore,
+      wentToExtraTime,
+      wentToPenalties,
+      homePenaltyScore,
+      awayPenaltyScore,
+      winnerTeamCode,
+      normalizationNote,
+    },
+  };
 }
 
 export async function fetchMatchResultFromFootballData(
@@ -290,45 +401,34 @@ export async function fetchMatchResultFromFootballData(
     };
   }
 
-  const homeScore = fdMatch.score.fullTime.home;
-  const awayScore = fdMatch.score.fullTime.away;
-
-  if (homeScore === null || awayScore === null) {
+  const scoreSummary = summarizeFootballDataScore(fdMatch.score);
+  const normalized = normalizeFootballDataResult(fdMatch.score, match);
+  if ('error' in normalized) {
     return {
-      error: 'football-data.org: Marcadores no disponibles aún',
-      diagnostic: { ...baseDiag, ...responseContext, matchedFixtureId: String(fdMatch.id), success: false, statusCode: res.status, failureCategory: 'invalid_scores', errorMessage: 'Null scores' },
+      error: normalized.error,
+      diagnostic: {
+        ...baseDiag,
+        ...responseContext,
+        matchedFixtureId: String(fdMatch.id),
+        scoreSummary,
+        success: false,
+        statusCode: res.status,
+        failureCategory: 'invalid_scores',
+        errorMessage: normalized.error,
+      },
     };
   }
 
-  const duration = fdMatch.score.duration;
-  const wentToExtraTime = duration === 'EXTRA_TIME' || duration === 'PENALTY_SHOOTOUT';
-  const wentToPenalties = duration === 'PENALTY_SHOOTOUT';
-
-  let homePenaltyScore: number | null = null;
-  let awayPenaltyScore: number | null = null;
-  let winnerTeamCode: string | null = null;
-
-  if (wentToPenalties) {
-    homePenaltyScore = fdMatch.score.penalties.home;
-    awayPenaltyScore = fdMatch.score.penalties.away;
-    if (fdMatch.score.winner === 'HOME_TEAM') winnerTeamCode = match.homeTeamCode;
-    else if (fdMatch.score.winner === 'AWAY_TEAM') winnerTeamCode = match.awayTeamCode;
-  } else {
-    if (homeScore > awayScore) winnerTeamCode = match.homeTeamCode;
-    else if (awayScore > homeScore) winnerTeamCode = match.awayTeamCode;
-  }
-
   return {
-    result: {
-      homeScore,
-      awayScore,
-      wentToExtraTime,
-      wentToPenalties,
-      homePenaltyScore,
-      awayPenaltyScore,
-      winnerTeamCode,
+    result: normalized.result,
+    diagnostic: {
+      ...baseDiag,
+      ...responseContext,
+      matchedFixtureId: String(fdMatch.id),
+      scoreSummary,
+      success: true,
+      statusCode: res.status,
     },
-    diagnostic: { ...baseDiag, ...responseContext, matchedFixtureId: String(fdMatch.id), success: true, statusCode: res.status },
   };
 }
 

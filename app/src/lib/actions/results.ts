@@ -322,19 +322,29 @@ export async function fetchAndSaveMatchResultInternal(
     return { success: true, dryRun: true, result, usedProvider, isFallback, diagnostics };
   }
 
+  const providerResultNote = isFallback
+    ? `Resultado obtenido vía fallback (${usedProvider})`
+    : `Obtenido de ${usedProvider}`;
   const updateRes = await updateMatchResultInternal(matchId, result.homeScore, result.awayScore, {
     wentToExtraTime: result.wentToExtraTime,
     wentToPenalties: result.wentToPenalties,
     homePenaltyScore: result.homePenaltyScore,
     awayPenaltyScore: result.awayPenaltyScore,
     winnerTeamCode: result.winnerTeamCode,
+    allowWinnerWithoutPenaltyScore: Boolean(result.wentToPenalties && result.winnerTeamCode),
     resultStatus: 'final',
     resultSource: usedProvider,
-    resultNotes: isFallback ? `Resultado obtenido vía fallback (${usedProvider})` : `Obtenido de ${usedProvider}`,
+    resultNotes: [providerResultNote, result.normalizationNote].filter(Boolean).join(' '),
   });
 
   if ('error' in updateRes) {
-    return { error: `Error al aplicar resultado: ${updateRes.error}`, diagnostics };
+    return {
+      error: `Error al aplicar resultado: ${updateRes.error}`,
+      result,
+      usedProvider,
+      isFallback,
+      diagnostics,
+    };
   }
 
   return {

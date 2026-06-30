@@ -49,6 +49,89 @@ describe('match result consistency', () => {
     expect(result.valid && result.result.resultStatus).toBe('final');
   });
 
+  it('accepts a trusted provider winner when penalty scores are unavailable', () => {
+    const result = normalizeFinalMatchResult({
+      phase: 'r32',
+      homeTeamCode: 'NED',
+      awayTeamCode: 'MAR',
+      homeScore: 1,
+      awayScore: 1,
+      wentToPenalties: true,
+      homePenaltyScore: null,
+      awayPenaltyScore: null,
+      winnerTeamCode: 'MAR',
+      allowWinnerWithoutPenaltyScore: true,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.valid && result.result.winnerTeamCode).toBe('MAR');
+    expect(result.valid && result.result.homePenaltyScore).toBeNull();
+    expect(result.valid && result.result.awayPenaltyScore).toBeNull();
+    expect(result.valid && result.result.wentToPenalties).toBe(true);
+  });
+
+  it('accepts a trusted provider winner when penalty scores are ambiguous', () => {
+    const result = normalizeFinalMatchResult({
+      phase: 'r32',
+      homeTeamCode: 'NED',
+      awayTeamCode: 'MAR',
+      homeScore: 3,
+      awayScore: 4,
+      wentToPenalties: true,
+      homePenaltyScore: 0,
+      awayPenaltyScore: 0,
+      winnerTeamCode: 'MAR',
+      allowWinnerWithoutPenaltyScore: true,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.valid && result.result.winnerTeamCode).toBe('MAR');
+    expect(result.valid && result.result.homePenaltyScore).toBeNull();
+    expect(result.valid && result.result.awayPenaltyScore).toBeNull();
+  });
+
+  it('rejects an explicit winner outside the match', () => {
+    const result = normalizeFinalMatchResult({
+      phase: 'r32',
+      homeTeamCode: 'NED',
+      awayTeamCode: 'MAR',
+      homeScore: 1,
+      awayScore: 1,
+      wentToPenalties: true,
+      winnerTeamCode: 'ARG',
+      allowWinnerWithoutPenaltyScore: true,
+    });
+
+    expect(result.valid).toBe(false);
+  });
+
+  it('keeps manual knockout draws strict without penalty scores', () => {
+    const result = normalizeFinalMatchResult({
+      phase: 'r32',
+      homeTeamCode: 'NED',
+      awayTeamCode: 'MAR',
+      homeScore: 1,
+      awayScore: 1,
+      wentToPenalties: true,
+    });
+
+    expect(result.valid).toBe(false);
+  });
+
+  it('infers the winner for a non-draw knockout result', () => {
+    const result = normalizeFinalMatchResult({
+      phase: 'r32',
+      homeTeamCode: 'NED',
+      awayTeamCode: 'MAR',
+      homeScore: 2,
+      awayScore: 1,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.valid && result.result.winnerTeamCode).toBe('NED');
+    expect(result.valid && result.result.wentToPenalties).toBe(false);
+  });
+
   it('detects status=result without complete final scores', () => {
     const invalid = { status: 'result', resultStatus: null, homeScore: null, awayScore: null };
     expect(isConsistentFinalMatchResult(invalid)).toBe(false);

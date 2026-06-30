@@ -106,14 +106,14 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onD
   const [homeScore, setHomeScore] = useState<string>(match.homeScore !== null ? String(match.homeScore) : '');
   const [awayScore, setAwayScore] = useState<string>(match.awayScore !== null ? String(match.awayScore) : '');
   const [wentToExtraTime, setWentToExtraTime] = useState<boolean>(match.wentToExtraTime);
-  const [wentToPenalties, setWentToPenalties] = useState<boolean>(match.wentToPenalties);
   const [homePenalty, setHomePenalty] = useState<string>(match.homePenaltyScore !== null ? String(match.homePenaltyScore) : '');
   const [awayPenalty, setAwayPenalty] = useState<string>(match.awayPenaltyScore !== null ? String(match.awayPenaltyScore) : '');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [showActions, setShowActions] = useState(false);
 
   const isKnockout = match.phase !== 'groups';
   const isDraw = homeScore !== '' && awayScore !== '' && parseInt(homeScore, 10) === parseInt(awayScore, 10);
-  const showPenaltiesInput = isKnockout && (wentToPenalties || isDraw);
+  const showPenaltiesInput = isKnockout && isDraw;
 
   const computedStatus = getComputedMatchStatus(match);
   const statusDisplay = getComputedStatusDisplay(computedStatus);
@@ -122,13 +122,30 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onD
     e.preventDefault();
     const hScore = parseInt(homeScore, 10);
     const aScore = parseInt(awayScore, 10);
-    if (isNaN(hScore) || isNaN(aScore)) return;
+    if (isNaN(hScore) || isNaN(aScore)) {
+      setValidationError('Ingresa un marcador final válido.');
+      return;
+    }
+
+    const hPenalty = homePenalty === '' ? null : parseInt(homePenalty, 10);
+    const aPenalty = awayPenalty === '' ? null : parseInt(awayPenalty, 10);
+    if (showPenaltiesInput) {
+      if (hPenalty === null || aPenalty === null || isNaN(hPenalty) || isNaN(aPenalty) || hPenalty < 0 || aPenalty < 0) {
+        setValidationError('Un empate eliminatorio requiere los dos marcadores de la tanda de penales.');
+        return;
+      }
+      if (hPenalty === aPenalty) {
+        setValidationError('La tanda de penales debe tener un ganador.');
+        return;
+      }
+    }
+    setValidationError(null);
 
     const details: MatchUpdateDetails = {
       wentToExtraTime,
       wentToPenalties: showPenaltiesInput,
-      homePenaltyScore: showPenaltiesInput && homePenalty !== '' ? parseInt(homePenalty, 10) : null,
-      awayPenaltyScore: showPenaltiesInput && awayPenalty !== '' ? parseInt(awayPenalty, 10) : null,
+      homePenaltyScore: showPenaltiesInput ? hPenalty : null,
+      awayPenaltyScore: showPenaltiesInput ? aPenalty : null,
       resultStatus: 'final',
     };
 
@@ -193,9 +210,8 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onD
                 <span>Tiempos Extra</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer text-text-secondary select-none">
-                <input type="checkbox" checked={wentToPenalties}
-                  disabled={!isDraw && homeScore !== '' && awayScore !== ''}
-                  onChange={(e) => setWentToPenalties(e.target.checked)}
+                <input type="checkbox" checked={showPenaltiesInput}
+                  disabled
                   className="rounded border-border accent-gold w-3.5 h-3.5" />
                 <span>Penales</span>
               </label>
@@ -214,6 +230,9 @@ function MatchRow({ match, loading, actionLoading, onUpdate, onFetchFromApi, onD
                 </div>
               )}
             </div>
+          )}
+          {validationError && (
+            <p className="text-[10px] text-red-400" role="alert">{validationError}</p>
           )}
         </form>
       </td>
@@ -344,7 +363,10 @@ export default function MatchesAdminClient({
     const result = await updateMatchResultAction(matchId, homeScore, awayScore, details);
     if ('error' in result) setError(result.error ?? 'Error al actualizar el resultado');
     else {
-      setSuccess('Resultado guardado y clasificaciones actualizadas');
+      setSuccess([
+        'Resultado guardado y clasificaciones actualizadas.',
+        result.progressionWarning,
+      ].filter(Boolean).join(' '));
       router.refresh();
     }
     setLoadingMatchId(null);
@@ -766,6 +788,7 @@ function ProviderDiagnosticsPanel({
             <p className="text-text-secondary">Consulta: {diagnostic.querySummary || 'No disponible'}</p>
             <p className="text-text-secondary">Candidatos: {diagnostic.responseCount ?? 'No disponible'}</p>
             {diagnostic.matchedFixtureId && <p className="text-green-400">Fixture: {diagnostic.matchedFixtureId}</p>}
+            {diagnostic.scoreSummary && <p className="text-text-secondary">Marcador proveedor: {diagnostic.scoreSummary}</p>}
             {diagnostic.errorMessage && <p className="text-amber-300">Motivo: {diagnostic.errorMessage}</p>}
             {diagnostic.candidateSummaries && diagnostic.candidateSummaries.length > 0 && (
               <details className="pt-1">

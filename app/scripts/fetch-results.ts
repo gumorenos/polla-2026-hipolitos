@@ -4,6 +4,21 @@ import { Prisma } from '@prisma/client';
 import { fetchAndSaveMatchResultInternal } from '../src/lib/actions/results';
 import { getProviderCooldown } from '../src/lib/odds/providers';
 import { resolveProviderApiKey } from '../src/lib/provider-credentials';
+import { parseResultFetchMatchId } from '../src/lib/result-fetch-cli';
+import type { ProviderResultDetails } from '../src/lib/odds/football-data';
+
+function logResultDetails(result: ProviderResultDetails, provider: string, isFallback: boolean) {
+  console.log(`     homeScore=${result.homeScore}`);
+  console.log(`     awayScore=${result.awayScore}`);
+  console.log(`     wentToExtraTime=${result.wentToExtraTime}`);
+  console.log(`     wentToPenalties=${result.wentToPenalties}`);
+  console.log(`     homePenaltyScore=${result.homePenaltyScore ?? 'null'}`);
+  console.log(`     awayPenaltyScore=${result.awayPenaltyScore ?? 'null'}`);
+  console.log(`     winnerTeamCode=${result.winnerTeamCode ?? 'null'}`);
+  console.log(`     provider=${provider}`);
+  console.log(`     fallback=${isFallback ? 'yes' : 'no'}`);
+  if (result.normalizationNote) console.log(`     note=${result.normalizationNote}`);
+}
 
 function isConcreteTeamCode(code: string): boolean {
   if (!code) return false;
@@ -28,8 +43,7 @@ async function main() {
   console.log('');
 
   // Argument parsing
-  const matchIdArg = process.argv.find((arg) => arg.startsWith('--matchId='));
-  const targetMatchId = matchIdArg ? matchIdArg.split('=')[1] : null;
+  const targetMatchId = parseResultFetchMatchId(process.argv.slice(2));
 
   const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
   const limit = limitArg ? parseInt(limitArg.split('=')[1]) : 20;
@@ -166,20 +180,31 @@ async function main() {
 
       if ('error' in res && res.error) {
         console.log(`  -> Skipped/Failed: ${res.error}`);
+        if ('result' in res && res.result) {
+          logResultDetails(res.result, res.usedProvider ?? 'unknown', Boolean(res.isFallback));
+        }
         if (res.diagnostics) {
           res.diagnostics.forEach(d => {
             console.log(`     [${d.provider}] ${d.success ? 'OK' : d.errorMessage ?? 'error'}`);
+            if (d.scoreSummary) console.log(`       ${d.scoreSummary}`);
           });
         }
         skippedCount++;
       } else if ('success' in res && res.success) {
         const r = res.result;
         const providerUsed = res.usedProvider ?? 'unknown';
-        const fallbackStr = res.isFallback ? ' (FALLBACK)' : '';
-        if (res.dryRun) {
-          console.log(`  -> [DRY RUN] ${r!.homeScore}-${r!.awayScore} via ${providerUsed}${fallbackStr}`);
-        } else {
-          console.log(`  -> [SUCCESS] ${r!.homeScore}-${r!.awayScore} via ${providerUsed}${fallbackStr}`);
+        if (!r) {
+          console.log('  -> Skipped/Failed: El proveedor no devolvió detalles del resultado.');
+          skippedCount++;
+          continue;
+        }
+        console.log(`  -> [${res.dryRun ? 'DRY RUN' : 'SUCCESS'}]`);
+        logResultDetails(r, providerUsed, Boolean(res.isFallback));
+        if (res.diagnostics) {
+          res.diagnostics.forEach(d => {
+            console.log(`     diagnostic[${d.provider}]=${d.success ? 'OK' : d.errorMessage ?? 'error'}`);
+            if (d.scoreSummary) console.log(`       ${d.scoreSummary}`);
+          });
         }
         if (res.isFallback) fallbackCount++;
         updatedCount++;

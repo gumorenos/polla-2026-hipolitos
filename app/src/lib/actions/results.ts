@@ -614,9 +614,9 @@ export async function applyCSVResultsAction(validatedRows: CSVResultRow[]) {
         user.id
       );
 
-      if (res.error) {
+      if ('error' in res) {
         failed++;
-        errors.push(`${row.matchId}: ${res.error}`);
+        errors.push(`${row.matchId}: ${res.error || 'Error desconocido'}`);
       } else {
         applied++;
       }

@@ -194,7 +194,7 @@ export function buildThirdPlaceTieDiagnostics(
 ): ThirdPlaceTieDiagnostic[] {
   const groups = new Map<string, Array<{ entry: ThirdPlaceEntry; position: number }>>();
   entries.forEach((entry, index) => {
-    const key = `${entry.points}|${entry.goalDifference}|${entry.goalsFor}`;
+    const key = `${entry.points}|${entry.goalDifference}|${entry.goalsFor}|${entry.fairPlayScore}|${entry.fifaRanking}`;
     groups.set(key, [...(groups.get(key) || []), { entry, position: index + 1 }]);
   });
 

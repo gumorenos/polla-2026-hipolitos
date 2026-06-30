@@ -332,7 +332,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const res = await manuallyRecalculateStandingsAction();
-    if (res.error) setError(res.error);
+    if ('error' in res) setError(res.error);
     else setSuccess('Clasificaciones recalculadas exitosamente');
     setRecalculating(false);
   };
@@ -342,7 +342,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await updateMatchResultAction(matchId, homeScore, awayScore, details);
-    if (result.error) setError(result.error);
+    if ('error' in result) setError(result.error);
     else {
       setSuccess('Resultado guardado y clasificaciones actualizadas');
       router.refresh();
@@ -415,7 +415,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await markMatchStatusAction(matchId, status);
-    if (result.error) setError(result.error);
+    if ('error' in result) setError(result.error);
     else {
       setSuccess(`Partido marcado como ${status === 'postponed' ? 'postergado' : 'cancelado'}`);
       router.refresh();
@@ -501,7 +501,7 @@ export default function MatchesAdminClient({
     setCsvApplying(true);
     setCsvError(null);
     const res = await applyCSVResultsAction(validRows);
-    if (res.error) {
+    if ('error' in res) {
       setCsvError(res.error);
     } else {
       setCsvSuccess(`Aplicados: ${res.applied} resultados${res.failed ? `, ${res.failed} fallidos` : ''}`);

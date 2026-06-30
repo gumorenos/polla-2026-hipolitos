@@ -150,6 +150,22 @@ export function calculateWorldCupQualification(
       setGroupEntryStatus(groups, entry.teamCode, entry.status);
     }
 
+    // Label non-impacting best-third ties clearly
+    for (const entry of thirdPlacedTeams) {
+      if (entry.unresolvedTiebreaker) {
+        const diag = thirdPlaceTieDiagnostics.find((d) => d.teamCodes.includes(entry.teamCode));
+        if (diag && !diag.affectsQualificationCutoff) {
+          entry.unresolvedReason = 'Desempate pendiente — no afecta clasificación ni bracket';
+          for (const g of groups) {
+            const ge = g.entries.find((e) => e.teamCode === entry.teamCode);
+            if (ge) {
+              ge.unresolvedReason = entry.unresolvedReason;
+            }
+          }
+        }
+      }
+    }
+
     for (const group of groups) {
       for (const entry of group.entries) {
         if (entry.rank >= 4 && !entry.unresolvedTiebreaker) {

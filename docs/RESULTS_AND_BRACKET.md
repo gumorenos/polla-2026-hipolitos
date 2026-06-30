@@ -28,11 +28,22 @@ Best-third allocation uses the complete 495-row Annex C table from the [official
 
 ## FIFA tiebreak diagnostics
 
-The best-third table distinguishes an unresolved exact order from an unresolved qualification cutoff. Equal points, goal difference, and goals scored are reported together with missing fair-play and FIFA-ranking data. Head-to-head is not applicable between third-placed teams from different groups. A tie wholly inside the top eight does not replace `third_place_qualified` with a pending status; a tie crossing positions 8 and 9 remains blocked and requires reviewed source data or an explicit future override workflow.
+The best-third table distinguishes an unresolved exact order from an unresolved qualification cutoff. Equal points, goal difference, and goals scored are reported together with missing fair-play and FIFA-ranking data. Head-to-head is not applicable between third-placed teams from different groups. 
+
+- **Impacting ties**: A tie crossing positions 8 and 9 (the cutoff boundary) remains blocked, preventing automatic propagation and requiring reviewed source data or an explicit manual override.
+- **Non-impacting ties**: A tie wholly inside the top eight (e.g. Ecuador and Ghana at positions 3 and 4) does not affect qualification and does not affect bracket allocation under Annex C (which only depends on the set of groups of the qualifying teams, not their rank). These are labeled as `Desempate pendiente — no afecta clasificación ni bracket` and allow bracket resolution to proceed normally.
 
 ## Knockout propagation
 
-Later rounds keep `Wxx` and `RUxx` placeholders until the referenced knockout match has a consistent final result. The shared result-save path used by provider refresh, CSV import, and manual fallback propagates winners from r32 through the final and semifinal losers into the third-place match. A superadmin can also preview and apply the same plan explicitly in `/admin/resultados`.
+Later rounds keep `Wxx` and `RUxx` placeholders until the referenced knockout match has a consistent final result. The shared result-save path used by provider refresh, CSV import, and manual fallback propagates winners through the entire knockout flow:
+
+- **Round of 32 -> Round of 16**: R32 winners (`r32_01` to `r32_16` / FIFA matches 73 to 88) map to `r16_01` to `r16_08` (`W73` to `W88`).
+- **Round of 16 -> Quarter-finals**: R16 winners (`r16_01` to `r16_08` / FIFA matches 89 to 96) map to `qf_01` to `qf_04` (`W89` to `W96`).
+- **Quarter-finals -> Semi-finals**: Quarter-final winners (`qf_01` to `qf_04` / FIFA matches 97 to 100) map to `sf_01` and `sf_02` (`W97` to `W100`).
+- **Semi-finals -> Final / Third Place**: Semifinal winners (`sf_01` and `sf_02` / FIFA matches 101 and 102) map to `final` (`W101` and `W102`). Semifinal losers map to `3rd` (`RU101` and `RU102`).
+- **Final -> Champion**: The final winner is synchronized as tournament champion, and the final loser as runner-up.
+
+A superadmin can also preview and apply the same plan explicitly in `/admin/resultados`.
 
 Propagation updates match participants by existing match ID. It never deletes matches or predictions, and it refuses to overwrite a different already-materialized team. Knockout draws without a valid winner remain pending. The repair/sync panel previews bracket and Survivor changes with current value, proposed value, reason, and safe/blocked status before an explicit apply.
 

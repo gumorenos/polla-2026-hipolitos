@@ -211,4 +211,32 @@ describe('FIFA 2026 qualification engine', () => {
 
     expect(rankThirdPlacedTeams([group])[0].teamCode).toBe('A3');
   });
+
+  it('labels non-impacting best-third ties with the correct unresolved reason', () => {
+    const groups = Array.from({ length: 12 }, (_, index) => {
+      const group = String.fromCharCode(65 + index);
+      const teams = [`${group}1`, `${group}2`, `${group}3`, `${group}4`];
+      return completeGroup(group, teams, true);
+    }).flat();
+    const teams = Array.from({ length: 12 }, (_, index) => {
+      const group = String.fromCharCode(65 + index);
+      const ranking = index === 3 ? 2 : index;
+      return [1, 2, 3, 4].map((slot) => ({
+        code: `${group}${slot}`,
+        name: `${group}${slot}`,
+        fairPlayScore: null,
+        fifaRanking: slot === 3 ? ranking : index
+      }));
+    }).flat();
+
+    const qualification = calculateWorldCupQualification(groups, teams);
+    
+    const c3 = qualification.thirdPlacedTeams.find(e => e.teamCode === 'C3');
+    const d3 = qualification.thirdPlacedTeams.find(e => e.teamCode === 'D3');
+    
+    expect(c3?.unresolvedTiebreaker).toBe(true);
+    expect(d3?.unresolvedTiebreaker).toBe(true);
+    expect(c3?.unresolvedReason).toBe('Desempate pendiente — no afecta clasificación ni bracket');
+    expect(d3?.unresolvedReason).toBe('Desempate pendiente — no afecta clasificación ni bracket');
+  });
 });

@@ -8,9 +8,16 @@
 
 After all 72 group matches have consistent final results, synchronization builds the 48-team roster from real group fixtures and compares it with the materialized r32 roster. Its 32 teams stay `active`; the other 16 receive idempotent `TeamTournamentStatus = eliminated` rows even when no status row existed before. This avoids blocking elimination sync on an exact-order tie between third-placed teams when that tie does not change the eight qualifying groups. Existing manual `eliminated`, `runner_up`, and `champion` statuses are preserved.
 
-Every consistent knockout result eliminates the loser for Champion Survivor and keeps the winner active. Semifinal losers are eliminated immediately even though they are propagated to the third-place fixture. A final result marks the winner `champion`, the loser `runner_up`, and all remaining non-champions eliminated. Conflicting terminal manual states and multiple champions are rejected for review. `runner_up` counts as eliminated in Survivor summaries and simulations.
+## Knockout and final synchronization
 
-The provider, CSV, and manual result paths share the same automatic propagation/sync service. The repair action in `/admin/resultados` previews and applies bracket materialization, group elimination backfill, and knockout status updates; this supports results that were saved before automatic propagation existed. Administrators retain initialization, explicit sync, and manual status controls in `/admin/supervivencia`; all operations are idempotent and audited when they change persisted state.
+Every consistent knockout result synchronizes team statuses automatically:
+- **Knockout losers**: Losers of any knockout match (R32, R16, Quarters) are marked as `eliminated`.
+- **Semifinal losers**: Semifinal losers are immediately marked as `eliminated` for Champion Survivor, even though they advance to play in the third-place match. The third-place match itself (`3rd`) is excluded from Survivor status progression.
+- **Finalists**: A final match result marks the winner as `champion` and the loser as `runner_up`.
+- **Tournament end**: After the final, all remaining non-champion teams are marked as `eliminated`.
+- **Safety checks**: Conflicting terminal manual states and multiple champions are rejected for review. `runner_up` counts as eliminated in Survivor summaries and simulations.
+
+The provider, CSV, and manual result paths share the same automatic propagation/sync service. The repair action in `/admin/resultados` previews and applies bracket materialization, group elimination backfill, and knockout status updates; this supports results that were saved before automatic propagation existed. Administrators retain initialization, explicit sync, and manual status controls in `/admin/supervivencia;` all operations are idempotent and audited when they change persisted state.
 
 ### Completed-result backfill
 

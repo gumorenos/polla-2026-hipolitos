@@ -100,6 +100,46 @@ describe('knockout propagation', () => {
     expect(findResolved(plan, 'final', 'away')).toBe('GER');
   });
 
+  it('propagates r16 winners to quarter-finals and quarter-final winners to semi-finals', () => {
+    const matches = [
+      finalMatch('r16_01', 'ARG', 'BRA', 'ARG'),
+      finalMatch('r16_02', 'CAN', 'MEX', 'MEX'),
+      finalMatch('r16_03', 'USA', 'SEN', 'USA'),
+      finalMatch('r16_04', 'FRA', 'ENG', 'FRA'),
+      finalMatch('r16_05', 'GER', 'ITA', 'GER'),
+      finalMatch('r16_06', 'POR', 'ESP', 'POR'),
+      finalMatch('r16_07', 'NED', 'CRO', 'NED'),
+      finalMatch('r16_08', 'BEL', 'MAR', 'BEL'),
+      pendingMatch('qf_01', 'W89', 'W90'),
+      pendingMatch('qf_02', 'W93', 'W94'),
+      pendingMatch('qf_03', 'W91', 'W92'),
+      pendingMatch('qf_04', 'W95', 'W96'),
+    ];
+    const plan1 = buildKnockoutPropagationPlan(matches);
+    expect(findResolved(plan1, 'qf_01', 'home')).toBe('ARG');
+    expect(findResolved(plan1, 'qf_01', 'away')).toBe('MEX');
+    expect(findResolved(plan1, 'qf_02', 'home')).toBe('GER');
+    expect(findResolved(plan1, 'qf_02', 'away')).toBe('POR');
+    expect(findResolved(plan1, 'qf_03', 'home')).toBe('USA');
+    expect(findResolved(plan1, 'qf_03', 'away')).toBe('FRA');
+    expect(findResolved(plan1, 'qf_04', 'home')).toBe('NED');
+    expect(findResolved(plan1, 'qf_04', 'away')).toBe('BEL');
+
+    const qfMatches = [
+      finalMatch('qf_01', 'ARG', 'MEX', 'ARG'),
+      finalMatch('qf_02', 'GER', 'POR', 'GER'),
+      finalMatch('qf_03', 'USA', 'FRA', 'USA'),
+      finalMatch('qf_04', 'NED', 'BEL', 'NED'),
+      pendingMatch('sf_01', 'W97', 'W98'),
+      pendingMatch('sf_02', 'W99', 'W100'),
+    ];
+    const plan2 = buildKnockoutPropagationPlan(qfMatches);
+    expect(findResolved(plan2, 'sf_01', 'home')).toBe('ARG');
+    expect(findResolved(plan2, 'sf_01', 'away')).toBe('GER');
+    expect(findResolved(plan2, 'sf_02', 'home')).toBe('USA');
+    expect(findResolved(plan2, 'sf_02', 'away')).toBe('NED');
+  });
+
   it('does not overwrite an already materialized conflicting team', () => {
     const plan = buildKnockoutPropagationPlan([
       finalMatch('r32_01', 'RSA', 'CAN', 'RSA'),
@@ -112,9 +152,10 @@ describe('knockout propagation', () => {
 });
 
 function finalMatch(id: string, homeTeamCode: string, awayTeamCode: string, winnerTeamCode: string) {
+  const phase = id.startsWith('r32') ? 'r32' : id.startsWith('r16') ? 'r16' : id.startsWith('qf') ? 'quarters' : id.startsWith('sf') ? 'semis' : 'final';
   return {
     id,
-    phase: id.startsWith('r32') ? 'r32' : 'semis',
+    phase,
     homeTeamCode,
     awayTeamCode,
     homeScore: winnerTeamCode === homeTeamCode ? 2 : 0,
@@ -125,9 +166,10 @@ function finalMatch(id: string, homeTeamCode: string, awayTeamCode: string, winn
 }
 
 function pendingMatch(id: string, homeTeamCode: string, awayTeamCode: string) {
+  const phase = id.startsWith('r16') ? 'r16' : id.startsWith('qf') ? 'quarters' : id.startsWith('sf') ? 'semis' : id === '3rd' ? 'semis' : 'final';
   return {
     id,
-    phase: id === 'final' ? 'final' : id === '3rd' ? 'semis' : 'r16',
+    phase,
     homeTeamCode,
     awayTeamCode,
     homeScore: null,

@@ -332,7 +332,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const res = await manuallyRecalculateStandingsAction();
-    if ('error' in res) setError(res.error);
+    if ('error' in res) setError(res.error ?? 'No se pudo recalcular la clasificación.');
     else setSuccess('Clasificaciones recalculadas exitosamente');
     setRecalculating(false);
   };
@@ -342,7 +342,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await updateMatchResultAction(matchId, homeScore, awayScore, details);
-    if ('error' in result) setError(result.error);
+    if ('error' in result) setError(result.error ?? 'Error al actualizar el resultado');
     else {
       setSuccess('Resultado guardado y clasificaciones actualizadas');
       router.refresh();
@@ -386,7 +386,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await applyRoundOf32ResolutionAction();
-    if ('error' in result) setError(result.error);
+    if ('error' in result) setError(result.error ?? 'Error al aplicar el bracket');
     else {
       setSuccess(`Bracket actualizado: ${result.changed} cruce(s) modificados.`);
       router.refresh();
@@ -399,7 +399,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await applyKnockoutPropagationAction();
-    if ('error' in result) setError(result.error);
+    if ('error' in result) setError(result.error ?? 'Error al aplicar la reparación');
     else {
       const conflictSuffix = result.conflicts.length > 0
         ? ` Conflictos no aplicados: ${result.conflicts.join(' ')}`
@@ -415,7 +415,7 @@ export default function MatchesAdminClient({
     setError(null);
     setSuccess(null);
     const result = await markMatchStatusAction(matchId, status);
-    if ('error' in result) setError(result.error);
+    if ('error' in result) setError(result.error ?? 'Error al cambiar el estado');
     else {
       setSuccess(`Partido marcado como ${status === 'postponed' ? 'postergado' : 'cancelado'}`);
       router.refresh();
@@ -502,7 +502,7 @@ export default function MatchesAdminClient({
     setCsvError(null);
     const res = await applyCSVResultsAction(validRows);
     if ('error' in res) {
-      setCsvError(res.error);
+      setCsvError(res.error ?? 'Error al aplicar resultados del CSV');
     } else {
       setCsvSuccess(`Aplicados: ${res.applied} resultados${res.failed ? `, ${res.failed} fallidos` : ''}`);
       setCsvValidationResults(null);

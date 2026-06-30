@@ -3,7 +3,7 @@
 import { prisma } from '../db';
 import { getCurrentSession } from '../auth-helpers';
 import { revalidatePath } from 'next/cache';
-import { recalculateAllStandings } from './admin';
+import { recalculateAllStandings } from '../services/standings';
 import {
   getCompetitionParticipationUpdate,
   wouldRemoveLastCompetitionAdministrator,

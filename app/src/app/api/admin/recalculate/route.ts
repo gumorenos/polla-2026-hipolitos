@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '../../../../lib/auth-helpers';
 import { prisma } from '../../../../lib/db';
-import { recalculateAllStandings } from '../../../../lib/actions/admin';
+import { recalculateAllStandings } from '../../../../lib/services/standings';
 
 export async function POST(req: NextRequest) {
   const session = await getCurrentSession();

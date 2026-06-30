@@ -24,13 +24,12 @@ import {
 } from '../match-pool';
 import type { MatchPoolPickType } from '../match-pool';
 
-// ─── Helper: resolve league membership ────────────────────────────────────────
-
-async function resolveLeagueMembership(userId: string, leagueId: string) {
-  return prisma.leagueMember.findUnique({
-    where: { leagueId_userId: { leagueId, userId } },
-    select: { isParticipant: true, role: true },
+async function isApprovedUser(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { status: true },
   });
+  return user?.status === 'approved';
 }
 
 // ─── Action: createMatchPoolAction ────────────────────────────────────────────
@@ -48,7 +47,7 @@ export interface CreateMatchPoolInput {
 /**
  * Creates a new match pool and adds the creator's first entry.
  *
- * - Only league participants can create pools.
+ * - Any approved user can create a pool in an active Match Pool competition.
  * - Cannot create after kickoff.
  * - Amount must be a positive integer (referential only).
  * - First entry (creator) is automatically added.
@@ -61,20 +60,27 @@ export async function createMatchPoolAction(
   const userId = session.user.id;
 
   try {
-    // Verify league membership
-    const membership = await resolveLeagueMembership(userId, input.leagueId);
-    if (!membership?.isParticipant) {
-      return { error: 'Solo los participantes de la competencia pueden crear retos.' };
+    if (!(await isApprovedUser(userId))) {
+      return { error: 'Tu usuario debe estar aprobado para crear retos.' };
     }
 
     // Verify league competition type
     const league = await prisma.league.findUnique({
       where: { id: input.leagueId },
-      select: { competitionType: true, currency: true },
+      select: {
+        competitionType: true,
+        currency: true,
+        status: true,
+        isActive: true,
+        slug: true,
+      },
     });
     if (!league) return { error: 'Competencia no encontrada.' };
     if (league.competitionType !== 'match_pool') {
       return { error: 'Los retos por partido solo están disponibles en competencias de tipo "Retos por Partido".' };
+    }
+    if (!league.isActive || league.status !== 'active') {
+      return { error: 'Esta competencia no está activa.' };
     }
 
     // Verify match and kickoff
@@ -143,6 +149,7 @@ export async function createMatchPoolAction(
     try {
       revalidatePath('/');
       revalidatePath('/invitado');
+      revalidatePath(`/liga/${league.slug}`);
     } catch {
       // Ignore revalidation errors outside request context
     }
@@ -165,7 +172,7 @@ export interface JoinMatchPoolInput {
 /**
  * Joins an existing open match pool with a pick.
  *
- * - Only league participants can join.
+ * - Any approved user can join a pool in an active Match Pool competition.
  * - Cannot join after kickoff.
  * - Cannot join twice (unique per user per pool).
  * - Cannot modify pool amount — uses the pool's fixed amount.
@@ -181,6 +188,14 @@ export async function joinMatchPoolAction(
     const pool = await prisma.matchPool.findUnique({
       where: { id: input.poolId },
       include: {
+        league: {
+          select: {
+            competitionType: true,
+            status: true,
+            isActive: true,
+            slug: true,
+          },
+        },
         match: {
           select: {
             id: true,
@@ -200,6 +215,12 @@ export async function joinMatchPoolAction(
 
     if (!pool) return { error: 'Reto no encontrado.' };
     if (!pool.match) return { error: 'Partido del reto no encontrado.' };
+    if (!(await isApprovedUser(userId))) {
+      return { error: 'Tu usuario debe estar aprobado para unirte a retos.' };
+    }
+    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+      return { error: 'Esta competencia de Retos por Partido no está activa.' };
+    }
 
     const matchCtx = {
       ...pool.match,
@@ -213,12 +234,6 @@ export async function joinMatchPoolAction(
     const now = new Date();
     if (!canJoinMatchPool({ status: pool.status as 'open' }, matchCtx, now)) {
       return { error: 'No puedes unirte a este reto. Puede estar cerrado o ya haber empezado el partido.' };
-    }
-
-    // Check league membership
-    const membership = await resolveLeagueMembership(userId, pool.leagueId);
-    if (!membership?.isParticipant) {
-      return { error: 'Solo los participantes de la competencia pueden unirse a retos.' };
     }
 
     // Check existing entry
@@ -248,6 +263,7 @@ export async function joinMatchPoolAction(
     try {
       revalidatePath('/');
       revalidatePath('/invitado');
+      revalidatePath(`/liga/${pool.league.slug}`);
     } catch {
       // Ignore
     }
@@ -268,10 +284,9 @@ export interface InviteToMatchPoolInput {
 }
 
 /**
- * Invites a league participant to join a match pool.
+ * Invites an approved user to join a match pool.
  *
- * - Inviter must be a participant in the same league.
- * - Invited user must also be a participant.
+ * - Inviter and invited user must be approved.
  * - Cannot invite after kickoff.
  * - Cannot invite someone already invited (unique constraint).
  * - Unaccepted invites do not count as entries.
@@ -291,6 +306,14 @@ export async function inviteToMatchPoolAction(
     const pool = await prisma.matchPool.findUnique({
       where: { id: input.poolId },
       include: {
+        league: {
+          select: {
+            competitionType: true,
+            status: true,
+            isActive: true,
+            slug: true,
+          },
+        },
         match: {
           select: {
             id: true,
@@ -310,6 +333,9 @@ export async function inviteToMatchPoolAction(
 
     if (!pool) return { error: 'Reto no encontrado.' };
     if (!pool.match) return { error: 'Partido del reto no encontrado.' };
+    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+      return { error: 'Esta competencia de Retos por Partido no está activa.' };
+    }
 
     const matchCtx = {
       ...pool.match,
@@ -324,16 +350,12 @@ export async function inviteToMatchPoolAction(
       return { error: 'No se puede enviar invitaciones a este reto.' };
     }
 
-    // Check inviter league membership
-    const inviterMembership = await resolveLeagueMembership(userId, pool.leagueId);
-    if (!inviterMembership?.isParticipant) {
-      return { error: 'Solo los participantes pueden enviar invitaciones.' };
+    if (!(await isApprovedUser(userId))) {
+      return { error: 'Tu usuario debe estar aprobado para enviar invitaciones.' };
     }
 
-    // Check invitee league membership
-    const inviteeMembership = await resolveLeagueMembership(input.invitedUserId, pool.leagueId);
-    if (!inviteeMembership?.isParticipant) {
-      return { error: 'El usuario invitado no es participante de esta competencia.' };
+    if (!(await isApprovedUser(input.invitedUserId))) {
+      return { error: 'El usuario invitado debe estar aprobado.' };
     }
 
     // Upsert invite (idempotent re-invite resets to pending)
@@ -365,6 +387,12 @@ export async function inviteToMatchPoolAction(
           message: input.message ?? null,
         },
       });
+    }
+
+    try {
+      revalidatePath(`/liga/${pool.league.slug}`);
+    } catch {
+      // Ignore revalidation errors outside request context
     }
 
     return { data: { inviteId: invite.id } };
@@ -402,16 +430,27 @@ export async function cancelMatchPoolAction(
 
     const pool = await prisma.matchPool.findUnique({
       where: { id: input.poolId },
-      select: { id: true, createdByUserId: true, status: true, leagueId: true },
+      include: {
+        league: {
+          select: { createdBy: true, slug: true },
+        },
+      },
     });
 
     if (!pool) return { error: 'Reto no encontrado.' };
 
     const isCreator = pool.createdByUserId === userId;
     const isSuperadmin = user?.isSuperadmin === true;
+    const membership = await prisma.leagueMember.findUnique({
+      where: { leagueId_userId: { leagueId: pool.leagueId, userId } },
+      select: { role: true },
+    });
+    const isContainerAdmin = pool.league.createdBy === userId
+      || membership?.role === 'owner'
+      || membership?.role === 'admin';
 
-    if (!isCreator && !isSuperadmin) {
-      return { error: 'Solo el creador o un superadministrador puede cancelar un reto.' };
+    if (!isCreator && !isSuperadmin && !isContainerAdmin) {
+      return { error: 'Solo el creador o un administrador puede cancelar un reto.' };
     }
 
     if (pool.status !== 'open') {
@@ -436,6 +475,7 @@ export async function cancelMatchPoolAction(
     try {
       revalidatePath('/');
       revalidatePath('/invitado');
+      revalidatePath(`/liga/${pool.league.slug}`);
     } catch {
       // Ignore
     }

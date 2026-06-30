@@ -34,6 +34,9 @@ export default async function AdminCompetenciasPage() {
           },
         },
       },
+      _count: {
+        select: { matchPools: true },
+      },
     },
     orderBy: {
       createdAt: 'desc',
@@ -77,6 +80,7 @@ export default async function AdminCompetenciasPage() {
     isActive: league.isActive,
     showOdds: league.showOdds,
     showH2H: league.showH2H,
+    matchPoolsCount: league._count.matchPools,
     members: league.members.map((member) => ({
       userId: member.userId,
       role: member.role,

@@ -23,16 +23,16 @@ It is a match-level shared referential pool between friends — a challenge tied
 
 ## How It Works
 
-1. A league of type `match_pool` is created by a superadmin.
-2. A participant creates a **reto** (challenge) for a specific upcoming match.
+1. An approved user creates a competition of type `match_pool`, which acts only as a lobby/container.
+2. Any authenticated, approved user creates a **reto** (challenge) for a specific upcoming match.
 3. The creator sets:
    - The **referential amount** (`monto referencial`)
    - Their own **prediction** (pick)
-4. Other participants can:
+4. Other approved users can:
    - **Join** the pool (before kickoff)
    - See the fixed amount (cannot change it)
    - Enter their own pick only
-5. The creator can invite specific participants.
+5. The creator can invite specific approved users.
 6. After the match has a final trusted result:
    - The pool is automatically settled by the post-result pipeline.
    - Net referential amounts are recorded per participant.
@@ -148,6 +148,19 @@ No authentication is required for this view.
 
 ---
 
+## Open participation model
+
+`match_pool` does not have competitive league membership, standings, global ranking, or a champion pick.
+Participation exists only through `MatchPoolEntry`, one user and prediction per reto.
+
+- Creating, joining, and receiving an invitation requires an authenticated user with `status = approved`.
+- No `LeagueMember` row is required and joining a reto never creates one.
+- The competition creator may retain an internal `LeagueMember` row with role `owner` and `isParticipant = false` for permissions.
+- Internal owner/admin rows are hidden from Match Pool participant counts and screens.
+- The dedicated competition detail never renders standings, champion history, or fixed-member management.
+
+---
+
 ## Database Models
 
 Three new models added in migration `20260630080000_add_match_pools`:
@@ -179,5 +192,6 @@ Three new models added in migration `20260630080000_add_match_pools`:
 | `app/src/lib/services/match-pool-settlement.ts` | Settlement service for post-result pipeline |
 | `app/src/lib/actions/admin.ts` | Wired settlement into `runPostFinalResultPipeline` |
 | `app/src/lib/actions/leagues.ts` | Added `match_pool` to CompetitionTypeInput |
-| `app/src/components/public/PublicMatchPoolsSection.tsx` | Guest read-only display |
+| `app/src/components/public/PublicMatchPoolsSection.tsx` | Read-only pool details |
+| `app/src/components/match-pool/MatchPoolLeagueClient.tsx` | Approved-user lobby, create, join and invite UI |
 | `app/src/lib/match-pool.test.ts` | 19-case test suite |

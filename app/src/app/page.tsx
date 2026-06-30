@@ -28,6 +28,7 @@ import { derivePublicTournamentStatus, filterRealTeams } from '../lib/public-tea
 import { getVisibleChampionTeamCodes } from '../lib/champion-team-eligibility';
 import { isConsistentFinalMatchResult } from '../lib/match-result';
 import { buildKnockoutChampionStatusUpdates } from '../lib/champion-status-sync';
+import { getCompetitionTypeLabel } from '../lib/competition-types';
 import { ThemePreferenceSwitcher } from '../components/public/ThemePreferenceSwitcher';
 import {
   parseThemePreferences,
@@ -420,7 +421,7 @@ export default async function PublicHome() {
             </p>
           </div>
           <span className="w-fit rounded-full border border-border-default bg-bg-secondary/40 px-3 py-1 text-[10px] font-mono uppercase text-text-secondary">
-            {isChampionSurvivor ? 'Solo campeón' : 'Polla completa'}
+            {getCompetitionTypeLabel(league.competitionType)}
           </span>
         </div>
       </section>

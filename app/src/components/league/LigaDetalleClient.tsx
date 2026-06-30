@@ -16,6 +16,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { formatLeagueCurrency } from '../../lib/utils/currency';
+import { getCompetitionTypeLabel, getCompetitionTypeSubtitle } from '../../lib/competition-types';
 import { useParticipantView } from '../../hooks/useParticipantView';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -735,10 +736,10 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                   <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Tipo de competencia</p>
                   <div className="bg-bg-secondary border border-border-default rounded-xl p-3">
                     <p className="text-sm font-semibold text-text-primary">
-                      {league.competitionType === 'champion_survivor' ? 'Solo campeón' : 'Polla completa'}
+                      {getCompetitionTypeLabel(league.competitionType)}
                     </p>
                     <p className="text-[10px] text-text-muted mt-1">
-                      El tipo de competencia no se puede cambiar después de crear la competencia.
+                      {getCompetitionTypeSubtitle(league.competitionType)}
                     </p>
                   </div>
                 </div>

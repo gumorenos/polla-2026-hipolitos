@@ -3,6 +3,7 @@ import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
 import { LigasClient } from '../../components/league/LigasClient';
+import { isCompetitionType, type CompetitionTypeValue } from '../../lib/competition-types';
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export default async function LigasPage({
 
 
   // Fetch only active leagues where the current user is a member
-  const memberships = await prisma.leagueMember.findMany({
+  const [memberships, currentUser] = await Promise.all([
+    prisma.leagueMember.findMany({
     where: {
       userId: session.user.id,
       league: {
@@ -43,15 +45,21 @@ export default async function LigasPage({
     orderBy: {
       joinedAt: 'desc',
     },
-  });
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { status: true },
+    }),
+  ]);
 
   // Serialize Date objects to plain strings for the client component
   const serializedMemberships = memberships.map((m) => {
     const leagueMembers = m.league.members || [];
     const participantMembers = leagueMembers.filter(lm => lm.isParticipant);
-    const activeMembersCount = participantMembers.filter(lm => lm.user?.status === 'approved').length;
-    const inactiveMembersCount = participantMembers.filter(lm => lm.user?.status !== 'approved').length;
-    const totalMembersCount = participantMembers.length;
+    const isMatchPool = m.league.competitionType === 'match_pool';
+    const activeMembersCount = isMatchPool ? 0 : participantMembers.filter(lm => lm.user?.status === 'approved').length;
+    const inactiveMembersCount = isMatchPool ? 0 : participantMembers.filter(lm => lm.user?.status !== 'approved').length;
+    const totalMembersCount = isMatchPool ? 0 : participantMembers.length;
 
     return {
       id: m.id,
@@ -80,18 +88,55 @@ export default async function LigasPage({
     };
   });
 
-  let initialCompetitionType: 'full_prediction' | 'champion_survivor' | 'match_pool' = 'full_prediction';
-  if (sParams.tipo === 'champion_survivor') {
-    initialCompetitionType = 'champion_survivor';
-  } else if (sParams.tipo === 'match_pool') {
-    initialCompetitionType = 'match_pool';
-  }
+  const existingLeagueIds = new Set(serializedMemberships.map((membership) => membership.leagueId));
+  const openMatchPoolLeagues = currentUser?.status === 'approved'
+    ? await prisma.league.findMany({
+        where: {
+          competitionType: 'match_pool',
+          status: 'active',
+          isActive: true,
+          id: { notIn: [...existingLeagueIds] },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    : [];
+
+  const visibleMemberships = [
+    ...serializedMemberships,
+    ...openMatchPoolLeagues.map((league) => ({
+      id: `match-pool-lobby:${league.id}:${session.user.id}`,
+      leagueId: league.id,
+      userId: session.user.id,
+      role: 'visitor',
+      joinedAt: league.createdAt.toISOString(),
+      league: {
+        id: league.id,
+        name: league.name,
+        slug: league.slug,
+        inviteCode: league.inviteCode,
+        status: league.status,
+        createdAt: league.createdAt.toISOString(),
+        entryFee: league.entryFee,
+        currency: league.currency,
+        prizePoolOverride: null,
+        competitionType: league.competitionType,
+        activeMembersCount: 0,
+        inactiveMembersCount: 0,
+        totalMembersCount: 0,
+        _count: { members: 0 },
+      },
+    })),
+  ];
+
+  const initialCompetitionType: CompetitionTypeValue = sParams.tipo && isCompetitionType(sParams.tipo)
+    ? sParams.tipo
+    : 'full_prediction';
 
   const openCreateModal = sParams.tipo === 'champion_survivor' || sParams.tipo === 'match_pool';
 
   return (
     <LigasClient
-      memberships={serializedMemberships}
+      memberships={visibleMemberships}
       initialCompetitionType={initialCompetitionType}
       openCreateModal={openCreateModal}
     />

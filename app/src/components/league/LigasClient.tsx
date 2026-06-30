@@ -7,6 +7,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createLeagueAction } from '../../lib/actions/leagues';
 import { parseLimaDateTimeToUtc } from '../../lib/utils/dates';
+import {
+  getCompetitionTypeLabel,
+  getCompetitionTypeSubtitle,
+  type CompetitionTypeValue,
+} from '../../lib/competition-types';
 
 interface LeagueData {
   id: string;
@@ -36,7 +41,7 @@ interface LeagueMembership {
   league: LeagueData;
 }
 
-type CompetitionTypeOption = 'full_prediction' | 'champion_survivor' | 'match_pool';
+type CompetitionTypeOption = CompetitionTypeValue;
 
 interface LigasClientProps {
   memberships: LeagueMembership[];
@@ -92,8 +97,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       name: newLeagueName,
       competitionType,
       championDeadline: competitionType === 'match_pool' ? null : (championDeadline ? parseLimaDateTimeToUtc(championDeadline) : null),
-      joinAsParticipant,
-      showOdds,
+      joinAsParticipant: competitionType === 'match_pool' ? false : joinAsParticipant,
+      showOdds: competitionType === 'match_pool' ? false : showOdds,
       showH2H,
     });
 
@@ -169,24 +174,27 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                        )}
                        {league.competitionType === 'full_prediction' && (
                          <span className="text-[9px] font-mono font-semibold bg-green-400/10 text-green-300 border border-green-400/30 px-2 py-0.5 rounded-full uppercase">
-                           Polla completa
+                           {getCompetitionTypeLabel('full_prediction')}
                          </span>
                        )}
                        {league.competitionType === 'champion_survivor' && (
                          <span className="text-[9px] font-mono font-semibold bg-purple-400/10 text-purple-300 border border-purple-400/30 px-2 py-0.5 rounded-full uppercase">
-                           Champion Survivor
+                           {getCompetitionTypeLabel('champion_survivor')}
                          </span>
                        )}
                        {league.competitionType === 'match_pool' && (
                          <span className="text-[9px] font-mono font-semibold bg-orange-400/10 text-orange-300 border border-orange-400/30 px-2 py-0.5 rounded-full uppercase">
-                           Retos por Partido
+                           {getCompetitionTypeLabel('match_pool')}
                          </span>
                        )}
                      </div>
                     <div className="flex items-center gap-4 text-xs text-text-secondary">
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5 text-gold-400" />
-                        {league.activeMembersCount !== undefined ? (
+                      {league.competitionType === 'match_pool' ? (
+                        <span className="text-text-muted">Sin miembros fijos · participación por reto</span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-gold-400" />
+                          {league.activeMembersCount !== undefined ? (
                           <span>
                             <span className="text-green-400 font-semibold">{league.activeMembersCount} activo{league.activeMembersCount !== 1 ? 's' : ''}</span>
                             {league.inactiveMembersCount !== undefined && league.inactiveMembersCount > 0 ? (
@@ -194,11 +202,12 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                             ) : null}
                             <span className="text-text-muted"> ({league.totalMembersCount} total)</span>
                           </span>
-                        ) : (
-                          `${league._count?.members ?? 1} miembros`
-                        )}
-                      </span>
-                      {(league.entryFee ?? 0) > 0 && (
+                          ) : (
+                            `${league._count?.members ?? 1} miembros`
+                          )}
+                        </span>
+                      )}
+                      {league.competitionType !== 'match_pool' && (league.entryFee ?? 0) > 0 && (
                         <span className="flex items-center gap-1 font-mono font-semibold text-gold-400">
                           {(() => {
                             const memberCount = league.activeMembersCount ?? league._count?.members ?? 1;
@@ -212,22 +221,24 @@ export const LigasClient: React.FC<LigasClientProps> = ({
 
                   <div className="flex items-center gap-3">
                     {/* Share Invite Code */}
-                    <div className="bg-bg-secondary border border-border-default px-3 py-1.5 rounded-lg flex items-center gap-2">
-                      <span className="text-[10px] text-text-secondary uppercase font-mono tracking-wider">CÓDIGO:</span>
-                      <span className="font-mono text-sm font-bold text-gold-400">{league.inviteCode}</span>
-                      <button
-                        type="button"
-                        title="Copiar Código"
-                        onClick={() => handleCopyCode(league.inviteCode)}
-                        className="text-text-muted hover:text-gold-400 transition-all flex items-center gap-1"
-                      >
-                        {isCopied ? (
-                          <CheckCircle className="w-3.5 h-3.5 text-green-400" />
-                        ) : (
-                          <Clipboard className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
+                    {league.competitionType !== 'match_pool' && (
+                      <div className="bg-bg-secondary border border-border-default px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        <span className="text-[10px] text-text-secondary uppercase font-mono tracking-wider">CÓDIGO:</span>
+                        <span className="font-mono text-sm font-bold text-gold-400">{league.inviteCode}</span>
+                        <button
+                          type="button"
+                          title="Copiar Código"
+                          onClick={() => handleCopyCode(league.inviteCode)}
+                          className="text-text-muted hover:text-gold-400 transition-all flex items-center gap-1"
+                        >
+                          {isCopied ? (
+                            <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                          ) : (
+                            <Clipboard className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    )}
 
                     <Link href={`/competencia/${league.slug}`} className="btn-ghost flex items-center gap-1 text-sm py-1.5 px-3">
                       Ingresar <ArrowRight className="w-3.5 h-3.5" />
@@ -321,8 +332,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                       className="sr-only"
                       disabled={loading}
                     />
-                    <span className="block text-sm font-semibold text-text-primary">Polla completa</span>
-                    <span className="block text-[10px] text-text-secondary mt-1">Pronóstico de partidos + campeón</span>
+                    <span className="block text-sm font-semibold text-text-primary">{getCompetitionTypeLabel('full_prediction')}</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">{getCompetitionTypeSubtitle('full_prediction')}</span>
                   </label>
                   <label className={`p-3 rounded-xl border cursor-pointer transition-all ${
                     competitionType === 'champion_survivor'
@@ -338,8 +349,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                       className="sr-only"
                       disabled={loading}
                     />
-                    <span className="block text-sm font-semibold text-text-primary">Solo campeón</span>
-                    <span className="block text-[10px] text-text-secondary mt-1">Los participantes eligen solo al campeón</span>
+                    <span className="block text-sm font-semibold text-text-primary">{getCompetitionTypeLabel('champion_survivor')}</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">{getCompetitionTypeSubtitle('champion_survivor')}</span>
                   </label>
                   <label className={`p-3 rounded-xl border cursor-pointer transition-all ${
                     competitionType === 'match_pool'
@@ -358,8 +369,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                       className="sr-only"
                       disabled={loading}
                     />
-                    <span className="block text-sm font-semibold text-text-primary">Retos por Partido</span>
-                    <span className="block text-[10px] text-text-secondary mt-1">Bolsa entre amigos por cada partido</span>
+                    <span className="block text-sm font-semibold text-text-primary">{getCompetitionTypeLabel('match_pool')}</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">{getCompetitionTypeSubtitle('match_pool')}</span>
                   </label>
                 </div>
               </div>
@@ -380,19 +391,26 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   </p>
                 </div>
               )}
-              <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={joinAsParticipant}
-                  onChange={(e) => setJoinAsParticipant(e.target.checked)}
-                  className="mt-0.5"
-                  disabled={loading}
-                />
-                <span className="text-xs text-text-secondary leading-relaxed">
-                  <span className="block font-semibold text-text-primary">Inscribirme también como participante</span>
-                  Si no marcas esta opción, crearás y administrarás la competencia como dueño sin contar como jugador activo.
-                </span>
-              </label>
+              {competitionType === 'match_pool' ? (
+                <div className="p-3 rounded-xl bg-bg-secondary/40 border border-border-default text-xs text-text-secondary leading-relaxed">
+                  <span className="block font-semibold text-text-primary">Participación abierta por reto</span>
+                  En Retos por Partido no hay miembros fijos ni ranking global. Cada persona aprobada entra voluntariamente a cada reto por partido.
+                </div>
+              ) : (
+                <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={joinAsParticipant}
+                    onChange={(e) => setJoinAsParticipant(e.target.checked)}
+                    className="mt-0.5"
+                    disabled={loading}
+                  />
+                  <span className="text-xs text-text-secondary leading-relaxed">
+                    <span className="block font-semibold text-text-primary">Inscribirme también como participante</span>
+                    Si no marcas esta opción, crearás y administrarás la competencia como dueño sin contar como jugador activo.
+                  </span>
+                </label>
+              )}
               <div className="space-y-2">
                 <p className="text-[10px] text-text-muted leading-relaxed">
                   Puedes desactivar estas ayudas para hacer la competencia más difícil.
@@ -403,7 +421,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                     checked={showOdds}
                     onChange={(e) => setShowOdds(e.target.checked)}
                     className="mt-0.5"
-                    disabled={loading}
+                    disabled={loading || competitionType === 'match_pool'}
                   />
                   <span className="text-xs text-text-secondary leading-relaxed">
                     <span className="block font-semibold text-text-primary">Mostrar odds</span>
@@ -429,7 +447,9 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                 </label>
               </div>
               <p className="text-[10px] text-text-muted leading-relaxed">
-                Una vez creada, generaremos un código de invitación único. Podrás compartir este código para que otros se unan.
+                {competitionType === 'match_pool'
+                  ? 'La competencia funcionará como lobby abierto para usuarios aprobados; cada reto gestiona su propia participación.'
+                  : 'Una vez creada, generaremos un código de invitación único. Podrás compartir este código para que otros se unan.'}
               </p>
               <div className="flex gap-3 justify-end pt-2">
                 <button

@@ -455,3 +455,15 @@ We implement the following 6 tie-breakers sequentially:
 - Integration with a payment API: rejected — regulatory risk, complexity, unnecessary for friend group.
 - Simply storing amounts without settlement display: rejected — reduces value to participants.
 - Real-time settlement: rejected — no wallet or bank integration.
+
+## ADR-026 — Match Pool participation is per reto, not per competition
+
+**Date:** 2026-06-30
+**Status:** Accepted
+
+**Decision:** A `match_pool` competition is a lobby. Any authenticated approved user may open or join an individual reto without becoming a `LeagueMember`. An internal owner/admin membership may remain solely for container permissions, with `isParticipant = false`, and is never rendered or counted as competitive participation.
+
+**Rationale:**
+- The shared amount and prediction belong to one match-specific pool, not to a season-long competition.
+- Global standings, champion picks, entry fees, and fixed member counts are misleading for this mode.
+- `MatchPoolEntry` is the authoritative participation record and its unique key prevents duplicate entry.

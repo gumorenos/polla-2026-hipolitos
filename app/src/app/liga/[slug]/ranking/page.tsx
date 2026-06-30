@@ -46,6 +46,10 @@ export default async function LigaRankingPage({
     notFound();
   }
 
+  if (league.competitionType === 'match_pool') {
+    redirect(`/competencia/${league.slug}`);
+  }
+
   // Enforce private league visibility: Only members or global Superadmins can view the league
   const membership = await prisma.leagueMember.findUnique({
     where: {

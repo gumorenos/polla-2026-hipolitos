@@ -17,6 +17,7 @@ import {
 } from '../../../lib/actions/predictions';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Search, Eye, EyeOff, ShieldAlert, Ban, Info, Key } from 'lucide-react';
+import { getCompetitionTypeLabel } from '../../../lib/competition-types';
 
 interface OwnedLeague {
   id: string;
@@ -87,12 +88,6 @@ interface UserFromDB {
 
 type LeagueOption = { id: string; name: string; competitionType?: string | null };
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
-
-function getCompetitionTypeLabel(competitionType?: string | null) {
-  if (competitionType === 'full_prediction') return 'Polla completa';
-  if (competitionType === 'champion_survivor') return 'Solo campeón';
-  return 'Tipo no definido';
-}
 
 function CreateUserModal({
   leagues,

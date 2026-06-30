@@ -18,6 +18,7 @@ import {
   type MatchPoolMatchContext,
   type MatchPoolSettlementInput,
 } from './match-pool';
+import { getDefaultCompetitionShowOdds } from './competition-types';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -78,16 +79,12 @@ describe('Match Pool competition type', () => {
 
 describe('Match pool default odds', () => {
   it('match_pool competition type should default showOdds to false (documented)', () => {
-    // This is enforced in leagues.ts createLeagueAction:
-    // showOdds = payload.showOdds !== undefined ? payload.showOdds : (competitionType !== 'match_pool')
-    const competitionType = 'match_pool';
-    const showOdds = competitionType !== 'match_pool';
-    expect(showOdds).toBe(false);
+    expect(getDefaultCompetitionShowOdds('match_pool')).toBe(false);
   });
 
   it('full_prediction and champion_survivor default showOdds to true', () => {
-    expect('full_prediction' !== 'match_pool').toBe(true);
-    expect('champion_survivor' !== 'match_pool').toBe(true);
+    expect(getDefaultCompetitionShowOdds('full_prediction')).toBe(true);
+    expect(getDefaultCompetitionShowOdds('champion_survivor')).toBe(true);
   });
 });
 

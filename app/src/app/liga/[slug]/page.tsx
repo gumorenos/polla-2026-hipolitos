@@ -4,6 +4,8 @@ import { getCurrentSession } from '../../../lib/auth-helpers';
 export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
 import { LigaDetalleClient } from '../../../components/league/LigaDetalleClient';
+import { MatchPoolLeagueClient } from '../../../components/match-pool/MatchPoolLeagueClient';
+import { serializePublicMatchPool } from '../../../lib/match-pool';
 
 function maskEmail(email: string | null | undefined): string | null {
   if (!email) return null;
@@ -65,6 +67,112 @@ export default async function LigaDetallePage({
       },
     },
   });
+
+  if (league.competitionType === 'match_pool') {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (currentUser?.status !== 'approved') {
+      redirect('/competencia');
+    }
+    if (!league.isActive || league.status !== 'active') {
+      redirect('/competencia');
+    }
+
+    const [poolRecords, futureMatches, approvedUsers] = await Promise.all([
+      prisma.matchPool.findMany({
+        where: { leagueId: league.id },
+        include: {
+          match: {
+            select: {
+              id: true,
+              homeTeamCode: true,
+              awayTeamCode: true,
+            },
+          },
+          createdBy: {
+            select: { name: true, displayName: true },
+          },
+          entries: {
+            include: {
+              user: { select: { name: true, displayName: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+          invites: {
+            include: {
+              invitedUser: { select: { name: true, displayName: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.match.findMany({
+        where: {
+          kickoffUtc: { gt: new Date() },
+          status: { not: 'result' },
+          OR: [
+            { resultStatus: null },
+            { resultStatus: { not: 'final' } },
+          ],
+        },
+        select: {
+          id: true,
+          phase: true,
+          homeTeamCode: true,
+          awayTeamCode: true,
+          kickoffUtc: true,
+        },
+        orderBy: { kickoffUtc: 'asc' },
+      }),
+      prisma.user.findMany({
+        where: {
+          status: 'approved',
+          id: { not: userId },
+        },
+        select: { id: true, name: true, displayName: true },
+        orderBy: [{ displayName: 'asc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    const canManage = isSuperadmin
+      || league.createdBy === userId
+      || membership?.role === 'owner'
+      || membership?.role === 'admin';
+    const matchLabels = Object.fromEntries(poolRecords.map((pool) => [
+      pool.matchId,
+      `${pool.match.homeTeamCode} vs ${pool.match.awayTeamCode}`,
+    ]));
+
+    return (
+      <MatchPoolLeagueClient
+        league={{
+          id: league.id,
+          name: league.name,
+          slug: league.slug,
+          currency: league.currency,
+        }}
+        pools={poolRecords.map(serializePublicMatchPool)}
+        matches={futureMatches.map((match) => ({
+          id: match.id,
+          label: `${match.homeTeamCode} vs ${match.awayTeamCode}`,
+          phase: match.phase,
+          kickoffUtc: match.kickoffUtc.toISOString(),
+          homeTeamCode: match.homeTeamCode,
+          awayTeamCode: match.awayTeamCode,
+        }))}
+        matchLabels={matchLabels}
+        approvedUsers={approvedUsers.map((user) => ({
+          id: user.id,
+          displayName: user.displayName ?? user.name,
+        }))}
+        currentUserId={userId}
+        canManage={canManage}
+      />
+    );
+  }
 
   if (!membership && !isSuperadmin) {
     // Redirect unauthorized users to the main leagues dashboard

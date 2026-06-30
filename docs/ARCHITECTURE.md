@@ -439,10 +439,13 @@ All final result sources converge on `updateMatchResultInternal`. After every fi
 
 # Match Pool (Retos por Partido) boundary
 
-**Match pools** (`match_pool`) are the third competition type. A pool is a per-match referential challenge between league participants.
+**Match pools** (`match_pool`) are the third competition type. The league record is only a lobby/container; a pool is a per-match referential challenge between approved users.
 
 Key boundaries:
 - **Money safety**: All amounts are referential only. No real money is processed, custodied, transferred, or settled by the app. Physical settlement happens outside the app.
+- **Open participation**: `User.status = approved` and an active `match_pool` league are the access boundary. `LeagueMember.isParticipant` is not consulted.
+- **Permission-only owner**: Creation may retain an internal owner membership with `isParticipant = false`; it is hidden from Match Pool UI and counts.
+- **No global competition state**: Match Pool has no standings, global ranking, champion selection, or fixed member roster.
 - **Domain logic** lives in `src/lib/match-pool.ts` (pure functions, no DB access).
 - **Settlement service** `src/lib/services/match-pool-settlement.ts` reads only trusted DB results and writes entry/pool status rows.
 - **Post-result pipeline integration**: `settleMatchPoolsForFinalMatch(matchId)` is called from `runPostFinalResultPipeline` inside a non-fatal try/catch. Result saving is never blocked by pool settlement.

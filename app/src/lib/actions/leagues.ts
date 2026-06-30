@@ -67,12 +67,13 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
     if (payload.showH2H !== undefined && typeof payload.showH2H !== 'boolean') {
       return { error: 'Configuración de historial inválida.' };
     }
-    // match_pool competitions default to odds hidden
-    const showOdds = payload.showOdds !== undefined ? payload.showOdds : (competitionType !== 'match_pool');
+    const isMatchPool = competitionType === 'match_pool';
+    // Match Pool starts without market aids. An admin may enable stored pre-match odds later.
+    const showOdds = isMatchPool ? false : (payload.showOdds ?? true);
     const showH2H = payload.showH2H ?? true;
 
     let championDeadline: Date | null = null;
-    if (payload.championDeadline) {
+    if (!isMatchPool && payload.championDeadline) {
       championDeadline = new Date(payload.championDeadline);
       if (Number.isNaN(championDeadline.getTime())) {
         return { error: 'La fecha límite para elegir campeón no es válida.' };
@@ -125,11 +126,11 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
           leagueId: newLeague.id,
           userId,
           role: 'owner',
-          isParticipant: payload.joinAsParticipant === true,
+          isParticipant: isMatchPool ? false : payload.joinAsParticipant === true,
         },
       });
 
-      if (payload.joinAsParticipant === true) {
+      if (!isMatchPool && payload.joinAsParticipant === true) {
         for (const block of ['groups', 'knockout', 'global']) {
           await tx.standing.create({
             data: {
@@ -159,7 +160,7 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
         details: JSON.stringify({
           name: league.name,
           competitionType,
-          ownerJoinedAsParticipant: payload.joinAsParticipant === true,
+          ownerJoinedAsParticipant: !isMatchPool && payload.joinAsParticipant === true,
           showOdds,
           showH2H,
         }),
@@ -168,7 +169,9 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
 
     revalidatePath('/liga');
     revalidatePath('/competencia');
-    await recalculateAllStandings();
+    if (!isMatchPool) {
+      await recalculateAllStandings();
+    }
     return { data: league };
   } catch (error) {
     console.error('Error in createLeagueAction:', error);
@@ -209,6 +212,11 @@ export async function joinLeagueAction(inviteCode: string) {
 
     if (!league.inviteEnabled) {
       return { error: 'El registro por código de invitación está deshabilitado para esta polla.' };
+    }
+
+    if (league.competitionType === 'match_pool') {
+      // Match Pool access is open to approved users; entering the lobby must not create membership.
+      return { data: { lobbyAccess: true }, slug: league.slug };
     }
 
     // Verify user is not already a member

@@ -14,6 +14,7 @@ import {
 } from '../../lib/actions/leagues';
 import { summarizeCompetitionMembers } from '../../lib/competition-members';
 import { parseLimaDateTimeToUtc, getLimaDateTimeLocalString } from '../../lib/utils/dates';
+import { getCompetitionTypeLabel, getCompetitionTypeSubtitle } from '../../lib/competition-types';
 
 interface LeagueMemberData {
   userId: string;
@@ -54,6 +55,7 @@ interface LeagueAdminData {
   isActive: boolean;
   showOdds: boolean;
   showH2H: boolean;
+  matchPoolsCount: number;
 }
 
 interface ApprovedUserData {
@@ -284,7 +286,7 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
           <div className="hidden md:grid grid-cols-12 px-4 py-2.5 bg-bg-secondary/40 border-b border-border-subtle font-mono text-[10px] text-text-secondary uppercase font-semibold text-center">
             <span className="col-span-3 text-left">Competencia</span>
             <span className="col-span-3 text-left">Creador</span>
-            <span className="col-span-2">Participantes / miembros</span>
+            <span className="col-span-2">Participación</span>
             <span className="col-span-2">Estado</span>
             <span className="col-span-2 text-right">Acciones</span>
           </div>
@@ -336,12 +338,19 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                     {/* Participant and membership counts */}
                     <div className="col-span-2 flex items-center justify-center gap-1.5 text-sm text-text-primary">
                       <Users className="w-4 h-4 text-gold-400" />
-                      <span className="text-center leading-tight">
-                        <strong>{memberSummary.participants}</strong> participantes
-                        <span className="block text-[10px] text-text-muted">
-                          {memberSummary.totalMembers} miembros
+                      {l.competitionType === 'match_pool' ? (
+                        <span className="text-center leading-tight">
+                          <strong>{l.matchPoolsCount}</strong> retos creados
+                          <span className="block text-[10px] text-text-muted">Sin miembros fijos</span>
                         </span>
-                      </span>
+                      ) : (
+                        <span className="text-center leading-tight">
+                          <strong>{memberSummary.participants}</strong> participantes
+                          <span className="block text-[10px] text-text-muted">
+                            {memberSummary.totalMembers} miembros
+                          </span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Status badge */}
@@ -359,14 +368,16 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
 
                     {/* Actions */}
                     <div className="col-span-2 w-full flex justify-end items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setActiveLeagueId(l.id)}
-                        title="Gestionar miembros y participantes"
-                        className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
-                      >
-                        <Users className="w-4 h-4" />
-                      </button>
+                      {l.competitionType !== 'match_pool' && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveLeagueId(l.id)}
+                          title="Gestionar miembros y participantes"
+                          className="p-1.5 bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-gold-400 border border-border-default rounded-lg transition-all"
+                        >
+                          <Users className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setSettingsLeagueId(l.id)}
@@ -698,31 +709,39 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                 </label>
                 <div className="bg-bg-secondary border border-border-default rounded-lg p-3">
                   <p className="text-sm font-semibold text-text-primary">
-                    {settingsLeague.competitionType === 'champion_survivor' && 'Solo campeón'}
-                    {settingsLeague.competitionType === 'full_prediction' && 'Polla completa'}
-                    {settingsLeague.competitionType === 'match_pool' && 'Retos por Partido'}
+                    {getCompetitionTypeLabel(settingsLeague.competitionType)}
                   </p>
                   <p className="text-[10px] text-text-muted mt-1">
-                    {settingsLeague.competitionType === 'match_pool'
-                      ? 'Bolsa entre amigos por cada partido'
-                      : 'El tipo de competencia no se puede cambiar después de crear la competencia.'}
+                    {getCompetitionTypeSubtitle(settingsLeague.competitionType)}
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                    Cuota de Inscripción (Fee)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="entryFee"
-                    required
-                    defaultValue={settingsLeague.entryFee}
-                    className="field text-xs py-1.5 w-full"
-                  />
+                  {settingsLeague.competitionType === 'match_pool' ? (
+                    <>
+                      <input type="hidden" name="entryFee" value={settingsLeague.entryFee} />
+                      <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Cuota de inscripción</p>
+                      <p className="rounded-lg border border-border-subtle bg-bg-secondary p-2 text-xs text-text-muted">
+                        No aplica. Cada reto define su propio monto referencial.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                        Cuota de Inscripción (Fee)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="entryFee"
+                        required
+                        defaultValue={settingsLeague.entryFee}
+                        className="field text-xs py-1.5 w-full"
+                      />
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-1">

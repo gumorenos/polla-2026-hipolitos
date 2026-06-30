@@ -333,7 +333,7 @@ export async function fetchAndSaveMatchResultInternal(
     resultNotes: isFallback ? `Resultado obtenido vía fallback (${usedProvider})` : `Obtenido de ${usedProvider}`,
   });
 
-  if (updateRes.error) {
+  if ('error' in updateRes) {
     return { error: `Error al aplicar resultado: ${updateRes.error}`, diagnostics };
   }
 

@@ -12,7 +12,7 @@ import {
 /**
  * Creates a new private competition. The creator always becomes owner, but participant status is explicit.
  */
-type CompetitionTypeInput = 'full_prediction' | 'champion_survivor';
+type CompetitionTypeInput = 'full_prediction' | 'champion_survivor' | 'match_pool';
 
 interface CreateLeagueInput {
   name: string;
@@ -25,7 +25,7 @@ interface CreateLeagueInput {
 
 function resolveCompetitionTypeInput(value?: string | null): CompetitionTypeInput | null {
   if (!value) return 'full_prediction';
-  if (value === 'full_prediction' || value === 'champion_survivor') return value;
+  if (value === 'full_prediction' || value === 'champion_survivor' || value === 'match_pool') return value;
   return null;
 }
 
@@ -67,7 +67,8 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
     if (payload.showH2H !== undefined && typeof payload.showH2H !== 'boolean') {
       return { error: 'Configuración de historial inválida.' };
     }
-    const showOdds = payload.showOdds ?? true;
+    // match_pool competitions default to odds hidden
+    const showOdds = payload.showOdds !== undefined ? payload.showOdds : (competitionType !== 'match_pool');
     const showH2H = payload.showH2H ?? true;
 
     let championDeadline: Date | null = null;

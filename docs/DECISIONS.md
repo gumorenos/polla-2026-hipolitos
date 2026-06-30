@@ -433,3 +433,25 @@ We implement the following 6 tie-breakers sequentially:
 - Phase-specific offsets avoid polling while matches are likely still active.
 - `resultFetchedAt` supplies concurrency and retry protection without a schema change.
 - Every successful source continues through one scoring, propagation, and Survivor pipeline.
+
+## ADR-025 — Retos por Partido as referential-only match pools
+
+**Date:** 2026-06-30
+**Status:** Accepted
+
+**Decision:** Match Pool ("Retos por Partido") amounts are referential only. The app records `amount` and `netAmount` as integers for social tracking but performs no payment processing, wallet management, or fund custody.
+
+**Rationale:**
+- Gambling regulation risk: operating a real-money wagering platform requires licenses in most jurisdictions.
+- The app runs on a private Raspberry Pi for a group of friends — no payment processor is available.
+- The social value is in tracking who won/lost the challenge, not in automating financial transfers.
+- Physical settlement by participants (e.g., bank transfer, cash) is outside the app's scope.
+
+**Approved terms:** monto referencial, reto, bolsa entre amigos, liquidación referencial, pendiente de coordinar fuera de la app.
+
+**Forbidden terms in UI/code:** casino, apuesta legal, casa de apuestas, saldo real, pago automático, depósito, retiro.
+
+**Alternatives considered:**
+- Integration with a payment API: rejected — regulatory risk, complexity, unnecessary for friend group.
+- Simply storing amounts without settlement display: rejected — reduces value to participants.
+- Real-time settlement: rejected — no wallet or bank integration.

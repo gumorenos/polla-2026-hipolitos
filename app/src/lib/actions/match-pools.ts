@@ -1,0 +1,448 @@
+'use server';
+
+/**
+ * app/src/lib/actions/match-pools.ts
+ *
+ * Server actions for "Retos por Partido" (Match Pool) competition.
+ *
+ * IMPORTANT — Money safety:
+ *   No real money is processed, moved, or settled by these actions.
+ *   All amounts are referential only ("monto referencial").
+ *   Physical settlement happens outside the app.
+ *
+ * Rule: this file has 'use server' — only async functions may be exported.
+ */
+
+import { prisma } from '../db';
+import { getCurrentSession } from '../auth-helpers';
+import { revalidatePath } from 'next/cache';
+import {
+  canCreateMatchPool,
+  canJoinMatchPool,
+  canInviteToMatchPool,
+  getAllowedMatchPoolPickOptions,
+} from '../match-pool';
+import type { MatchPoolPickType } from '../match-pool';
+
+// ─── Helper: resolve league membership ────────────────────────────────────────
+
+async function resolveLeagueMembership(userId: string, leagueId: string) {
+  return prisma.leagueMember.findUnique({
+    where: { leagueId_userId: { leagueId, userId } },
+    select: { isParticipant: true, role: true },
+  });
+}
+
+// ─── Action: createMatchPoolAction ────────────────────────────────────────────
+
+export interface CreateMatchPoolInput {
+  leagueId: string;
+  matchId: string;
+  amount: number;
+  currency?: string;
+  note?: string;
+  pickType: MatchPoolPickType;
+  pickValue: string;
+}
+
+/**
+ * Creates a new match pool and adds the creator's first entry.
+ *
+ * - Only league participants can create pools.
+ * - Cannot create after kickoff.
+ * - Amount must be a positive integer (referential only).
+ * - First entry (creator) is automatically added.
+ */
+export async function createMatchPoolAction(
+  input: CreateMatchPoolInput,
+): Promise<{ data: { poolId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  try {
+    // Verify league membership
+    const membership = await resolveLeagueMembership(userId, input.leagueId);
+    if (!membership?.isParticipant) {
+      return { error: 'Solo los participantes de la competencia pueden crear retos.' };
+    }
+
+    // Verify league competition type
+    const league = await prisma.league.findUnique({
+      where: { id: input.leagueId },
+      select: { competitionType: true, currency: true },
+    });
+    if (!league) return { error: 'Competencia no encontrada.' };
+    if (league.competitionType !== 'match_pool') {
+      return { error: 'Los retos por partido solo están disponibles en competencias de tipo "Retos por Partido".' };
+    }
+
+    // Verify match and kickoff
+    const match = await prisma.match.findUnique({
+      where: { id: input.matchId },
+      select: {
+        id: true,
+        phase: true,
+        homeTeamCode: true,
+        awayTeamCode: true,
+        kickoffUtc: true,
+        status: true,
+        resultStatus: true,
+        homeScore: true,
+        awayScore: true,
+        winnerTeamCode: true,
+      },
+    });
+    if (!match) return { error: 'Partido no encontrado.' };
+
+    const now = new Date();
+    if (!canCreateMatchPool(match, now)) {
+      return { error: 'No se puede crear un reto después del inicio del partido.' };
+    }
+
+    // Validate amount
+    if (!Number.isInteger(input.amount) || input.amount <= 0) {
+      return { error: 'El monto referencial debe ser un número entero positivo.' };
+    }
+
+    // Validate pick
+    const allowedPicks = getAllowedMatchPoolPickOptions(match);
+    if (!allowedPicks.includes(input.pickType)) {
+      return { error: `El tipo de predicción '${input.pickType}' no es válido para este partido.` };
+    }
+
+    const currency = input.currency ?? league.currency ?? 'PEN';
+
+    // Create pool and first entry in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const pool = await tx.matchPool.create({
+        data: {
+          leagueId: input.leagueId,
+          matchId: input.matchId,
+          createdByUserId: userId,
+          amount: input.amount,
+          currency,
+          note: input.note ?? null,
+          status: 'open',
+        },
+      });
+
+      await tx.matchPoolEntry.create({
+        data: {
+          poolId: pool.id,
+          userId,
+          pickType: input.pickType,
+          pickValue: input.pickValue,
+          status: 'active',
+        },
+      });
+
+      return pool;
+    });
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/invitado');
+    } catch {
+      // Ignore revalidation errors outside request context
+    }
+
+    return { data: { poolId: result.id } };
+  } catch (err) {
+    console.error('Error in createMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al crear el reto.' };
+  }
+}
+
+// ─── Action: joinMatchPoolAction ──────────────────────────────────────────────
+
+export interface JoinMatchPoolInput {
+  poolId: string;
+  pickType: MatchPoolPickType;
+  pickValue: string;
+}
+
+/**
+ * Joins an existing open match pool with a pick.
+ *
+ * - Only league participants can join.
+ * - Cannot join after kickoff.
+ * - Cannot join twice (unique per user per pool).
+ * - Cannot modify pool amount — uses the pool's fixed amount.
+ */
+export async function joinMatchPoolAction(
+  input: JoinMatchPoolInput,
+): Promise<{ data: { entryId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  try {
+    const pool = await prisma.matchPool.findUnique({
+      where: { id: input.poolId },
+      include: {
+        match: {
+          select: {
+            id: true,
+            phase: true,
+            homeTeamCode: true,
+            awayTeamCode: true,
+            kickoffUtc: true,
+            status: true,
+            resultStatus: true,
+            homeScore: true,
+            awayScore: true,
+            winnerTeamCode: true,
+          },
+        },
+      },
+    });
+
+    if (!pool) return { error: 'Reto no encontrado.' };
+    if (!pool.match) return { error: 'Partido del reto no encontrado.' };
+
+    const matchCtx = {
+      ...pool.match,
+      kickoffUtc: pool.match.kickoffUtc,
+      resultStatus: pool.match.resultStatus,
+      homeScore: pool.match.homeScore,
+      awayScore: pool.match.awayScore,
+      winnerTeamCode: pool.match.winnerTeamCode,
+    };
+
+    const now = new Date();
+    if (!canJoinMatchPool({ status: pool.status as 'open' }, matchCtx, now)) {
+      return { error: 'No puedes unirte a este reto. Puede estar cerrado o ya haber empezado el partido.' };
+    }
+
+    // Check league membership
+    const membership = await resolveLeagueMembership(userId, pool.leagueId);
+    if (!membership?.isParticipant) {
+      return { error: 'Solo los participantes de la competencia pueden unirse a retos.' };
+    }
+
+    // Check existing entry
+    const existingEntry = await prisma.matchPoolEntry.findUnique({
+      where: { poolId_userId: { poolId: input.poolId, userId } },
+    });
+    if (existingEntry) {
+      return { error: 'Ya tienes una predicción en este reto.' };
+    }
+
+    // Validate pick
+    const allowedPicks = getAllowedMatchPoolPickOptions(matchCtx);
+    if (!allowedPicks.includes(input.pickType)) {
+      return { error: `El tipo de predicción '${input.pickType}' no es válido para este partido.` };
+    }
+
+    const entry = await prisma.matchPoolEntry.create({
+      data: {
+        poolId: input.poolId,
+        userId,
+        pickType: input.pickType,
+        pickValue: input.pickValue,
+        status: 'active',
+      },
+    });
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/invitado');
+    } catch {
+      // Ignore
+    }
+
+    return { data: { entryId: entry.id } };
+  } catch (err) {
+    console.error('Error in joinMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al unirte al reto.' };
+  }
+}
+
+// ─── Action: inviteToMatchPoolAction ──────────────────────────────────────────
+
+export interface InviteToMatchPoolInput {
+  poolId: string;
+  invitedUserId: string;
+  message?: string;
+}
+
+/**
+ * Invites a league participant to join a match pool.
+ *
+ * - Inviter must be a participant in the same league.
+ * - Invited user must also be a participant.
+ * - Cannot invite after kickoff.
+ * - Cannot invite someone already invited (unique constraint).
+ * - Unaccepted invites do not count as entries.
+ */
+export async function inviteToMatchPoolAction(
+  input: InviteToMatchPoolInput,
+): Promise<{ data: { inviteId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  if (userId === input.invitedUserId) {
+    return { error: 'No puedes invitarte a ti mismo.' };
+  }
+
+  try {
+    const pool = await prisma.matchPool.findUnique({
+      where: { id: input.poolId },
+      include: {
+        match: {
+          select: {
+            id: true,
+            phase: true,
+            homeTeamCode: true,
+            awayTeamCode: true,
+            kickoffUtc: true,
+            status: true,
+            resultStatus: true,
+            homeScore: true,
+            awayScore: true,
+            winnerTeamCode: true,
+          },
+        },
+      },
+    });
+
+    if (!pool) return { error: 'Reto no encontrado.' };
+    if (!pool.match) return { error: 'Partido del reto no encontrado.' };
+
+    const matchCtx = {
+      ...pool.match,
+      resultStatus: pool.match.resultStatus,
+      homeScore: pool.match.homeScore,
+      awayScore: pool.match.awayScore,
+      winnerTeamCode: pool.match.winnerTeamCode,
+    };
+
+    const now = new Date();
+    if (!canInviteToMatchPool({ status: pool.status as 'open' }, matchCtx, now)) {
+      return { error: 'No se puede enviar invitaciones a este reto.' };
+    }
+
+    // Check inviter league membership
+    const inviterMembership = await resolveLeagueMembership(userId, pool.leagueId);
+    if (!inviterMembership?.isParticipant) {
+      return { error: 'Solo los participantes pueden enviar invitaciones.' };
+    }
+
+    // Check invitee league membership
+    const inviteeMembership = await resolveLeagueMembership(input.invitedUserId, pool.leagueId);
+    if (!inviteeMembership?.isParticipant) {
+      return { error: 'El usuario invitado no es participante de esta competencia.' };
+    }
+
+    // Upsert invite (idempotent re-invite resets to pending)
+    const existing = await prisma.matchPoolInvite.findUnique({
+      where: { poolId_invitedUserId: { poolId: input.poolId, invitedUserId: input.invitedUserId } },
+    });
+
+    let invite;
+    if (existing) {
+      if (existing.status === 'accepted') {
+        return { error: 'El usuario ya aceptó la invitación.' };
+      }
+      invite = await prisma.matchPoolInvite.update({
+        where: { id: existing.id },
+        data: {
+          invitedByUserId: userId,
+          status: 'pending',
+          message: input.message ?? existing.message,
+          respondedAt: null,
+        },
+      });
+    } else {
+      invite = await prisma.matchPoolInvite.create({
+        data: {
+          poolId: input.poolId,
+          invitedUserId: input.invitedUserId,
+          invitedByUserId: userId,
+          status: 'pending',
+          message: input.message ?? null,
+        },
+      });
+    }
+
+    return { data: { inviteId: invite.id } };
+  } catch (err) {
+    console.error('Error in inviteToMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al enviar la invitación.' };
+  }
+}
+
+// ─── Action: cancelMatchPoolAction ────────────────────────────────────────────
+
+export interface CancelMatchPoolInput {
+  poolId: string;
+  reason?: string;
+}
+
+/**
+ * Cancels an open match pool.
+ *
+ * - Only the creator or a superadmin can cancel.
+ * - Can only cancel 'open' pools.
+ */
+export async function cancelMatchPoolAction(
+  input: CancelMatchPoolInput,
+): Promise<{ data: { poolId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperadmin: true },
+    });
+
+    const pool = await prisma.matchPool.findUnique({
+      where: { id: input.poolId },
+      select: { id: true, createdByUserId: true, status: true, leagueId: true },
+    });
+
+    if (!pool) return { error: 'Reto no encontrado.' };
+
+    const isCreator = pool.createdByUserId === userId;
+    const isSuperadmin = user?.isSuperadmin === true;
+
+    if (!isCreator && !isSuperadmin) {
+      return { error: 'Solo el creador o un superadministrador puede cancelar un reto.' };
+    }
+
+    if (pool.status !== 'open') {
+      return { error: 'Solo se pueden cancelar retos en estado abierto.' };
+    }
+
+    await prisma.matchPool.update({
+      where: { id: pool.id },
+      data: {
+        status: 'cancelled',
+        settlementReason: input.reason ?? 'Cancelado por el creador o administrador.',
+        settledAt: new Date(),
+      },
+    });
+
+    // Mark all entries as cancelled
+    await prisma.matchPoolEntry.updateMany({
+      where: { poolId: pool.id },
+      data: { status: 'cancelled' },
+    });
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/invitado');
+    } catch {
+      // Ignore
+    }
+
+    return { data: { poolId: pool.id } };
+  } catch (err) {
+    console.error('Error in cancelMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al cancelar el reto.' };
+  }
+}

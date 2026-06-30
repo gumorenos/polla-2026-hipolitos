@@ -436,3 +436,19 @@ All final result sources converge on `updateMatchResultInternal`. After every fi
 # Surgical result scheduler boundary
 
 `scripts/fetch-results-surgical.ts` selects due matches with pure epoch-millisecond helpers, rechecks each row, and atomically claims provider attempts through the existing `resultFetchedAt` field. It never implements provider parsing or result persistence itself; successful requests converge on `fetchAndSaveMatchResultInternal` and `updateMatchResultInternal` for scoring, standings, bracket propagation, Survivor synchronization, and revalidation.
+
+# Match Pool (Retos por Partido) boundary
+
+**Match pools** (`match_pool`) are the third competition type. A pool is a per-match referential challenge between league participants.
+
+Key boundaries:
+- **Money safety**: All amounts are referential only. No real money is processed, custodied, transferred, or settled by the app. Physical settlement happens outside the app.
+- **Domain logic** lives in `src/lib/match-pool.ts` (pure functions, no DB access).
+- **Settlement service** `src/lib/services/match-pool-settlement.ts` reads only trusted DB results and writes entry/pool status rows.
+- **Post-result pipeline integration**: `settleMatchPoolsForFinalMatch(matchId)` is called from `runPostFinalResultPipeline` inside a non-fatal try/catch. Result saving is never blocked by pool settlement.
+- **Idempotence**: Settlement is safe to invoke multiple times for the same match.
+- **Pick resolution**: Group matches use 1X2 scores; knockout matches use `winnerTeamCode` (handles penalties).
+- **Void rules**: fewer than 2 entries → void; no entry matches winning pick → void.
+- **Integer rounding**: Floor division, remainder to first winner by entry-array order (deterministic).
+- **Public display**: `PublicMatchPoolsSection` shows all pools read-only at `/` and `/invitado` with no auth.
+- **Models**: `MatchPool`, `MatchPoolEntry`, `MatchPoolInvite` — all in separate tables, cascade-delete from League/Match/User.

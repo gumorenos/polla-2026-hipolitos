@@ -6,6 +6,7 @@ generator client {
 enum CompetitionType {
   full_prediction
   champion_survivor
+  match_pool
 }
 
 datasource db {
@@ -58,6 +59,10 @@ model User {
   oddsSnapshots     OddsSnapshot[]
   oddsRefreshUsages UserOddsRefreshUsage[]
   reminderLogs      ReminderLog[]
+  matchPoolsCreated MatchPool[]         @relation("MatchPoolCreatedBy")
+  matchPoolEntries  MatchPoolEntry[]    @relation("MatchPoolEntryUser")
+  matchPoolInvitesSent     MatchPoolInvite[] @relation("MatchPoolInviteSent")
+  matchPoolInvitesReceived MatchPoolInvite[] @relation("MatchPoolInviteReceived")
 
   @@map("user")
 }
@@ -164,6 +169,7 @@ model Match {
   oddsRefreshUsages UserOddsRefreshUsage[]
   h2hSnapshot       HeadToHeadSnapshot?
   reminderLogs      ReminderLog[]
+  matchPools        MatchPool[]         @relation("MatchPools")
 
   @@index([phase, status])
   @@index([kickoffUtc])
@@ -211,6 +217,7 @@ model League {
   winnerPredictionHistories WinnerPredictionHistory[]
   standings         Standing[]
   reminderLogs      ReminderLog[]
+  matchPools        MatchPool[]        @relation("LeagueMatchPools")
 
   @@map("league")
 }
@@ -562,4 +569,97 @@ model AppSettings {
   @@map("app_settings")
 }
 
+// ─── MATCH POOL / RETOS POR PARTIDO ───────────────────────────────────────────
 
+model MatchPool {
+  id              String    @id @default(cuid())
+  leagueId        String
+  matchId         String
+  createdByUserId String
+
+  // Referential amount — no real money is processed by the app
+  amount   Int    // referential stake amount (e.g. 50)
+  currency String @default("PEN") // e.g. "PEN", "USD"
+  note     String? // optional challenge note
+
+  // Pool lifecycle status
+  // open        — accepting entries (before kickoff)
+  // locked      — kickoff passed, no new entries
+  // void        — cancelled / < 2 entries / no winners
+  // settled     — result applied, net amounts calculated
+  // cancelled   — admin explicitly cancelled
+  status String @default("open")
+
+  settledAt        DateTime?
+  settlementReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league     League @relation("LeagueMatchPools", fields: [leagueId], references: [id], onDelete: Cascade)
+  match      Match  @relation("MatchPools", fields: [matchId], references: [id], onDelete: Cascade)
+  createdBy  User   @relation("MatchPoolCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  entries MatchPoolEntry[]
+  invites MatchPoolInvite[]
+
+  @@index([leagueId])
+  @@index([matchId])
+  @@index([status])
+  @@map("match_pool")
+}
+
+model MatchPoolEntry {
+  id     String @id @default(cuid())
+  poolId String
+  userId String
+
+  // Pick type:
+  //   group matches:    "home_win" | "draw" | "away_win"
+  //   knockout matches: "home_advances" | "away_advances"
+  pickType  String
+  pickValue String // team code or outcome label
+
+  // Entry lifecycle status: active | winner | loser | void | cancelled
+  status String @default("active")
+
+  // Referential net amount after settlement
+  // Positive = net gain, Negative = net loss, null = not yet settled
+  netAmount  Int?
+  resultNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pool MatchPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  user User      @relation("MatchPoolEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, userId])
+  @@index([userId])
+  @@index([status])
+  @@map("match_pool_entry")
+}
+
+model MatchPoolInvite {
+  id              String @id @default(cuid())
+  poolId          String
+  invitedUserId   String
+  invitedByUserId String
+
+  // Invite status: pending | accepted | declined | expired
+  status      String    @default("pending")
+  message     String?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pool        MatchPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  invitedUser User      @relation("MatchPoolInviteReceived", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation("MatchPoolInviteSent", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, invitedUserId])
+  @@index([invitedUserId])
+  @@index([status])
+  @@map("match_pool_invite")
+}

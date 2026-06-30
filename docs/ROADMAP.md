@@ -266,3 +266,17 @@ The hybrid approach gives us the best of both: the reference's production-qualit
 - [x] Add persistent provider team aliases, unmatched outcome diagnostics, and conservative manual mapping in `/admin/odds`.
 - [x] Add a persistent superadmin admin/participant visual mode without changing authorization.
 - [x] Propagate final knockout winners/semifinal losers and synchronize Champion Survivor eliminations.
+
+# Phase 10 — Retos por Partido (Match Pool)
+
+- [x] Add `match_pool` as third `CompetitionType` in Prisma schema.
+- [x] Add `MatchPool`, `MatchPoolEntry`, `MatchPoolInvite` models with additive migration.
+- [x] Implement pure domain helpers in `src/lib/match-pool.ts`: pick options, access guards, result resolution, settlement calculation, public serializer.
+- [x] Implement `src/lib/services/match-pool-settlement.ts`: idempotent settlement for all open/locked pools after final result.
+- [x] Wire `settleMatchPoolsForFinalMatch` into `runPostFinalResultPipeline` (non-fatal, try/catch).
+- [x] Implement server actions in `src/lib/actions/match-pools.ts`: create, join, invite, cancel.
+- [x] Update `src/lib/actions/leagues.ts` to support `match_pool` competition type with showOdds=false default.
+- [x] Implement read-only `PublicMatchPoolsSection` component for guest display.
+- [x] Write 39-case test suite in `match-pool.test.ts` — all passing.
+- [x] Write `docs/MATCH_POOLS.md` documentation including money safety disclaimer.
+- [x] Update `docs/ARCHITECTURE.md` and `docs/ROADMAP.md`.

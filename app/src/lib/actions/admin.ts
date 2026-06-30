@@ -11,6 +11,7 @@ import { isConsistentFinalMatchResult, normalizeFinalMatchResult } from '../matc
 import { applyKnockoutProgressionAndSurvivorSync } from '../knockout-propagation-service';
 import { recalculateAllStandings } from '../services/standings';
 import { OFFICIAL_KNOCKOUT_SCHEDULE } from '../official-knockout-schedule';
+import { settleMatchPoolsForFinalMatch } from '../services/match-pool-settlement';
 
 type AdminUserType = 'participant' | 'admin' | 'superadmin';
 
@@ -391,6 +392,21 @@ export async function runPostFinalResultPipeline(matchId: string, actingUserId?:
     progressionWarning = error instanceof Error
       ? `El resultado se guardó, pero no se pudo sincronizar el torneo: ${error.message}`
       : 'El resultado se guardó, pero no se pudo sincronizar el torneo.';
+  }
+
+  // Settle match pools — non-fatal, failure appends to progressionWarning only
+  try {
+    const poolSettlement = await settleMatchPoolsForFinalMatch(matchId);
+    if (poolSettlement.warnings.length > 0) {
+      const poolWarning = poolSettlement.warnings.join(' ');
+      progressionWarning = progressionWarning
+        ? `${progressionWarning} ${poolWarning}`
+        : poolWarning;
+    }
+  } catch (error) {
+    const poolError = error instanceof Error ? error.message : 'Error desconocido';
+    const warn = `Las bolsas se guardaron pero no se pudieron liquidar automáticamente: ${poolError}`;
+    progressionWarning = progressionWarning ? `${progressionWarning} ${warn}` : warn;
   }
 
   try {

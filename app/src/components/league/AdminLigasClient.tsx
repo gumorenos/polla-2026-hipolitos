@@ -312,7 +312,18 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   >
                     {/* League Name */}
                     <div className="col-span-3 w-full text-left">
-                      <p className="font-bold text-text-primary text-sm">{l.name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-text-primary text-sm">{l.name}</p>
+                        {l.competitionType === 'full_prediction' && (
+                          <span className="text-[8px] bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded font-mono font-semibold uppercase">Polla</span>
+                        )}
+                        {l.competitionType === 'champion_survivor' && (
+                          <span className="text-[8px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-mono font-semibold uppercase">Survivor</span>
+                        )}
+                        {l.competitionType === 'match_pool' && (
+                          <span className="text-[8px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded font-mono font-semibold uppercase">Retos</span>
+                        )}
+                      </div>
                       <span className="text-xs text-text-secondary font-mono">ID: {l.id} | Código: {l.inviteCode}</span>
                     </div>
 
@@ -687,10 +698,14 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                 </label>
                 <div className="bg-bg-secondary border border-border-default rounded-lg p-3">
                   <p className="text-sm font-semibold text-text-primary">
-                    {settingsLeague.competitionType === 'champion_survivor' ? 'Solo campeón' : 'Polla completa'}
+                    {settingsLeague.competitionType === 'champion_survivor' && 'Solo campeón'}
+                    {settingsLeague.competitionType === 'full_prediction' && 'Polla completa'}
+                    {settingsLeague.competitionType === 'match_pool' && 'Retos por Partido'}
                   </p>
                   <p className="text-[10px] text-text-muted mt-1">
-                    El tipo de competencia no se puede cambiar después de crear la competencia.
+                    {settingsLeague.competitionType === 'match_pool'
+                      ? 'Bolsa entre amigos por cada partido'
+                      : 'El tipo de competencia no se puede cambiar después de crear la competencia.'}
                   </p>
                 </div>
               </div>
@@ -724,173 +739,225 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                    Puntos por Acertar Campeón
-                  </label>
-                  <input
-                    type="number"
-                    name="championPoints"
-                    required
-                    defaultValue={settingsLeague.championPoints}
-                    className="field text-xs py-1.5 w-full"
-                  />
-                </div>
-              </div>
+              {settingsLeague.competitionType === 'match_pool' ? (
+                <>
+                  <input type="hidden" name="championPoints" value={settingsLeague.championPoints} />
+                  <input type="hidden" name="championDeadline" value="" />
+                  <input type="hidden" name="pointsExactScore" value={settingsLeague.pointsExactScore} />
+                  <input type="hidden" name="pointsWinner" value={settingsLeague.pointsWinner} />
+                  <input type="hidden" name="pointsDraw" value={settingsLeague.pointsDraw} />
+                  <input type="hidden" name="pointsConsolation" value={settingsLeague.pointsConsolation} />
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                        Puntos por Acertar Campeón
+                      </label>
+                      <input
+                        type="number"
+                        name="championPoints"
+                        required
+                        defaultValue={settingsLeague.championPoints}
+                        className="field text-xs py-1.5 w-full"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
-                <p className="text-[10px] text-text-muted leading-relaxed">
-                  Puedes desactivar estas ayudas para hacer la competencia más difícil.
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Mostrar odds
-                    </label>
-                    <select
-                      name="showOdds"
-                      defaultValue={String(settingsLeague.showOdds)}
-                      className="field text-xs py-1.5 w-full"
-                    >
-                      <option value="true">Mostrar</option>
-                      <option value="false">Ocultar</option>
-                    </select>
+                  <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <p className="text-[10px] text-text-muted leading-relaxed">
+                      Puedes desactivar estas ayudas para hacer la competencia más difícil.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Mostrar odds
+                        </label>
+                        <select
+                          name="showOdds"
+                          defaultValue={String(settingsLeague.showOdds)}
+                          className="field text-xs py-1.5 w-full"
+                        >
+                          <option value="true">Mostrar</option>
+                          <option value="false">Ocultar</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Mostrar historial / H2H
+                        </label>
+                        <select
+                          name="showH2H"
+                          defaultValue={String(settingsLeague.showH2H)}
+                          className="field text-xs py-1.5 w-full"
+                        >
+                          <option value="true">Mostrar</option>
+                          <option value="false">Ocultar</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Mostrar historial / H2H
+                      Límite para elegir Campeón (Hora Lima)
                     </label>
-                    <select
-                      name="showH2H"
-                      defaultValue={String(settingsLeague.showH2H)}
+                    <input
+                      type="datetime-local"
+                      name="championDeadline"
+                      defaultValue={settingsLeague.championDeadline ? getLimaDateTimeLocalString(settingsLeague.championDeadline) : ''}
                       className="field text-xs py-1.5 w-full"
-                    >
-                      <option value="true">Mostrar</option>
-                      <option value="false">Ocultar</option>
-                    </select>
+                    />
+                    <p className="text-[10px] text-text-muted">
+                      Si se deja vacío, vencerá automáticamente al inicio del primer partido de 16avos de final.
+                    </p>
+                    {settingsLeague.championDeadline && (
+                      <p className="text-[10px] text-text-muted">
+                        Valor almacenado actual (UTC): <code className="bg-bg-secondary px-1 py-0.5 rounded">{settingsLeague.championDeadline}</code>
+                      </p>
+                    )}
                   </div>
-                </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                  Límite para elegir Campeón (Hora Lima)
-                </label>
-                <input
-                  type="datetime-local"
-                  name="championDeadline"
-                  defaultValue={settingsLeague.championDeadline ? getLimaDateTimeLocalString(settingsLeague.championDeadline) : ''}
-                  className="field text-xs py-1.5 w-full"
-                />
-                <p className="text-[10px] text-text-muted">
-                  Si se deja vacío, vencerá automáticamente al inicio del primer partido de 16avos de final.
-                </p>
-                {settingsLeague.championDeadline && (
-                  <p className="text-[10px] text-text-muted">
-                    Valor almacenado actual (UTC): <code className="bg-bg-secondary px-1 py-0.5 rounded">{settingsLeague.championDeadline}</code>
+                  <div className="border-t border-border-subtle pt-4 space-y-4">
+                    <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-gold-400">
+                      Reglas de Puntuación
+                    </h4>
+
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Presets:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const form = document.querySelector('form') as HTMLFormElement | null;
+                          if (form) {
+                            form.championPoints.value = '10';
+                            form.pointsExactScore.value = '5';
+                            form.pointsWinner.value = '3';
+                            form.pointsDraw.value = '3';
+                            form.pointsConsolation.value = '1';
+                          }
+                        }}
+                        className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
+                      >
+                        Por defecto (10, 5, 3, 3, 1)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const form = document.querySelector('form') as HTMLFormElement | null;
+                          if (form) {
+                            form.championPoints.value = '50';
+                            form.pointsExactScore.value = '5';
+                            form.pointsWinner.value = '2';
+                            form.pointsDraw.value = '2';
+                            form.pointsConsolation.value = '1';
+                          }
+                        }}
+                        className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
+                      >
+                        Campeón pesa más (50, 5, 2, 2, 1)
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Resultado Exacto
+                        </label>
+                        <input
+                          type="number"
+                          name="pointsExactScore"
+                          required
+                          defaultValue={settingsLeague.pointsExactScore}
+                          className="field text-xs py-1.5 w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Tendencia Ganador
+                        </label>
+                        <input
+                          type="number"
+                          name="pointsWinner"
+                          required
+                          defaultValue={settingsLeague.pointsWinner}
+                          className="field text-xs py-1.5 w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Tendencia Empate
+                        </label>
+                        <input
+                          type="number"
+                          name="pointsDraw"
+                          required
+                          defaultValue={settingsLeague.pointsDraw}
+                          className="field text-xs py-1.5 w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Consolación (1 equipo exacto)
+                        </label>
+                        <input
+                          type="number"
+                          name="pointsConsolation"
+                          required
+                          defaultValue={settingsLeague.pointsConsolation}
+                          className="field text-xs py-1.5 w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Keep showOdds and showH2H configurable for match_pool since it can be turned on/off by admin */}
+              {settingsLeague.competitionType === 'match_pool' && (
+                <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                  <p className="text-[10px] text-text-muted leading-relaxed">
+                    Configuración de visibilidad para Retos por Partido:
                   </p>
-                )}
-              </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                        Mostrar odds (Pre-partido congelados)
+                      </label>
+                      <select
+                        name="showOdds"
+                        defaultValue={String(settingsLeague.showOdds)}
+                        className="field text-xs py-1.5 w-full"
+                      >
+                        <option value="true">Mostrar</option>
+                        <option value="false">Ocultar</option>
+                      </select>
+                    </div>
 
-              <div className="border-t border-border-subtle pt-4 space-y-4">
-                <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-gold-400">
-                  Reglas de Puntuación
-                </h4>
-                
-                <div className="flex gap-2 items-center flex-wrap">
-                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Presets:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const form = document.querySelector('form') as HTMLFormElement | null;
-                      if (form) {
-                        form.championPoints.value = '10';
-                        form.pointsExactScore.value = '5';
-                        form.pointsWinner.value = '3';
-                        form.pointsDraw.value = '3';
-                        form.pointsConsolation.value = '1';
-                      }
-                    }}
-                    className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
-                  >
-                    Por defecto (10, 5, 3, 3, 1)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const form = document.querySelector('form') as HTMLFormElement | null;
-                      if (form) {
-                        form.championPoints.value = '50';
-                        form.pointsExactScore.value = '5';
-                        form.pointsWinner.value = '2';
-                        form.pointsDraw.value = '2';
-                        form.pointsConsolation.value = '1';
-                      }
-                    }}
-                    className="py-1 px-3 text-[10px] rounded-lg bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border-default font-mono cursor-pointer"
-                  >
-                    Campeón pesa más (50, 5, 2, 2, 1)
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Resultado Exacto
-                    </label>
-                    <input
-                      type="number"
-                      name="pointsExactScore"
-                      required
-                      defaultValue={settingsLeague.pointsExactScore}
-                      className="field text-xs py-1.5 w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Tendencia Ganador
-                    </label>
-                    <input
-                      type="number"
-                      name="pointsWinner"
-                      required
-                      defaultValue={settingsLeague.pointsWinner}
-                      className="field text-xs py-1.5 w-full"
-                    />
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                        Mostrar historial / H2H
+                      </label>
+                      <select
+                        name="showH2H"
+                        defaultValue={String(settingsLeague.showH2H)}
+                        className="field text-xs py-1.5 w-full"
+                      >
+                        <option value="true">Mostrar</option>
+                        <option value="false">Ocultar</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Tendencia Empate
-                    </label>
-                    <input
-                      type="number"
-                      name="pointsDraw"
-                      required
-                      defaultValue={settingsLeague.pointsDraw}
-                      className="field text-xs py-1.5 w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
-                      Consolación (1 equipo exacto)
-                    </label>
-                    <input
-                      type="number"
-                      name="pointsConsolation"
-                      required
-                      defaultValue={settingsLeague.pointsConsolation}
-                      className="field text-xs py-1.5 w-full"
-                    />
-                  </div>
-                </div>
-              </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <button

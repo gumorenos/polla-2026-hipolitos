@@ -21,6 +21,7 @@ interface LeagueData {
   activeMembersCount?: number;
   inactiveMembersCount?: number;
   totalMembersCount?: number;
+  competitionType?: string;
   _count?: {
     members: number;
   };
@@ -35,9 +36,11 @@ interface LeagueMembership {
   league: LeagueData;
 }
 
+type CompetitionTypeOption = 'full_prediction' | 'champion_survivor' | 'match_pool';
+
 interface LigasClientProps {
   memberships: LeagueMembership[];
-  initialCompetitionType?: 'full_prediction' | 'champion_survivor';
+  initialCompetitionType?: CompetitionTypeOption;
   openCreateModal?: boolean;
 }
 
@@ -51,10 +54,10 @@ export const LigasClient: React.FC<LigasClientProps> = ({
   const createNameFocusedRef = useRef(false);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [newLeagueName, setNewLeagueName] = useState('');
-  const [competitionType, setCompetitionType] = useState<'full_prediction' | 'champion_survivor'>(initialCompetitionType);
+  const [competitionType, setCompetitionType] = useState<CompetitionTypeOption>(initialCompetitionType);
   const [championDeadline, setChampionDeadline] = useState('');
   const [joinAsParticipant, setJoinAsParticipant] = useState(false);
-  const [showOdds, setShowOdds] = useState(true);
+  const [showOdds, setShowOdds] = useState(initialCompetitionType !== 'match_pool');
   const [showH2H, setShowH2H] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(openCreateModal);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -88,7 +91,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({
     const result = await createLeagueAction({
       name: newLeagueName,
       competitionType,
-      championDeadline: championDeadline ? parseLimaDateTimeToUtc(championDeadline) : null,
+      championDeadline: competitionType === 'match_pool' ? null : (championDeadline ? parseLimaDateTimeToUtc(championDeadline) : null),
       joinAsParticipant,
       showOdds,
       showH2H,
@@ -111,6 +114,7 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       }
     }
   };
+
 
   return (
     <div className="space-y-6">
@@ -151,19 +155,34 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   className="card-base p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-bold text-text-primary">{league.name}</h3>
-                      {membership.role === 'owner' && (
-                        <span className="text-[9px] font-mono font-semibold bg-gold-400/10 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full uppercase">
-                          Dueño
-                        </span>
-                      )}
-                      {membership.role === 'admin' && (
-                        <span className="text-[9px] font-mono font-semibold bg-blue-400/10 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full uppercase">
-                          Admin
-                        </span>
-                      )}
-                    </div>
+                     <div className="flex items-center gap-2 flex-wrap">
+                       <h3 className="text-lg font-bold text-text-primary">{league.name}</h3>
+                       {membership.role === 'owner' && (
+                         <span className="text-[9px] font-mono font-semibold bg-gold-400/10 text-gold-400 border border-gold-400/30 px-2 py-0.5 rounded-full uppercase">
+                           Dueño
+                         </span>
+                       )}
+                       {membership.role === 'admin' && (
+                         <span className="text-[9px] font-mono font-semibold bg-blue-400/10 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full uppercase">
+                           Admin
+                         </span>
+                       )}
+                       {league.competitionType === 'full_prediction' && (
+                         <span className="text-[9px] font-mono font-semibold bg-green-400/10 text-green-300 border border-green-400/30 px-2 py-0.5 rounded-full uppercase">
+                           Polla completa
+                         </span>
+                       )}
+                       {league.competitionType === 'champion_survivor' && (
+                         <span className="text-[9px] font-mono font-semibold bg-purple-400/10 text-purple-300 border border-purple-400/30 px-2 py-0.5 rounded-full uppercase">
+                           Champion Survivor
+                         </span>
+                       )}
+                       {league.competitionType === 'match_pool' && (
+                         <span className="text-[9px] font-mono font-semibold bg-orange-400/10 text-orange-300 border border-orange-400/30 px-2 py-0.5 rounded-full uppercase">
+                           Retos por Partido
+                         </span>
+                       )}
+                     </div>
                     <div className="flex items-center gap-4 text-xs text-text-secondary">
                       <span className="flex items-center gap-1">
                         <Users className="w-3.5 h-3.5 text-gold-400" />
@@ -322,23 +341,45 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                     <span className="block text-sm font-semibold text-text-primary">Solo campeón</span>
                     <span className="block text-[10px] text-text-secondary mt-1">Los participantes eligen solo al campeón</span>
                   </label>
+                  <label className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    competitionType === 'match_pool'
+                      ? 'border-gold-400 bg-gold-400/10'
+                      : 'border-border-default bg-bg-secondary/40 hover:bg-bg-hover'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="competitionType"
+                      value="match_pool"
+                      checked={competitionType === 'match_pool'}
+                      onChange={() => {
+                        setCompetitionType('match_pool');
+                        setShowOdds(false);
+                      }}
+                      className="sr-only"
+                      disabled={loading}
+                    />
+                    <span className="block text-sm font-semibold text-text-primary">Retos por Partido</span>
+                    <span className="block text-[10px] text-text-secondary mt-1">Bolsa entre amigos por cada partido</span>
+                  </label>
                 </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
-                  Fecha límite para elegir campeón (Hora Lima)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={championDeadline}
-                  onChange={(e) => setChampionDeadline(e.target.value)}
-                  className="field"
-                  disabled={loading}
-                />
-                <p className="text-[10px] text-text-muted leading-relaxed">
-                  Puedes configurarla después, pero recomendamos definir una fecha límite antes de invitar participantes.
-                </p>
-              </div>
+              {competitionType !== 'match_pool' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block">
+                    Fecha límite para elegir campeón (Hora Lima)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={championDeadline}
+                    onChange={(e) => setChampionDeadline(e.target.value)}
+                    className="field"
+                    disabled={loading}
+                  />
+                  <p className="text-[10px] text-text-muted leading-relaxed">
+                    Puedes configurarla después, pero recomendamos definir una fecha límite antes de invitar participantes.
+                  </p>
+                </div>
+              )}
               <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
                 <input
                   type="checkbox"
@@ -366,7 +407,11 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   />
                   <span className="text-xs text-text-secondary leading-relaxed">
                     <span className="block font-semibold text-text-primary">Mostrar odds</span>
-                    Muestra ayudas de mercado cuando existan datos cacheados.
+                    {competitionType === 'match_pool' ? (
+                      <span>En Retos por Partido las cuotas están ocultas por defecto. Si se activan después desde admin, deben ser solo cuotas pre-partido congeladas.</span>
+                    ) : (
+                      <span>Muestra ayudas de mercado cuando existan datos cacheados.</span>
+                    )}
                   </span>
                 </label>
                 <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">

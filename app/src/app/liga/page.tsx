@@ -69,6 +69,7 @@ export default async function LigasPage({
         entryFee: m.league.entryFee,
         currency: m.league.currency,
         prizePoolOverride: m.league.prizePoolOverride ?? null,
+        competitionType: m.league.competitionType,
         activeMembersCount,
         inactiveMembersCount,
         totalMembersCount,
@@ -79,14 +80,22 @@ export default async function LigasPage({
     };
   });
 
-  const initialCompetitionType = sParams.tipo === 'champion_survivor' ? 'champion_survivor' : 'full_prediction';
+  let initialCompetitionType: 'full_prediction' | 'champion_survivor' | 'match_pool' = 'full_prediction';
+  if (sParams.tipo === 'champion_survivor') {
+    initialCompetitionType = 'champion_survivor';
+  } else if (sParams.tipo === 'match_pool') {
+    initialCompetitionType = 'match_pool';
+  }
+
+  const openCreateModal = sParams.tipo === 'champion_survivor' || sParams.tipo === 'match_pool';
 
   return (
     <LigasClient
       memberships={serializedMemberships}
       initialCompetitionType={initialCompetitionType}
-      openCreateModal={sParams.tipo === 'champion_survivor'}
+      openCreateModal={openCreateModal}
     />
   );
 }
+
 

@@ -282,6 +282,7 @@ export default async function PublicHome() {
           status: 'active',
           isActive: true,
         },
+        ...(!!session?.user?.isSuperadmin ? {} : { hiddenAt: null }),
       },
       include: {
         league: { select: { id: true, name: true } },

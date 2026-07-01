@@ -22,6 +22,7 @@ import {
   canInviteToMatchPool,
   authorizeMatchPoolMutation,
   isMatchPoolPickValid,
+  canHideMatchPool,
 } from '../match-pool';
 import type { EditMatchPoolInput, MatchPoolPickType, MatchPoolStatus } from '../match-pool';
 
@@ -469,7 +470,10 @@ export async function updateMatchPoolAction(
     if (!user || (user.status !== 'approved' && !user.isSuperadmin)) {
       return { error: 'Tu usuario debe estar aprobado para editar retos.' };
     }
-    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+    if (pool.league.competitionType !== 'match_pool') {
+      return { error: 'Esta competencia no es de tipo Retos por Partido.' };
+    }
+    if (!user.isSuperadmin && (!pool.league.isActive || pool.league.status !== 'active')) {
       return { error: 'Esta competencia de Retos por Partido no está activa.' };
     }
 
@@ -587,11 +591,13 @@ export async function cancelMatchPoolAction(
     });
 
     if (!pool) return { error: 'Reto no encontrado.' };
-
     if (!user || (user.status !== 'approved' && !user.isSuperadmin)) {
       return { error: 'Tu usuario debe estar aprobado para cancelar retos.' };
     }
-    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+    if (pool.league.competitionType !== 'match_pool') {
+      return { error: 'Esta competencia no es de tipo Retos por Partido.' };
+    }
+    if (!user.isSuperadmin && (!pool.league.isActive || pool.league.status !== 'active')) {
       return { error: 'Esta competencia de Retos por Partido no está activa.' };
     }
 
@@ -648,5 +654,83 @@ export async function cancelMatchPoolAction(
   } catch (err) {
     console.error('Error in cancelMatchPoolAction:', err);
     return { error: 'Ocurrió un error al cancelar el reto.' };
+  }
+}
+
+interface HideMatchPoolInput {
+  poolId: string;
+  reason?: string;
+}
+
+export async function hideMatchPoolAction(
+  input: HideMatchPoolInput,
+): Promise<{ data: { poolId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true, isSuperadmin: true },
+    });
+
+    const pool = await prisma.matchPool.findUnique({
+      where: { id: input.poolId },
+      include: {
+        league: { select: { slug: true, competitionType: true } },
+        entries: { select: { userId: true } },
+      },
+    });
+
+    if (!pool) return { error: 'Reto no encontrado.' };
+    if (!user || !user.isSuperadmin) {
+      return { error: 'Solo los superadministradores pueden ocultar retos.' };
+    }
+
+    const decision = canHideMatchPool({
+      status: pool.status as MatchPoolStatus,
+      entryUserIds: pool.entries.map((entry) => entry.userId),
+      isSuperadmin: user.isSuperadmin,
+    });
+    if (!decision.allowed) {
+      return { error: decision.error ?? 'No puedes ocultar este reto.' };
+    }
+
+    const hideReason = input.reason?.trim() || 'Ocultado por el superadministrador.';
+
+    await prisma.$transaction(async (tx) => {
+      await tx.matchPool.update({
+        where: { id: pool.id },
+        data: {
+          hiddenAt: new Date(),
+          hiddenByUserId: userId,
+          hideReason,
+        },
+      });
+
+      await tx.adminActionLog.create({
+        data: {
+          userId,
+          action: 'match_pool_hide',
+          target: `match_pool:${pool.id}`,
+          details: JSON.stringify({
+            reason: hideReason,
+          }),
+        },
+      });
+    });
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/invitado');
+      revalidatePath(`/liga/${pool.league.slug}`);
+      revalidatePath(`/competencia/${pool.league.slug}`);
+    } catch { /* Ignore */ }
+
+    return { data: { poolId: pool.id } };
+  } catch (err) {
+    console.error('Error in hideMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al ocultar el reto.' };
   }
 }

@@ -83,7 +83,10 @@ export default async function LigaDetallePage({
 
     const [poolRecords, poolMatches, approvedUsers] = await Promise.all([
       prisma.matchPool.findMany({
-        where: { leagueId: league.id },
+        where: {
+          leagueId: league.id,
+          ...(isSuperadmin ? {} : { hiddenAt: null }),
+        },
         include: {
           match: {
             select: {
@@ -411,6 +414,17 @@ export default async function LigaDetallePage({
       where: { leagueId: league.id },
     });
 
+    // Fetch finished/resolved matches to assist with on-the-fly elimination derivation
+    const matches = await prisma.match.findMany({
+      select: {
+        id: true,
+        phase: true,
+        homeTeamCode: true,
+        awayTeamCode: true,
+        winnerTeamCode: true,
+      },
+    });
+
     const picksMap = new Map(picks.map(p => [p.userId, p]));
     const statusMap = new Map(teamStatuses.map(ts => [ts.teamCode, ts]));
 
@@ -438,7 +452,7 @@ export default async function LigaDetallePage({
       });
 
     // 4. Call buildChampionSurvivalTable
-    const survivalTable = buildChampionSurvivalTable(tableInputs);
+    const survivalTable = buildChampionSurvivalTable(tableInputs, matches);
     serializedSurvivalTable = survivalTable.map((row) => ({
       userId: row.userId,
       displayName: row.displayName,

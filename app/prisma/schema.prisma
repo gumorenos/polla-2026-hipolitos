@@ -60,6 +60,7 @@ model User {
   oddsRefreshUsages UserOddsRefreshUsage[]
   reminderLogs      ReminderLog[]
   matchPoolsCreated MatchPool[]         @relation("MatchPoolCreatedBy")
+  matchPoolsHidden  MatchPool[]         @relation("MatchPoolHiddenBy")
   matchPoolEntries  MatchPoolEntry[]    @relation("MatchPoolEntryUser")
   matchPoolInvitesSent     MatchPoolInvite[] @relation("MatchPoolInviteSent")
   matchPoolInvitesReceived MatchPoolInvite[] @relation("MatchPoolInviteReceived")
@@ -595,12 +596,17 @@ model MatchPool {
   settledAt        DateTime?
   settlementReason String?
 
+  hiddenAt         DateTime?
+  hiddenByUserId   String?
+  hideReason       String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   league     League @relation("LeagueMatchPools", fields: [leagueId], references: [id], onDelete: Cascade)
   match      Match  @relation("MatchPools", fields: [matchId], references: [id], onDelete: Cascade)
   createdBy  User   @relation("MatchPoolCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  hiddenBy   User?  @relation("MatchPoolHiddenBy", fields: [hiddenByUserId], references: [id], onDelete: SetNull)
 
   entries MatchPoolEntry[]
   invites MatchPoolInvite[]
@@ -608,6 +614,7 @@ model MatchPool {
   @@index([leagueId])
   @@index([matchId])
   @@index([status])
+  @@index([hiddenAt])
   @@map("match_pool")
 }
 

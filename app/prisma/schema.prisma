@@ -207,6 +207,8 @@ model League {
   championTeamCode  String?
   knockoutOutcomeBasis String            @default("qualified_team") // "qualified_team" | "score_result"
   competitionType   CompetitionType    @default(full_prediction)
+  matchPoolLateEntryEnabled Boolean    @default(false)
+  matchPoolLateEntryMinutes Int        @default(45)
 
 
 

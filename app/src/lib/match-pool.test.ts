@@ -17,6 +17,7 @@ import {
   serializePublicMatchPool,
   authorizeMatchPoolMutation,
   isMatchPoolPickValid,
+  getMatchPoolEntryDeadline,
   type MatchPoolMatchContext,
   type MatchPoolSettlementInput,
 } from './match-pool';
@@ -219,6 +220,24 @@ describe('Kickoff cutoff', () => {
   it('canCreateMatchPool false after kickoff', () => {
     const match = makeGroupMatch({ kickoffUtc: KICKOFF_PAST });
     expect(canCreateMatchPool(match, NOW)).toBe(false);
+  });
+});
+
+describe('Configurable late entry', () => {
+  const kickoff = new Date('2026-06-20T20:00:00.000Z');
+  const match = makeGroupMatch({ kickoffUtc: kickoff });
+
+  it('closes at kickoff when late entry is disabled', () => {
+    expect(canCreateMatchPool(match, kickoff, { enabled: false, minutes: 45 })).toBe(false);
+    expect(canJoinMatchPool({ status: 'open' }, match, kickoff, { enabled: false, minutes: 45 })).toBe(false);
+  });
+
+  it('allows entry until kickoff plus configured minutes', () => {
+    const config = { enabled: true, minutes: 45 };
+    expect(getMatchPoolEntryDeadline(match, config).toISOString()).toBe('2026-06-20T20:45:00.000Z');
+    expect(canCreateMatchPool(match, new Date('2026-06-20T20:44:59.000Z'), config)).toBe(true);
+    expect(canJoinMatchPool({ status: 'open' }, match, new Date('2026-06-20T20:44:59.000Z'), config)).toBe(true);
+    expect(canInviteToMatchPool({ status: 'open' }, match, new Date('2026-06-20T20:45:00.000Z'), config)).toBe(false);
   });
 });
 

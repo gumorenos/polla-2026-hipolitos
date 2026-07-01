@@ -74,6 +74,8 @@ export async function createMatchPoolAction(
         status: true,
         isActive: true,
         slug: true,
+        matchPoolLateEntryEnabled: true,
+        matchPoolLateEntryMinutes: true,
       },
     });
     if (!league) return { error: 'Competencia no encontrada.' };
@@ -103,8 +105,11 @@ export async function createMatchPoolAction(
     if (!match) return { error: 'Partido no encontrado.' };
 
     const now = new Date();
-    if (!canCreateMatchPool(match, now)) {
-      return { error: 'No se puede crear un reto después del inicio del partido.' };
+    if (!canCreateMatchPool(match, now, {
+      enabled: league.matchPoolLateEntryEnabled,
+      minutes: league.matchPoolLateEntryMinutes,
+    })) {
+      return { error: 'El plazo para crear retos de este partido ya terminó.' };
     }
 
     // Validate amount
@@ -194,6 +199,8 @@ export async function joinMatchPoolAction(
             status: true,
             isActive: true,
             slug: true,
+            matchPoolLateEntryEnabled: true,
+            matchPoolLateEntryMinutes: true,
           },
         },
         match: {
@@ -232,7 +239,10 @@ export async function joinMatchPoolAction(
     };
 
     const now = new Date();
-    if (!canJoinMatchPool({ status: pool.status as 'open' }, matchCtx, now)) {
+    if (!canJoinMatchPool({ status: pool.status as 'open' }, matchCtx, now, {
+      enabled: pool.league.matchPoolLateEntryEnabled,
+      minutes: pool.league.matchPoolLateEntryMinutes,
+    })) {
       return { error: 'No puedes unirte a este reto. Puede estar cerrado o ya haber empezado el partido.' };
     }
 
@@ -249,14 +259,21 @@ export async function joinMatchPoolAction(
       return { error: `El tipo de predicción '${input.pickType}' no es válido para este partido.` };
     }
 
-    const entry = await prisma.matchPoolEntry.create({
-      data: {
-        poolId: input.poolId,
-        userId,
-        pickType: input.pickType,
-        pickValue: input.pickValue,
-        status: 'active',
-      },
+    const entry = await prisma.$transaction(async (tx) => {
+      const createdEntry = await tx.matchPoolEntry.create({
+        data: {
+          poolId: input.poolId,
+          userId,
+          pickType: input.pickType,
+          pickValue: input.pickValue,
+          status: 'active',
+        },
+      });
+      await tx.matchPoolInvite.updateMany({
+        where: { poolId: input.poolId, invitedUserId: userId, status: 'pending' },
+        data: { status: 'accepted', respondedAt: new Date() },
+      });
+      return createdEntry;
     });
 
     try {
@@ -311,6 +328,8 @@ export async function inviteToMatchPoolAction(
             status: true,
             isActive: true,
             slug: true,
+            matchPoolLateEntryEnabled: true,
+            matchPoolLateEntryMinutes: true,
           },
         },
         match: {
@@ -345,7 +364,10 @@ export async function inviteToMatchPoolAction(
     };
 
     const now = new Date();
-    if (!canInviteToMatchPool({ status: pool.status as 'open' }, matchCtx, now)) {
+    if (!canInviteToMatchPool({ status: pool.status as 'open' }, matchCtx, now, {
+      enabled: pool.league.matchPoolLateEntryEnabled,
+      minutes: pool.league.matchPoolLateEntryMinutes,
+    })) {
       return { error: 'No se puede enviar invitaciones a este reto.' };
     }
 

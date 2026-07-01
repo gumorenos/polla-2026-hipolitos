@@ -479,3 +479,15 @@ We implement the following 6 tie-breakers sequentially:
 - A one-person reto has no counterparty whose accepted terms could be changed.
 - Once another user enters, amount, match, and prediction changes would alter shared terms.
 - Public discovery is a property of active Match Pool lobbies; `isDefault` remains reserved for the primary traditional/Survivor dashboard.
+
+## ADR-028 — Explicit late-entry window and Survivor round ranking
+
+**Date:** 2026-06-30
+**Status:** Accepted
+
+**Decision:** Match Pool late entry is disabled by default and may be enabled per lobby for a bounded number of minutes after kickoff. Champion Survivor public ranking is a survival table ordered by champion/alive status and elimination round, with ties inside the same round and no points.
+
+**Rationale:**
+- Late entry changes the information available to participants, so it must be explicit and visible.
+- One shared deadline calculation prevents create, join, invite, and UI rules from drifting.
+- Survivor measures how long a champion pick remains viable, not accumulated prediction points.

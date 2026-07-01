@@ -105,6 +105,11 @@ export interface EditMatchPoolInput {
   reason?: string;
 }
 
+export interface MatchPoolLateEntryConfig {
+  enabled: boolean;
+  minutes: number;
+}
+
 // ─── Pick options ──────────────────────────────────────────────────────────────
 
 /**
@@ -129,8 +134,18 @@ export function getAllowedMatchPoolPickOptions(
 export function canCreateMatchPool(
   match: Pick<MatchPoolMatchContext, 'kickoffUtc'>,
   now: Date,
+  lateEntry: MatchPoolLateEntryConfig = { enabled: false, minutes: 45 },
 ): boolean {
-  return now.getTime() < new Date(match.kickoffUtc).getTime();
+  return now.getTime() < getMatchPoolEntryDeadline(match, lateEntry).getTime();
+}
+
+export function getMatchPoolEntryDeadline(
+  match: Pick<MatchPoolMatchContext, 'kickoffUtc'>,
+  lateEntry: MatchPoolLateEntryConfig,
+): Date {
+  const kickoffMs = new Date(match.kickoffUtc).getTime();
+  const extraMinutes = lateEntry.enabled ? Math.max(0, lateEntry.minutes) : 0;
+  return new Date(kickoffMs + extraMinutes * 60_000);
 }
 
 /**
@@ -140,8 +155,9 @@ export function canJoinMatchPool(
   pool: { status: MatchPoolStatus },
   match: Pick<MatchPoolMatchContext, 'kickoffUtc'>,
   now: Date,
+  lateEntry: MatchPoolLateEntryConfig = { enabled: false, minutes: 45 },
 ): boolean {
-  return pool.status === 'open' && now.getTime() < new Date(match.kickoffUtc).getTime();
+  return pool.status === 'open' && canCreateMatchPool(match, now, lateEntry);
 }
 
 /**
@@ -151,8 +167,9 @@ export function canInviteToMatchPool(
   pool: { status: MatchPoolStatus },
   match: Pick<MatchPoolMatchContext, 'kickoffUtc'>,
   now: Date,
+  lateEntry: MatchPoolLateEntryConfig = { enabled: false, minutes: 45 },
 ): boolean {
-  return canJoinMatchPool(pool, match, now);
+  return canJoinMatchPool(pool, match, now, lateEntry);
 }
 
 export function isMatchPoolPickValid(

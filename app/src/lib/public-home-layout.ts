@@ -8,6 +8,7 @@ export const CHAMPION_SURVIVOR_OVERVIEW_BLOCKS = [
   'participant_picks',
   'compact_summary',
   'team_market_analysis',
+  'survival_table',
 ] as const;
 
 export const PUBLIC_FIXTURE_BLOCKS = ['upcoming_matches', 'recent_results'] as const;

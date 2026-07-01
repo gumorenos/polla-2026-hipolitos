@@ -35,14 +35,40 @@ export default async function PronosticosPage() {
   }
 
   // Check league membership — predictions only make sense within a league
-  const memberships = await prisma.leagueMember.findMany({
-    where: { userId, league: { isActive: true } },
-    include: {
-      league: true,
-    },
-  });
+  const [allMemberships, activeMatchPoolLeague] = await Promise.all([
+    prisma.leagueMember.findMany({
+      where: { userId, league: { isActive: true } },
+      include: { league: true },
+    }),
+    prisma.league.findFirst({
+      where: {
+        competitionType: 'match_pool',
+        status: 'active',
+        isActive: true,
+      },
+      select: { slug: true, name: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+  const memberships = allMemberships.filter((membership) => membership.league.competitionType !== 'match_pool');
 
   if (memberships.length === 0) {
+    if (activeMatchPoolLeague) {
+      return (
+        <div className="mx-auto max-w-lg space-y-4 py-12 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
+            <Users className="h-7 w-7 text-cyan-300" />
+          </div>
+          <h2 className="font-display text-2xl uppercase tracking-wide text-text-primary">Retos por Partido</h2>
+          <p className="text-sm text-text-secondary">
+            Retos por Partido no usa marcadores ni campeón. Entra a la sección Retos por Partido para crear o unirte a un reto individual.
+          </p>
+          <Link href={`/competencia/${activeMatchPoolLeague.slug}`} className="inline-flex rounded bg-cyan-500 px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white hover:bg-cyan-400">
+            Ir a Retos por Partido
+          </Link>
+        </div>
+      );
+    }
     return (
       <>
         <div className="max-w-md mx-auto text-center space-y-4 py-12 animate-[fadeIn_0.3s_ease-out]">

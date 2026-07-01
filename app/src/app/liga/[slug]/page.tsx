@@ -147,6 +147,8 @@ export default async function LigaDetallePage({
           name: league.name,
           slug: league.slug,
           currency: league.currency,
+          matchPoolLateEntryEnabled: league.matchPoolLateEntryEnabled,
+          matchPoolLateEntryMinutes: league.matchPoolLateEntryMinutes,
         }}
         pools={poolRecords.map(serializePublicMatchPool)}
         matches={poolMatches.map((match) => ({

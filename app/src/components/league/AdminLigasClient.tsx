@@ -56,6 +56,8 @@ interface LeagueAdminData {
   showOdds: boolean;
   showH2H: boolean;
   matchPoolsCount: number;
+  matchPoolLateEntryEnabled: boolean;
+  matchPoolLateEntryMinutes: number;
 }
 
 interface ApprovedUserData {
@@ -119,6 +121,8 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
     const pointsConsolation = parseInt(formData.get('pointsConsolation') as string) || 1;
     const localDeadline = formData.get('championDeadline') as string;
     const championDeadline = localDeadline ? parseLimaDateTimeToUtc(localDeadline) : null;
+    const matchPoolLateEntryEnabled = formData.get('matchPoolLateEntryEnabled') === 'true';
+    const matchPoolLateEntryMinutes = parseInt(formData.get('matchPoolLateEntryMinutes') as string, 10) || 0;
 
     const res = await updateLeagueSettingsAction(settingsLeagueId, {
       name,
@@ -134,6 +138,8 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
       pointsWinner,
       pointsDraw,
       pointsConsolation,
+      matchPoolLateEntryEnabled,
+      matchPoolLateEntryMinutes,
     });
 
     setIsSubmitting(false);
@@ -941,7 +947,23 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
 
               {/* Keep showOdds and showH2H configurable for match_pool since it can be turned on/off by admin */}
               {settingsLeague.competitionType === 'match_pool' && (
-                <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                <div className="space-y-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-xs text-text-secondary">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider">Permitir entrada tardía a retos</span>
+                      <select name="matchPoolLateEntryEnabled" defaultValue={String(settingsLeague.matchPoolLateEntryEnabled)} className="field w-full py-1.5 text-xs">
+                        <option value="false">No permitir</option>
+                        <option value="true">Permitir</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs text-text-secondary">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider">Minutos después del inicio</span>
+                      <input name="matchPoolLateEntryMinutes" type="number" min="0" max="180" step="1" defaultValue={settingsLeague.matchPoolLateEntryMinutes} className="field w-full py-1.5 text-xs" />
+                    </label>
+                  </div>
+                  <p className="rounded border border-amber-500/20 bg-amber-500/5 p-2 text-[10px] leading-relaxed text-amber-200">
+                    Si se habilita, los usuarios podrían entrar con información parcial del partido.
+                  </p>
                   <p className="text-[10px] text-text-muted leading-relaxed">
                     Configuración de visibilidad para Retos por Partido:
                   </p>

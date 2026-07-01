@@ -9,6 +9,7 @@ import {
   joinMatchPoolAction,
   updateMatchPoolAction,
 } from '../../lib/actions/match-pools';
+import { getMatchPoolEntryDeadline } from '../../lib/match-pool';
 import type { MatchPoolPickType, PublicMatchPool } from '../../lib/match-pool';
 import { PublicMatchPoolsSection } from '../public/PublicMatchPoolsSection';
 
@@ -34,6 +35,8 @@ interface MatchPoolLeagueClientProps {
     name: string;
     slug: string;
     currency: string;
+    matchPoolLateEntryEnabled: boolean;
+    matchPoolLateEntryMinutes: number;
   };
   pools: PublicMatchPool[];
   matches: MatchOption[];
@@ -77,8 +80,12 @@ export function MatchPoolLeagueClient({
   nowIso,
 }: MatchPoolLeagueClientProps) {
   const nowMs = new Date(nowIso).getTime();
+  const lateEntryConfig = {
+    enabled: league.matchPoolLateEntryEnabled,
+    minutes: league.matchPoolLateEntryMinutes,
+  };
   const firstCreatableMatchId = matches.find((match) => (
-    new Date(match.kickoffUtc).getTime() > nowMs
+    getMatchPoolEntryDeadline(match, lateEntryConfig).getTime() > nowMs
     && match.status !== 'result'
     && match.resultStatus !== 'final'
   ))?.id ?? '';
@@ -96,7 +103,7 @@ export function MatchPoolLeagueClient({
 
   const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
   const creatableMatches = matches.filter((match) => (
-    new Date(match.kickoffUtc).getTime() > nowMs
+    getMatchPoolEntryDeadline(match, lateEntryConfig).getTime() > nowMs
     && match.status !== 'result'
     && match.resultStatus !== 'final'
   ));
@@ -283,10 +290,22 @@ export function MatchPoolLeagueClient({
         {openPools.map((pool) => {
           const match = matchById.get(pool.matchId);
           const alreadyJoined = pool.entries.some((entry) => entry.userId === currentUserId);
+          const entryDeadline = match ? getMatchPoolEntryDeadline(match, lateEntryConfig) : null;
+          const entryWindowOpen = entryDeadline ? entryDeadline.getTime() > nowMs : false;
+          const isLateEntryWindow = match
+            ? new Date(match.kickoffUtc).getTime() <= nowMs && entryWindowOpen
+            : false;
           return (
             <div key={pool.id} className="mt-4 rounded border border-cyan-500/20 bg-surface p-4">
               <PublicMatchPoolsSection pools={[pool]} matchLabels={matchLabels} showHeading={false} />
-              {!alreadyJoined && match && pool.status === 'open' && (
+              {match && pool.status === 'open' && (
+                <p className={`mt-2 text-xs ${isLateEntryWindow || !entryWindowOpen ? 'text-amber-300' : 'text-green-300'}`}>
+                  {entryWindowOpen
+                    ? `${isLateEntryWindow ? 'Entrada tardía' : 'Abierto'} hasta ${entryDeadline?.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' })} (Hora Lima)`
+                    : 'El plazo de entrada ya cerró.'}
+                </p>
+              )}
+              {!alreadyJoined && match && pool.status === 'open' && entryWindowOpen && (
                 <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
                   <label className="text-sm text-text-secondary">
                     Tu predicción
@@ -304,7 +323,7 @@ export function MatchPoolLeagueClient({
                   </button>
                 </div>
               )}
-              {(alreadyJoined || pool.createdByUserId === currentUserId || canManage) && approvedUsers.length > 0 && pool.status === 'open' && (
+              {(alreadyJoined || pool.createdByUserId === currentUserId || canManage) && approvedUsers.length > 0 && pool.status === 'open' && entryWindowOpen && (
                 <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
                   <label className="text-sm text-text-secondary">
                     Invitar usuario aprobado

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSurvivalSummary,
+  buildChampionSurvivalTable,
   calculateChampionProbability,
   calculateIndividualExpectedValue,
   calculatePrizePool,
@@ -14,6 +15,21 @@ import {
 } from './champion-survivor';
 
 describe('Champion Survivor business logic', () => {
+  it('orders the survival table by round and preserves tied positions', () => {
+    const rows = buildChampionSurvivalTable([
+      { userId: 'u-groups', displayName: 'Grupos', teamCode: 'A', teamName: 'A', teamStatus: { teamCode: 'A', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: 'gA1' } },
+      { userId: 'u-alive', displayName: 'Vivo', teamCode: 'B', teamName: 'B', teamStatus: { teamCode: 'B', status: 'active', eliminatedAt: null } },
+      { userId: 'u-qf-1', displayName: 'Cuartos A', teamCode: 'C', teamName: 'C', teamStatus: { teamCode: 'C', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: 'qf_01' } },
+      { userId: 'u-qf-2', displayName: 'Cuartos B', teamCode: 'D', teamName: 'D', teamStatus: { teamCode: 'D', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: 'qf_02' } },
+      { userId: 'u-winner', displayName: 'Ganador', teamCode: 'E', teamName: 'E', teamStatus: { teamCode: 'E', status: 'champion', eliminatedAt: null, finalRank: 1 } },
+      { userId: 'u-none', displayName: 'Sin Pick', teamCode: null, teamName: null },
+    ]);
+
+    expect(rows.map((row) => row.userId)).toEqual(['u-winner', 'u-alive', 'u-qf-1', 'u-qf-2', 'u-groups', 'u-none']);
+    expect(rows.find((row) => row.userId === 'u-qf-1')?.position).toBe(3);
+    expect(rows.find((row) => row.userId === 'u-qf-2')?.position).toBe(3);
+    expect(rows.at(-1)?.statusLabel).toBe('Sin selección');
+  });
   it('treats missing or full_prediction competition types as full_prediction', () => {
     expect(resolveCompetitionType(null)).toBe('full_prediction');
     expect(resolveCompetitionType(undefined)).toBe('full_prediction');

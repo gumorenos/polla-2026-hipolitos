@@ -170,6 +170,10 @@ Participation exists only through `MatchPoolEntry`, one user and prediction per 
 
 The public home queries all active `match_pool` lobbies independently of `League.isDefault` and renders them in the read-only **Retos por Partido** tab.
 
+## Configurable late entry
+
+Each Match Pool lobby stores `matchPoolLateEntryEnabled` (default `false`) and `matchPoolLateEntryMinutes` (default `45`). When disabled, create/join/invite closes at kickoff. When enabled, the same operations remain available only while the reto is `open` and until kickoff plus the configured minutes. The UI displays the Lima-time deadline and warns administrators that users may have partial match information.
+
 ---
 
 ## Database Models

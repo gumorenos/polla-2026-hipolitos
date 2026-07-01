@@ -81,6 +81,8 @@ export default async function AdminCompetenciasPage() {
     showOdds: league.showOdds,
     showH2H: league.showH2H,
     matchPoolsCount: league._count.matchPools,
+    matchPoolLateEntryEnabled: league.matchPoolLateEntryEnabled,
+    matchPoolLateEntryMinutes: league.matchPoolLateEntryMinutes,
     members: league.members.map((member) => ({
       userId: member.userId,
       role: member.role,

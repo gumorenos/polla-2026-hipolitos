@@ -671,6 +671,8 @@ export async function updateLeagueSettingsAction(
     showOdds?: boolean;
     showH2H?: boolean;
     championTeamCode?: string | null;
+    matchPoolLateEntryEnabled?: boolean;
+    matchPoolLateEntryMinutes?: number;
   }
 ) {
   const session = await getCurrentSession();
@@ -707,6 +709,16 @@ export async function updateLeagueSettingsAction(
     if (data.showH2H !== undefined && typeof data.showH2H !== 'boolean') {
       return { error: 'Configuración de historial inválida.' };
     }
+    if (data.matchPoolLateEntryEnabled !== undefined && typeof data.matchPoolLateEntryEnabled !== 'boolean') {
+      return { error: 'Configuración de entrada tardía inválida.' };
+    }
+    if (data.matchPoolLateEntryMinutes !== undefined && (
+      !Number.isInteger(data.matchPoolLateEntryMinutes)
+      || data.matchPoolLateEntryMinutes < 0
+      || data.matchPoolLateEntryMinutes > 180
+    )) {
+      return { error: 'Los minutos de entrada tardía deben estar entre 0 y 180.' };
+    }
 
     // Update league
     const updated = await prisma.league.update({
@@ -730,6 +742,12 @@ export async function updateLeagueSettingsAction(
         showOdds: data.showOdds ?? league.showOdds,
         showH2H: data.showH2H ?? league.showH2H,
         championTeamCode: data.championTeamCode,
+        matchPoolLateEntryEnabled: league.competitionType === 'match_pool'
+          ? (data.matchPoolLateEntryEnabled ?? league.matchPoolLateEntryEnabled)
+          : league.matchPoolLateEntryEnabled,
+        matchPoolLateEntryMinutes: league.competitionType === 'match_pool'
+          ? (data.matchPoolLateEntryMinutes ?? league.matchPoolLateEntryMinutes)
+          : league.matchPoolLateEntryMinutes,
       },
     });
 

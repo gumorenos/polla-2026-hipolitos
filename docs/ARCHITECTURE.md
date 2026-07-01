@@ -448,6 +448,9 @@ Key boundaries:
 - **No global competition state**: Match Pool has no standings, global ranking, champion selection, or fixed member roster.
 - **Mutation boundary**: Creator edits/cancellation require an open pool with exactly the creator entry. Superadmin overrides require a reason and `AdminActionLog`; cancellation is logical.
 - **Public aggregation**: `/` and `/invitado` read pools from every active `match_pool` league without using `isDefault` and never expose mutation controls.
+- **Late-entry policy**: `matchPoolLateEntryEnabled` and `matchPoolLateEntryMinutes` are evaluated by one pure deadline helper used by create, join, invite, and lobby UI.
+- **Predictions boundary**: `/pronosticos` excludes `match_pool`; users enter Match Pool through its dedicated lobby.
+- **Survivor ranking**: the public Tabla de Supervivencia uses tournament status, final rank, and elimination match/round. It does not read traditional standings or points.
 - **Domain logic** lives in `src/lib/match-pool.ts` (pure functions, no DB access).
 - **Settlement service** `src/lib/services/match-pool-settlement.ts` reads only trusted DB results and writes entry/pool status rows.
 - **Post-result pipeline integration**: `settleMatchPoolsForFinalMatch(matchId)` is called from `runPostFinalResultPipeline` inside a non-fatal try/catch. Result saving is never blocked by pool settlement.

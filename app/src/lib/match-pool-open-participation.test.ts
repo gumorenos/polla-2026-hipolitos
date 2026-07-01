@@ -15,6 +15,7 @@ describe('Match Pool open participation architecture', () => {
     expect(source).not.toContain('membership?.isParticipant');
     expect(source).toContain("user?.status === 'approved'");
     expect(source).toContain("pool.league.competitionType !== 'match_pool'");
+    expect(source).toContain("status: 'accepted'");
     expect(source).toContain("action: 'match_pool_edit'");
     expect(source).toContain("action: 'match_pool_cancel'");
   });
@@ -60,5 +61,15 @@ describe('Match Pool open participation architecture', () => {
     expect(source).toContain('updateMatchPoolAction');
     expect(source).toContain('cancelMatchPoolAction');
     expect(source).toContain('No se procesa dinero real');
+    const actions = readSource('lib/actions/match-pools.ts');
+    expect(actions).not.toContain('matchPool.delete');
+    expect(actions).toContain("status: 'cancelled'");
+  });
+
+  it('keeps Match Pool out of the traditional predictions selector', () => {
+    const source = readSource('app/pronosticos/page.tsx');
+    expect(source).toContain("membership.league.competitionType !== 'match_pool'");
+    expect(source).toContain('Retos por Partido no usa marcadores ni campeón');
+    expect(source.indexOf("competitionType !== 'match_pool'")).toBeLessThan(source.indexOf('<PronosticosClient'));
   });
 });

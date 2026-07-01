@@ -72,6 +72,7 @@ describe('Public guest dashboard components constraints', () => {
       'participant_picks',
       'compact_summary',
       'team_market_analysis',
+      'survival_table',
     ]);
     expect(PUBLIC_FIXTURE_BLOCKS).toEqual(['upcoming_matches', 'recent_results']);
   });

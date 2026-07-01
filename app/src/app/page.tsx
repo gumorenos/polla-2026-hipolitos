@@ -13,7 +13,9 @@ import {
   calculateIndividualExpectedValue,
   classifyChampionPick,
   simulateChampionOdds,
+  buildChampionSurvivalTable,
   ChampionOddsSimulationEntry,
+  type ChampionSurvivalTableRow,
   type PublicTeamTournamentStatus,
 } from '../lib/champion-survivor';
 import { formatLeagueCurrency } from '../lib/utils/currency';
@@ -484,6 +486,7 @@ export default async function PublicHome() {
               currency={prizePool.currency}
               showOdds={league.showOdds}
             />
+            <ChampionSurvivalTable rows={championSurvivorState.survivalTable} />
           </div>
 
           {/* Tab 2: Fixture */}
@@ -917,6 +920,43 @@ function ChampionSurvivorPicksList({
   );
 }
 
+function ChampionSurvivalTable({ rows }: { rows: ChampionSurvivalTableRow[] }) {
+  return (
+    <section className="card-base overflow-hidden">
+      <div className="border-b border-border-subtle bg-bg-secondary/60 px-4 py-3">
+        <h3 className="font-display text-lg uppercase tracking-wide text-text-primary">Tabla de Supervivencia</h3>
+        <p className="text-[10px] text-text-muted">Ordenada por permanencia en carrera, sin acumulación de puntos.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-xs">
+          <thead className="border-b border-border-subtle bg-black/10 text-[9px] uppercase text-text-muted">
+            <tr>
+              <th className="px-4 py-2">Posición</th>
+              <th className="px-4 py-2">Usuario</th>
+              <th className="px-4 py-2">Pick</th>
+              <th className="px-4 py-2">Estado</th>
+              <th className="px-4 py-2">Ronda alcanzada</th>
+              <th className="px-4 py-2">Eliminado en</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle/40">
+            {rows.map((row) => (
+              <tr key={row.userId} className="text-text-secondary hover:bg-bg-hover/30">
+                <td className="px-4 py-3 font-mono font-semibold text-text-primary">{row.position}</td>
+                <td className="px-4 py-3 font-semibold text-text-primary">{row.displayName}</td>
+                <td className="px-4 py-3">{row.teamName ? `${row.teamName} (${row.teamCode})` : 'Sin selección'}</td>
+                <td className="px-4 py-3">{row.statusLabel}</td>
+                <td className="px-4 py-3">{row.roundLabel}</td>
+                <td className="px-4 py-3 font-mono text-[10px]">{row.eliminatedInMatchId ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function MatchList({
   title,
   emptyText,
@@ -1166,31 +1206,56 @@ async function buildChampionSurvivorState(
         knockoutStatusByTeam[team.code],
       ),
       eliminatedAt: stored?.eliminatedAt || null,
+      eliminatedInMatchId: stored?.eliminatedInMatchId || null,
+      finalRank: stored?.finalRank || null,
     };
   });
   const statusByTeam = new Map(realTeamStatuses.map((status) => [status.teamCode, status]));
 
-  const picks = await prisma.championPick.findMany({
-    where: { leagueId: league.id },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          displayName: true,
+  const [picks, participantUsers] = await Promise.all([
+    prisma.championPick.findMany({
+      where: { leagueId: league.id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+          },
+        },
+        team: {
+          select: {
+            name: true,
+          },
         },
       },
-      team: {
-        select: {
-          name: true,
-        },
+    }),
+    prisma.leagueMember.findMany({
+      where: {
+        leagueId: league.id,
+        isParticipant: true,
+        user: { status: 'approved' },
       },
-    },
-  });
+      select: {
+        userId: true,
+        user: { select: { name: true, displayName: true } },
+      },
+    }),
+  ]);
   const picksToShow = picks.filter((pick) => (
     approvedUserIds.has(pick.userId) && realTeamCodes.has(pick.teamCode)
   ));
   const pickByUser = new Map(picksToShow.map((pick) => [pick.userId, pick]));
+  const survivalTable = buildChampionSurvivalTable(participantUsers.map((participant) => {
+    const pick = pickByUser.get(participant.userId) ?? null;
+    return {
+      userId: participant.userId,
+      displayName: participant.user.displayName ?? participant.user.name,
+      teamCode: pick?.teamCode ?? null,
+      teamName: pick?.team.name ?? null,
+      teamStatus: pick ? statusByTeam.get(pick.teamCode) ?? null : null,
+    };
+  }));
 
   const latestOddsByTeam = new Map<string, ChampionOddsSnapshot>();
   for (const snapshot of championOddsSnapshots) {
@@ -1307,6 +1372,7 @@ async function buildChampionSurvivorState(
     teamsReport,
     picksToShow,
     statusByTeam,
+    survivalTable,
   };
 }
 

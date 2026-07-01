@@ -145,7 +145,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
                   <div>{row.roundLabel}</div>
                   {(row.statusLabel === 'Eliminado' || row.statusLabel === 'Subcampeón') && (
                     <div className="text-[10px] text-text-muted">
-                      Partido: {row.eliminatedInMatchId ? row.eliminatedInMatchId.toUpperCase() : 'Pendiente de registrar'}
+                      Partido: {row.eliminatedInMatchId ? row.eliminatedInMatchId.toUpperCase() : '—'}
                     </div>
                   )}
                 </div>
@@ -156,7 +156,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
                     <span>Ronda: {row.roundLabel}</span>
                     {(row.statusLabel === 'Eliminado' || row.statusLabel === 'Subcampeón') && (
                       <span>
-                        Partido: {row.eliminatedInMatchId ? row.eliminatedInMatchId.toUpperCase() : 'Pendiente de registrar'}
+                        Partido: {row.eliminatedInMatchId ? row.eliminatedInMatchId.toUpperCase() : '—'}
                       </span>
                     )}
                   </div>

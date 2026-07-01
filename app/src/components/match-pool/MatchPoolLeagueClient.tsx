@@ -8,6 +8,7 @@ import {
   inviteToMatchPoolAction,
   joinMatchPoolAction,
   updateMatchPoolAction,
+  hideMatchPoolAction,
 } from '../../lib/actions/match-pools';
 import {
   getMatchPoolEntryDeadline,
@@ -252,6 +253,17 @@ export function MatchPoolLeagueClient({
     );
   }
 
+  function handleHide(pool: PublicMatchPool) {
+    const reason = adminReasons[pool.id]?.trim() || undefined;
+    runAction(
+      () => hideMatchPoolAction({
+        poolId: pool.id,
+        reason,
+      }),
+      'Reto ocultado.',
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
       <header className="border-b border-border pb-5">
@@ -454,7 +466,98 @@ export function MatchPoolLeagueClient({
 
       <section>
         <h2 className="text-xl font-semibold text-text-primary">Retos cerrados, liquidados o anulados</h2>
-        <PublicMatchPoolsSection pools={closedPools} matchLabels={matchLabels} showHeading={false} />
+        {isSuperadmin ? (
+          closedPools.map((pool) => {
+            const entryUserIds = pool.entries.map((e) => e.userId);
+            const isCreatorCanMutate = creatorCanMutate({
+              status: pool.status,
+              createdByUserId: pool.createdByUserId,
+              currentUserId,
+              entryUserIds,
+            });
+            const requiresReason = adminMutationRequiresReason({
+              status: pool.status,
+              createdByUserId: pool.createdByUserId,
+              currentUserId,
+              entryUserIds,
+              isSuperadmin,
+            });
+            const canMutate = isCreatorCanMutate || isSuperadmin;
+            const creatorEntry = pool.entries.find((entry) => entry.userId === pool.createdByUserId);
+            const editMatchId = editMatchIds[pool.id] ?? pool.matchId;
+            const editMatch = matchById.get(editMatchId);
+            const editPick = editPicks[pool.id] || creatorEntry?.pickType || '';
+            const editOptions = matches;
+
+            const canHide = pool.status === 'cancelled' && pool.entries.length <= 1 && !pool.hiddenAt;
+
+            return (
+              <div key={pool.id} className="mt-4 rounded border border-cyan-500/20 bg-surface p-4">
+                <PublicMatchPoolsSection pools={[pool]} matchLabels={matchLabels} showHeading={false} />
+                
+                {pool.hiddenAt && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Este reto está OCULTO para usuarios normales.
+                  </p>
+                )}
+
+                {canMutate && pool.status !== 'settled' && (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setEditingPoolId(editingPoolId === pool.id ? null : pool.id)} className="rounded border border-cyan-500/30 px-3 py-1.5 text-sm text-cyan-200">
+                        {editingPoolId === pool.id ? 'Cerrar edición' : 'Editar reto'}
+                      </button>
+                      {pool.status !== 'cancelled' && (
+                        <button type="button" disabled={isPending || (requiresReason && !adminReasons[pool.id]?.trim())} onClick={() => handleCancel(pool)} className="rounded border border-red-500/30 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50">
+                          Cancelar reto
+                        </button>
+                      )}
+                      {canHide && (
+                        <button type="button" disabled={isPending} onClick={() => handleHide(pool)} className="rounded border border-amber-500/30 px-3 py-1.5 text-sm text-amber-300 disabled:opacity-50">
+                          Ocultar reto
+                        </button>
+                      )}
+                    </div>
+                    
+                    {requiresReason && (
+                      <label className="mt-3 block text-xs text-text-secondary">
+                        Razón administrativa obligatoria
+                        <input value={adminReasons[pool.id] ?? ''} onChange={(event) => setAdminReasons((current) => ({ ...current, [pool.id]: event.target.value }))} className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
+                      </label>
+                    )}
+
+                    {editingPoolId === pool.id && creatorEntry && (
+                      <form action={(formData) => handleEdit(pool, formData)} className="mt-3 grid gap-3 rounded border border-border bg-bg-secondary/30 p-3 md:grid-cols-2">
+                        <label className="text-xs text-text-secondary">Partido
+                          <select value={editMatchId} onChange={(event) => { setEditMatchIds((current) => ({ ...current, [pool.id]: event.target.value })); setEditPicks((current) => ({ ...current, [pool.id]: '' })); }} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary">
+                            {editOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs text-text-secondary">Monto referencial
+                          <input name="amount" type="number" min="1" step="1" defaultValue={pool.amount} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary" />
+                        </label>
+                        <label className="text-xs text-text-secondary">Predicción
+                          <select value={editPick} onChange={(event) => setEditPicks((current) => ({ ...current, [pool.id]: event.target.value as MatchPoolPickType }))} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary">
+                            {editMatch && optionsForMatch(editMatch).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs text-text-secondary">Moneda
+                          <input name="currency" maxLength={3} defaultValue={pool.currency} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 uppercase text-text-primary" />
+                        </label>
+                        <label className="text-xs text-text-secondary md:col-span-2">Nota
+                          <input name="note" maxLength={240} defaultValue={pool.note ?? ''} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary" />
+                        </label>
+                        <button type="submit" disabled={isPending || (requiresReason && !adminReasons[pool.id]?.trim())} className="w-fit rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar cambios</button>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <PublicMatchPoolsSection pools={closedPools} matchLabels={matchLabels} showHeading={false} />
+        )}
       </section>
     </main>
   );

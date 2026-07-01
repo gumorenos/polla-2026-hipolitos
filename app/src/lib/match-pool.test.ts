@@ -21,9 +21,11 @@ import {
   creatorCanMutate,
   adminMutationRequiresReason,
   canMutate,
+  canHideMatchPool,
   type MatchPoolMatchContext,
   type MatchPoolSettlementInput,
   type MatchPoolMutationContext,
+  type MatchPoolHideContext,
 } from './match-pool';
 import { getDefaultCompetitionShowOdds } from './competition-types';
 
@@ -134,7 +136,7 @@ describe('Reto mutation permissions', () => {
 
   it('requires a reason and audit for superadmin mutations', () => {
     const withoutReason = authorizeMatchPoolMutation({
-      status: 'settled',
+      status: 'locked',
       createdByUserId: 'owner-1',
       currentUserId: 'admin-1',
       entryUserIds: ['owner-1', 'user-2'],
@@ -144,7 +146,7 @@ describe('Reto mutation permissions', () => {
     expect(withoutReason.requiresAudit).toBe(true);
 
     expect(authorizeMatchPoolMutation({
-      status: 'settled',
+      status: 'locked',
       createdByUserId: 'owner-1',
       currentUserId: 'admin-1',
       entryUserIds: ['owner-1', 'user-2'],
@@ -765,5 +767,70 @@ describe('Match Pool late entry and creator/superadmin mutations', () => {
 
     // With late entry enabled and within limit, can create after kickoff
     expect(canCreateMatchPool(match, NOW, lateConfigEnabled)).toBe(true);
+  });
+
+  describe('superadmin mutation and hide permissions', () => {
+    it('canMutate blocks superadmin from mutating settled pools', () => {
+      const context: MatchPoolMutationContext = {
+        status: 'settled',
+        createdByUserId: 'user-creator',
+        currentUserId: 'user-admin',
+        entryUserIds: ['user-creator'],
+        isSuperadmin: true,
+        reason: 'Override',
+      };
+      const decision = canMutate(context);
+      expect(decision.allowed).toBe(false);
+      expect(decision.error).toContain('liquidado');
+    });
+
+    it('canHideMatchPool allows superadmin to hide cancelled pools with <= 1 entry', () => {
+      const context: MatchPoolHideContext = {
+        status: 'cancelled',
+        entryUserIds: ['user-creator'],
+        isSuperadmin: true,
+      };
+      expect(canHideMatchPool(context).allowed).toBe(true);
+
+      const emptyContext: MatchPoolHideContext = {
+        status: 'cancelled',
+        entryUserIds: [],
+        isSuperadmin: true,
+      };
+      expect(canHideMatchPool(emptyContext).allowed).toBe(true);
+    });
+
+    it('canHideMatchPool blocks non-superadmins from hiding', () => {
+      const context: MatchPoolHideContext = {
+        status: 'cancelled',
+        entryUserIds: ['user-creator'],
+        isSuperadmin: false,
+      };
+      const decision = canHideMatchPool(context);
+      expect(decision.allowed).toBe(false);
+      expect(decision.error).toContain('superadministrador');
+    });
+
+    it('canHideMatchPool blocks hiding if pool is not cancelled', () => {
+      const context: MatchPoolHideContext = {
+        status: 'open',
+        entryUserIds: ['user-creator'],
+        isSuperadmin: true,
+      };
+      const decision = canHideMatchPool(context);
+      expect(decision.allowed).toBe(false);
+      expect(decision.error).toContain('cancelados');
+    });
+
+    it('canHideMatchPool blocks hiding if pool has more than 1 entry', () => {
+      const context: MatchPoolHideContext = {
+        status: 'cancelled',
+        entryUserIds: ['user-creator', 'user-participant'],
+        isSuperadmin: true,
+      };
+      const decision = canHideMatchPool(context);
+      expect(decision.allowed).toBe(false);
+      expect(decision.error).toContain('más de un participante');
+    });
   });
 });

@@ -171,52 +171,77 @@ export function getChampionPickStatus(
   return 'alive';
 }
 
+export function deriveSurvivalEliminationMatchId(
+  teamCode: string,
+  matches: Array<{
+    id: string;
+    phase: string;
+    homeTeamCode: string;
+    awayTeamCode: string;
+    winnerTeamCode?: string | null;
+  }>
+): string | null {
+  const knockoutPhases = ['r32', 'r16', 'quarters', 'semis', 'third_place', 'final'];
+  const lossMatch = matches.find((m) => {
+    const isKnockout =
+      knockoutPhases.includes(m.phase.toLowerCase().trim()) ||
+      m.id.toLowerCase().startsWith('r32') ||
+      m.id.toLowerCase().startsWith('r16') ||
+      m.id.toLowerCase().startsWith('qf') ||
+      m.id.toLowerCase().startsWith('sf') ||
+      m.id.toLowerCase().startsWith('final');
+    if (!isKnockout) return false;
+    const isParticipant = m.homeTeamCode === teamCode || m.awayTeamCode === teamCode;
+    if (!isParticipant) return false;
+    const isFinished = m.winnerTeamCode !== null && m.winnerTeamCode !== undefined && m.winnerTeamCode !== '';
+    if (!isFinished) return false;
+    return m.winnerTeamCode !== teamCode;
+  });
+  return lossMatch ? lossMatch.id : null;
+}
+
 export function getChampionSurvivalRoundLabel(
   status: string,
   eliminatedInMatchId: string | null | undefined,
-  finalRank?: number | null
+  finalRank?: number | null,
+  fallbackLatestPhase?: string | null
 ): string {
   if (status === 'champion' || finalRank === 1) return 'Campeón';
   if (status === 'active' || status === 'unknown') return 'En competencia';
   if (status === 'runner_up' || finalRank === 2) return 'Final';
 
-  if (!eliminatedInMatchId) {
-    return 'Ronda no registrada';
+  let matchId = eliminatedInMatchId?.toLowerCase().trim() || '';
+  if (!matchId && fallbackLatestPhase) {
+    matchId = fallbackLatestPhase.toLowerCase().trim();
   }
 
-  const matchId = eliminatedInMatchId.toLowerCase().trim();
-  if (matchId.startsWith('groups') || matchId.startsWith('g') || matchId === 'groups') return 'Fase de grupos';
-  if (matchId.startsWith('r32') || matchId === 'r32') return '16avos de final';
-  if (matchId.startsWith('r16') || matchId === 'r16') return 'Octavos de final';
-  if (matchId.startsWith('quarters') || matchId.startsWith('qf') || matchId.includes('quarter') || matchId === 'quarters') return 'Cuartos de final';
-  if (matchId.startsWith('semis') || matchId.startsWith('sf') || matchId.includes('semi') || matchId === 'semis') return 'Semifinal';
-  if (matchId.startsWith('third') || matchId.includes('3rd') || matchId === 'third_place') return 'Tercer puesto';
-  if (matchId.includes('final') || matchId.startsWith('fi') || matchId === 'final') return 'Final';
+  if (!matchId) {
+    return 'Fase de grupos';
+  }
 
-  return 'Eliminado · ronda pendiente';
+  const normalized = matchId.toLowerCase().trim();
+  if (normalized.startsWith('groups') || normalized.startsWith('g') || normalized === 'groups') return 'Fase de grupos';
+  if (normalized.startsWith('r32') || normalized === 'r32') return '16avos de final';
+  if (normalized.startsWith('r16') || normalized === 'r16') return 'Octavos de final';
+  if (normalized.startsWith('quarters') || normalized.startsWith('qf') || normalized.includes('quarter') || normalized === 'quarters') return 'Cuartos de final';
+  if (normalized.startsWith('semis') || normalized.startsWith('sf') || normalized.includes('semi') || normalized === 'semis') return 'Semifinal';
+  if (normalized.startsWith('third') || normalized.includes('3rd') || normalized === 'third_place') return 'Tercer puesto';
+  if (normalized.includes('final') || normalized.startsWith('fi') || normalized === 'final') return 'Final';
+
+  return 'Fase de grupos';
 }
 
-function getEliminationRound(status?: PublicTeamTournamentStatus | null): { weight: number; label: string } {
-  if (!status) return { weight: 0, label: 'Sin selección' };
-  
-  const label = getChampionSurvivalRoundLabel(status.status, status.eliminatedInMatchId, status.finalRank);
-  
-  let weight = 20; // Default weight for eliminated without registered round
-  if (label === 'Campeón') weight = 100;
-  else if (label === 'En competencia') weight = 90;
-  else if (label === 'Final') weight = 80;
-  else if (label === 'Semifinal') weight = 70;
-  else if (label === 'Tercer puesto') weight = 65;
-  else if (label === 'Cuartos de final') weight = 60;
-  else if (label === 'Octavos de final') weight = 50;
-  else if (label === '16avos de final') weight = 40;
-  else if (label === 'Fase de grupos') weight = 30;
-  
-  return { weight, label };
-}
+
 
 export function buildChampionSurvivalTable(
   entries: ChampionSurvivalTableInput[],
+  matches?: Array<{
+    id: string;
+    phase: string;
+    homeTeamCode: string;
+    awayTeamCode: string;
+    winnerTeamCode?: string | null;
+  }>
 ): ChampionSurvivalTableRow[] {
   const ranked = entries.map((entry) => {
     if (!entry.teamCode) {
@@ -229,25 +254,66 @@ export function buildChampionSurvivalTable(
         sortWeight: 0,
       };
     }
-    const round = getEliminationRound(entry.teamStatus);
-    const statusLabel = round.weight === 100
-      ? 'Campeón acertado'
-      : round.weight === 90
+
+    let derivedMatchId = entry.teamStatus?.eliminatedInMatchId ?? null;
+    let fallbackLatestPhase: string | null = null;
+
+    if (entry.teamStatus?.status === 'eliminated' && !derivedMatchId && matches) {
+      derivedMatchId = deriveSurvivalEliminationMatchId(entry.teamCode, matches);
+      if (!derivedMatchId) {
+        const teamMatches = matches.filter(
+          (m) => m.homeTeamCode === entry.teamCode || m.awayTeamCode === entry.teamCode
+        );
+        if (teamMatches.length > 0) {
+          const phasesOrder = ['groups', 'r32', 'r16', 'quarters', 'semis', 'third_place', 'final'];
+          let maxIndex = 0;
+          for (const m of teamMatches) {
+            const idx = phasesOrder.indexOf(m.phase.toLowerCase().trim());
+            if (idx > maxIndex) maxIndex = idx;
+          }
+          fallbackLatestPhase = phasesOrder[maxIndex];
+        }
+      }
+    }
+
+    const label = getChampionSurvivalRoundLabel(
+      entry.teamStatus?.status ?? 'unknown',
+      derivedMatchId,
+      entry.teamStatus?.finalRank,
+      fallbackLatestPhase
+    );
+
+    let weight = 20;
+    if (label === 'Campeón') weight = 100;
+    else if (label === 'En competencia') weight = 90;
+    else if (label === 'Final') weight = 80;
+    else if (label === 'Semifinal') weight = 70;
+    else if (label === 'Tercer puesto') weight = 65;
+    else if (label === 'Cuartos de final') weight = 60;
+    else if (label === 'Octavos de final') weight = 50;
+    else if (label === '16avos de final') weight = 40;
+    else if (label === 'Fase de grupos') weight = 30;
+
+    const statusLabel =
+      weight === 100
+        ? 'Campeón acertado'
+        : weight === 90
         ? 'Vivo'
         : entry.teamStatus?.status === 'runner_up'
-          ? 'Subcampeón'
-          : 'Eliminado';
+        ? 'Subcampeón'
+        : 'Eliminado';
+
     return {
       ...entry,
       position: 0,
       statusLabel,
-      roundLabel: round.label,
-      eliminatedInMatchId: entry.teamStatus?.eliminatedInMatchId ?? null,
-      sortWeight: round.weight,
+      roundLabel: label,
+      eliminatedInMatchId: derivedMatchId,
+      sortWeight: weight,
     };
   }).sort((a, b) => (
-    b.sortWeight - a.sortWeight
-    || a.displayName.localeCompare(b.displayName, 'es')
+    b.sortWeight - a.sortWeight ||
+    a.displayName.localeCompare(b.displayName, 'es')
   ));
 
   let previousWeight: number | null = null;

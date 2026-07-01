@@ -13,6 +13,7 @@ import {
   resolveCompetitionType,
   simulateChampionOdds,
   sortChampionSurvivorRanking,
+  deriveSurvivalEliminationMatchId,
 } from './champion-survivor';
 
 describe('Champion Survivor business logic', () => {
@@ -392,12 +393,12 @@ describe('Champion Survivor business logic', () => {
     // Labels check
     expect(jpnRow?.roundLabel).toBe('16avos de final');
     expect(nedRow?.roundLabel).toBe('16avos de final');
-    expect(missingRow?.roundLabel).toBe('Ronda no registrada');
+    expect(missingRow?.roundLabel).toBe('Fase de grupos');
     expect(aliveRow?.roundLabel).toBe('En competencia');
     expect(noneRow?.roundLabel).toBe('Sin selección');
 
     expect(jpnRow?.position).toBe(2); // BRA (1st, weight 90), JPN/NED (2nd, weight 40)
-    // Sort order: BRA (90), JPN/NED (40), ARG (20), None (0).
+    // Sort order: BRA (90), JPN/NED (40), ARG (30), None (0).
     // Positions: BRA (pos 1), JPN (pos 2), NED (pos 2), ARG (pos 4), None (pos 5).
     // Let's check positions of sorted array:
     const positions = table.map((r) => ({ userId: r.userId, pos: r.position, weight: r.sortWeight }));
@@ -405,7 +406,7 @@ describe('Champion Survivor business logic', () => {
       { userId: 'u-alive', pos: 1, weight: 90 },
       { userId: 'u-ned', pos: 2, weight: 40 },
       { userId: 'u-jpn', pos: 2, weight: 40 },
-      { userId: 'u-missing-round', pos: 4, weight: 20 },
+      { userId: 'u-missing-round', pos: 4, weight: 30 },
       { userId: 'u-none', pos: 5, weight: 0 },
     ]);
   });
@@ -426,9 +427,14 @@ describe('Champion Survivor business logic', () => {
       expect(getChampionSurvivalRoundLabel('eliminated', null, 2)).toBe('Final');
     });
 
-    it('returns Ronda no registrada when matchId is absent and status is eliminated', () => {
-      expect(getChampionSurvivalRoundLabel('eliminated', null)).toBe('Ronda no registrada');
-      expect(getChampionSurvivalRoundLabel('eliminated', undefined)).toBe('Ronda no registrada');
+    it('returns default fallback when matchId is absent and status is eliminated', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', null)).toBe('Fase de grupos');
+      expect(getChampionSurvivalRoundLabel('eliminated', undefined)).toBe('Fase de grupos');
+    });
+
+    it('uses latest phase fallback when matchId is absent but latest phase is provided', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', null, null, 'quarters')).toBe('Cuartos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', undefined, null, 'semis')).toBe('Semifinal');
     });
 
     it('maps groups / g-prefix match IDs to Fase de grupos', () => {
@@ -473,7 +479,26 @@ describe('Champion Survivor business logic', () => {
     });
 
     it('returns fallback for unrecognized match IDs', () => {
-      expect(getChampionSurvivalRoundLabel('eliminated', 'unknown_match_xyz')).toBe('Eliminado · ronda pendiente');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'unknown_match_xyz')).toBe('Fase de grupos');
+    });
+
+    describe('deriveSurvivalEliminationMatchId', () => {
+      const mockMatches = [
+        { id: 'groups_01', phase: 'groups', homeTeamCode: 'MEX', awayTeamCode: 'SWE', winnerTeamCode: 'SWE' },
+        { id: 'r32_01', phase: 'r32', homeTeamCode: 'MEX', awayTeamCode: 'GER', winnerTeamCode: 'GER' },
+        { id: 'r16_02', phase: 'r16', homeTeamCode: 'BRA', awayTeamCode: 'ARG', winnerTeamCode: 'BRA' },
+      ];
+
+      it('derives correct loss match ID for a team in knockout stage', () => {
+        expect(deriveSurvivalEliminationMatchId('MEX', mockMatches)).toBe('r32_01');
+        expect(deriveSurvivalEliminationMatchId('ARG', mockMatches)).toBe('r16_02');
+      });
+
+      it('returns null if the team did not participate in a knockout match or did not lose', () => {
+        expect(deriveSurvivalEliminationMatchId('SWE', mockMatches)).toBeNull();
+        expect(deriveSurvivalEliminationMatchId('GER', mockMatches)).toBeNull();
+        expect(deriveSurvivalEliminationMatchId('BRA', mockMatches)).toBeNull();
+      });
     });
   });
 });

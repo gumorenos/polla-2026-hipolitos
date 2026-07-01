@@ -209,11 +209,37 @@ export function adminMutationRequiresReason(context: {
   return !creatorCanMutate(context);
 }
 
+export interface MatchPoolHideContext {
+  status: MatchPoolStatus;
+  entryUserIds: string[];
+  isSuperadmin: boolean;
+}
+
+export function canHideMatchPool(context: MatchPoolHideContext): MatchPoolMutationDecision {
+  if (!context.isSuperadmin) {
+    return { allowed: false, requiresAudit: false, error: 'Solo el superadministrador puede ocultar retos.' };
+  }
+  if (context.status !== 'cancelled') {
+    return { allowed: false, requiresAudit: false, error: 'Solo se pueden ocultar retos cancelados.' };
+  }
+  if (context.entryUserIds.length > 1) {
+    return { allowed: false, requiresAudit: false, error: 'No se puede ocultar un reto con más de un participante.' };
+  }
+  return { allowed: true, requiresAudit: false, error: null };
+}
+
 export function canMutate(context: MatchPoolMutationContext): MatchPoolMutationDecision {
   if (creatorCanMutate(context)) {
     return { allowed: true, requiresAudit: false, error: null };
   }
   if (context.isSuperadmin) {
+    if (context.status === 'settled') {
+      return {
+        allowed: false,
+        requiresAudit: false,
+        error: 'No se puede modificar un reto que ya ha sido liquidado.',
+      };
+    }
     if (!context.reason?.trim()) {
       return {
         allowed: false,
@@ -430,6 +456,7 @@ export interface PublicMatchPool {
   status: MatchPoolStatus;
   settledAt: string | null;
   settlementReason: string | null;
+  hiddenAt: string | null;
   createdByUserId: string;
   createdByDisplayName: string;
   entries: PublicMatchPoolEntry[];
@@ -457,6 +484,7 @@ export function serializePublicMatchPool(pool: {
   status: string;
   settledAt: Date | null;
   settlementReason: string | null;
+  hiddenAt?: Date | null;
   createdByUserId: string;
   createdBy: { name: string; displayName: string | null };
   entries: Array<{
@@ -490,6 +518,7 @@ export function serializePublicMatchPool(pool: {
     status: pool.status as MatchPoolStatus,
     settledAt: pool.settledAt?.toISOString() ?? null,
     settlementReason: pool.settlementReason,
+    hiddenAt: pool.hiddenAt?.toISOString() ?? null,
     createdByUserId: pool.createdByUserId,
     createdByDisplayName: pool.createdBy.displayName ?? pool.createdBy.name,
     entries: pool.entries.map((e) => ({

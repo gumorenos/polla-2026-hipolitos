@@ -3,6 +3,7 @@ import { RankingTable } from '../../components/league/RankingTable';
 import { prisma } from '../../lib/db';
 import { getCurrentSession } from '../../lib/auth-helpers';
 import { redirect } from 'next/navigation';
+import { buildChampionSurvivalTable, TeamTournamentStatusValue } from '../../lib/champion-survivor';
 import { Trophy, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -39,13 +40,14 @@ export default async function RankingPage({
   const showAdminControls = shouldShowAdminUi(session.user.isSuperadmin === true, viewMode);
 
   // Fetch all leagues user is in
-  const memberships = await prisma.leagueMember.findMany({
+  const allMemberships = await prisma.leagueMember.findMany({
     where: { userId },
     include: {
       league: true,
       user: true,
     }
   });
+  const memberships = allMemberships.filter(m => m.league.competitionType !== 'match_pool');
 
   if (memberships.length === 0) {
     return (
@@ -170,7 +172,90 @@ export default async function RankingPage({
           lastUpdated: new Date().toISOString(),
         }));
 
+  let serializedSurvivalTable: {
+    userId: string;
+    displayName: string;
+    teamCode: string | null;
+    teamName: string | null;
+    position: number;
+    statusLabel: string;
+    roundLabel: string;
+    eliminatedInMatchId: string | null;
+  }[] = [];
+  if (selectedLeague.competitionType === 'champion_survivor') {
+    const members = await prisma.leagueMember.findMany({
+      where: {
+        leagueId: selectedLeague.id,
+        user: {
+          status: showDisabled ? { in: ['approved', 'disabled'] } : 'approved',
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    const picks = await prisma.championPick.findMany({
+      where: { leagueId: selectedLeague.id },
+      include: {
+        team: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    const teamStatuses = await prisma.teamTournamentStatus.findMany({
+      where: { leagueId: selectedLeague.id },
+    });
+
+    const picksMap = new Map(picks.map(p => [p.userId, p]));
+    const statusMap = new Map(teamStatuses.map(ts => [ts.teamCode, ts]));
+
+    const tableInputs = members.map((m) => {
+      const pick = picksMap.get(m.userId);
+      const teamStatus = pick ? statusMap.get(pick.teamCode) : null;
+      return {
+        userId: m.userId,
+        displayName: m.user.displayName || m.user.name,
+        teamCode: pick?.teamCode ?? null,
+        teamName: pick?.team?.name ?? null,
+        teamStatus: teamStatus
+          ? {
+              teamCode: teamStatus.teamCode,
+              status: teamStatus.status as TeamTournamentStatusValue,
+              eliminatedAt: teamStatus.eliminatedAt,
+              eliminatedInMatchId: teamStatus.eliminatedInMatchId,
+              finalRank: teamStatus.finalRank,
+            }
+          : null,
+      };
+    });
+
+    const survivalTable = buildChampionSurvivalTable(tableInputs);
+    serializedSurvivalTable = survivalTable.map((row) => ({
+      userId: row.userId,
+      displayName: row.displayName,
+      teamCode: row.teamCode,
+      teamName: row.teamName,
+      position: row.position,
+      statusLabel: row.statusLabel,
+      roundLabel: row.roundLabel,
+      eliminatedInMatchId: row.eliminatedInMatchId,
+    }));
+  }
+
   const currentStand = finalStandings.find(s => s.userId === userId) ?? finalStandings[0];
+  const currentSurvivalRow = serializedSurvivalTable.find(row => row.userId === userId);
+
+  const isSurvivor = selectedLeague.competitionType === 'champion_survivor';
 
   return (
     <>
@@ -212,15 +297,19 @@ export default async function RankingPage({
         )}
 
         {/* League Quick Stats Widget */}
-        {finalStandings.length > 0 && (
+        {((isSurvivor && serializedSurvivalTable.length > 0) || (!isSurvivor && finalStandings.length > 0)) && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="card-base p-4 flex items-center gap-3">
               <div className="p-2.5 bg-gold-400/10 border border-gold-500 rounded-lg text-gold-400">
                 <Trophy className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-text-muted uppercase font-mono font-bold">Líder</span>
-                <p className="text-sm font-bold text-text-primary mt-0.5">{finalStandings[0].displayName}</p>
+                <span className="text-[10px] text-text-muted uppercase font-mono font-bold">
+                  {isSurvivor ? 'Líder' : 'Líder'}
+                </span>
+                <p className="text-sm font-bold text-text-primary mt-0.5">
+                  {isSurvivor ? (serializedSurvivalTable[0]?.displayName || '-') : finalStandings[0].displayName}
+                </p>
               </div>
             </div>
 
@@ -230,7 +319,12 @@ export default async function RankingPage({
               </div>
               <div>
                 <span className="text-[10px] text-text-muted uppercase font-mono font-bold">Tu Puesto</span>
-                <p className="text-sm font-bold text-text-primary mt-0.5">#{currentStand?.rank || '-'} de {finalStandings.length}</p>
+                <p className="text-sm font-bold text-text-primary mt-0.5">
+                  {isSurvivor
+                    ? (currentSurvivalRow ? `#${currentSurvivalRow.position} de ${serializedSurvivalTable.length}` : '-')
+                    : ` #${currentStand?.rank || '-'} de ${finalStandings.length}`
+                  }
+                </p>
               </div>
             </div>
 
@@ -239,8 +333,15 @@ export default async function RankingPage({
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-text-muted uppercase font-mono font-bold">Tu Puntaje</span>
-                <p className="text-sm font-bold text-text-primary mt-0.5">{currentStand?.points || 0} Puntos</p>
+                <span className="text-[10px] text-text-muted uppercase font-mono font-bold">
+                  {isSurvivor ? 'Tu Estado' : 'Tu Puntaje'}
+                </span>
+                <p className="text-sm font-bold text-text-primary mt-0.5">
+                  {isSurvivor
+                    ? (currentSurvivalRow ? currentSurvivalRow.statusLabel : 'Sin selección')
+                    : `${currentStand?.points || 0} Puntos`
+                  }
+                </p>
               </div>
             </div>
           </div>
@@ -248,8 +349,15 @@ export default async function RankingPage({
 
         {/* Standings Table component */}
         <div className="space-y-3">
-          <h3 className="font-display text-lg tracking-wide uppercase text-text-primary">Clasificación</h3>
-          <RankingTable standings={finalStandings} currentUserId={userId} />
+          <h3 className="font-display text-lg tracking-wide uppercase text-text-primary">
+            {isSurvivor ? 'Tabla de Supervivencia' : 'Clasificación'}
+          </h3>
+          <RankingTable
+            competitionType={selectedLeague.competitionType}
+            standings={finalStandings}
+            survivalTable={serializedSurvivalTable}
+            currentUserId={userId}
+          />
         </div>
       </div>
     </>

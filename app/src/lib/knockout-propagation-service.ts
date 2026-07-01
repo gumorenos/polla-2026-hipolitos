@@ -143,7 +143,7 @@ export async function applyKnockoutProgressionAndSurvivorSync(
     for (const league of leagues) {
       const existingStatuses = await tx.teamTournamentStatus.findMany({
         where: { leagueId: league.id },
-        select: { teamCode: true, status: true },
+        select: { teamCode: true, status: true, eliminatedInMatchId: true, finalRank: true },
       });
       if (existingStatuses.length === 0) continue;
 
@@ -245,7 +245,7 @@ export async function syncMaterializedRoundOf32SurvivorStatuses(
     for (const league of leagues) {
       const existingStatuses = await tx.teamTournamentStatus.findMany({
         where: { leagueId: league.id },
-        select: { teamCode: true, status: true },
+        select: { teamCode: true, status: true, eliminatedInMatchId: true, finalRank: true },
       });
       const plan = buildRoundOf32ChampionStatusUpdates(
         rosterTeamCodes,

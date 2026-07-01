@@ -711,7 +711,7 @@ export default function UsersAdminClient({
       } else if (res.mode === 'blocked_owner' && 'user' in res && res.user) {
         replaceUserInList(res.user);
         setOwnerBlockMessage(res.message ?? 'Este usuario es propietario de una o más competencias. Transfiere la propiedad antes de eliminarlo.');
-        setOwnerBlockLeagues(('ownedLeagues' in res ? res.ownedLeagues : undefined) ?? res.user.leaguesOwned ?? []);
+        setOwnerBlockLeagues((('ownedLeagues' in res ? res.ownedLeagues : undefined) ?? res.user.leaguesOwned ?? []) as OwnedLeague[]);
       }
       router.refresh();
     }

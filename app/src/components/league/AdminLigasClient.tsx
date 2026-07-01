@@ -772,6 +772,42 @@ export const AdminLigasClient: React.FC<AdminLigasClientProps> = ({ leagues, app
                   <input type="hidden" name="pointsWinner" value={settingsLeague.pointsWinner} />
                   <input type="hidden" name="pointsDraw" value={settingsLeague.pointsDraw} />
                   <input type="hidden" name="pointsConsolation" value={settingsLeague.pointsConsolation} />
+
+                  <div className="space-y-3 rounded-xl border border-border-subtle bg-bg-secondary/30 p-3">
+                    <span className="block text-xs font-semibold text-text-primary uppercase tracking-wider">Configuración de entrada tardía</span>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Permitir entrada tardía a retos
+                        </label>
+                        <select
+                          name="matchPoolLateEntryEnabled"
+                          defaultValue={String(settingsLeague.matchPoolLateEntryEnabled)}
+                          className="field text-xs py-1.5 w-full"
+                        >
+                          <option value="true">Habilitado</option>
+                          <option value="false">Deshabilitado</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block">
+                          Minutos después del inicio
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="180"
+                          name="matchPoolLateEntryMinutes"
+                          defaultValue={settingsLeague.matchPoolLateEntryMinutes}
+                          className="field text-xs py-1.5 w-full"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-amber-300 leading-relaxed">
+                      ⚠️ Advertencia: Si se habilita, los usuarios podrían entrar con información parcial del partido.
+                    </p>
+                  </div>
                 </>
               ) : (
                 <>

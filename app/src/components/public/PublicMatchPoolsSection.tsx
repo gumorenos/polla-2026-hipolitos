@@ -17,7 +17,30 @@ interface PublicMatchPoolsSectionProps {
   showHeading?: boolean;
 }
 
-function pickTypeLabel(pickType: string): string {
+function pickTypeLabel(
+  pickType: string,
+  pickValue: string,
+  match?: {
+    phase: string;
+    homeTeamCode: string;
+    awayTeamCode: string;
+    homeTeamName: string;
+    awayTeamName: string;
+  } | null
+): string {
+  if (match) {
+    const homeLabel = match.homeTeamName || match.homeTeamCode;
+    const awayLabel = match.awayTeamName || match.awayTeamCode;
+    if (match.phase === 'groups') {
+      if (pickType === 'home_win') return `${homeLabel} gana`;
+      if (pickType === 'away_win') return `${awayLabel} gana`;
+      if (pickType === 'draw') return 'Empate';
+    } else {
+      if (pickType === 'home_advances') return `${homeLabel} avanza`;
+      if (pickType === 'away_advances') return `${awayLabel} avanza`;
+    }
+  }
+
   switch (pickType) {
     case 'home_win':       return 'Victoria local';
     case 'draw':           return 'Empate';
@@ -147,7 +170,7 @@ export function PublicMatchPoolsSection({
                     {pool.entries.map((entry) => (
                       <tr key={entry.userId} className="border-b border-border-subtle/50 text-text-secondary last:border-0">
                         <td className="p-1">{entry.displayName}</td>
-                        <td className="p-1">{pickTypeLabel(entry.pickType)}</td>
+                        <td className="p-1">{pickTypeLabel(entry.pickType, entry.pickValue, pool.match)}</td>
                         <td className="p-1">{entryStatusLabel(entry.status)}</td>
                         {pool.status === 'settled' && (
                           <td className={`p-1 text-right ${(entry.netAmount ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>

@@ -35,33 +35,26 @@ export default async function PronosticosPage() {
   }
 
   // Check league membership — predictions only make sense within a league
-  const [allMemberships, activeMatchPoolLeague] = await Promise.all([
+  const [allMemberships] = await Promise.all([
     prisma.leagueMember.findMany({
       where: { userId, league: { isActive: true } },
       include: { league: true },
     }),
-    prisma.league.findFirst({
-      where: {
-        competitionType: 'match_pool',
-        status: 'active',
-        isActive: true,
-      },
-      select: { slug: true, name: true },
-      orderBy: { createdAt: 'desc' },
-    }),
   ]);
   const memberships = allMemberships.filter((membership) => membership.league.competitionType !== 'match_pool');
+  const userMatchPoolMemberships = allMemberships.filter((membership) => membership.league.competitionType === 'match_pool');
 
   if (memberships.length === 0) {
-    if (activeMatchPoolLeague) {
+    if (userMatchPoolMemberships.length > 0) {
+      const activeMatchPoolLeague = userMatchPoolMemberships[0].league;
       return (
-        <div className="mx-auto max-w-lg space-y-4 py-12 text-center">
+        <div className="mx-auto max-w-lg space-y-4 py-12 text-center px-4">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
             <Users className="h-7 w-7 text-cyan-300" />
           </div>
           <h2 className="font-display text-2xl uppercase tracking-wide text-text-primary">Retos por Partido</h2>
           <p className="text-sm text-text-secondary">
-            Retos por Partido no usa marcadores ni campeón. Entra a la sección Retos por Partido para crear o unirte a un reto individual.
+            Retos por Partido no usa marcadores ni campeón. Entra a la sección Retos por Partido.
           </p>
           <Link href={`/competencia/${activeMatchPoolLeague.slug}`} className="inline-flex rounded bg-cyan-500 px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white hover:bg-cyan-400">
             Ir a Retos por Partido
@@ -543,6 +536,21 @@ export default async function PronosticosPage() {
 
   return (
     <>
+      {userMatchPoolMemberships.length > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-3 text-cyan-200">
+            <span className="text-sm">
+              También participas en <strong>{userMatchPoolMemberships.length === 1 ? 'un reto por partido' : `${userMatchPoolMemberships.length} retos por partido`}</strong>.
+            </span>
+            <Link
+              href={`/competencia/${userMatchPoolMemberships[0].league.slug}`}
+              className="rounded bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-500/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-cyan-200 transition-all"
+            >
+              Ir a Retos por Partido
+            </Link>
+          </div>
+        </div>
+      )}
       <PronosticosClient
         matches={serializedMatches}
         predictions={serializedPredictions}

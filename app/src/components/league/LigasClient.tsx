@@ -64,6 +64,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
   const [joinAsParticipant, setJoinAsParticipant] = useState(false);
   const [showOdds, setShowOdds] = useState(initialCompetitionType !== 'match_pool');
   const [showH2H, setShowH2H] = useState(true);
+  const [matchPoolLateEntryEnabled, setMatchPoolLateEntryEnabled] = useState(false);
+  const [matchPoolLateEntryMinutes, setMatchPoolLateEntryMinutes] = useState(45);
   const [showCreateModal, setShowCreateModal] = useState(openCreateModal);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -100,6 +102,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       joinAsParticipant: competitionType === 'match_pool' ? false : joinAsParticipant,
       showOdds: competitionType === 'match_pool' ? false : showOdds,
       showH2H,
+      matchPoolLateEntryEnabled: competitionType === 'match_pool' ? matchPoolLateEntryEnabled : false,
+      matchPoolLateEntryMinutes: competitionType === 'match_pool' ? matchPoolLateEntryMinutes : 45,
     });
 
     if (result.error) {
@@ -112,6 +116,8 @@ export const LigasClient: React.FC<LigasClientProps> = ({
       setJoinAsParticipant(false);
       setShowOdds(true);
       setShowH2H(true);
+      setMatchPoolLateEntryEnabled(false);
+      setMatchPoolLateEntryMinutes(45);
       setShowCreateModal(false);
       setLoading(false);
       if (result.data) {
@@ -391,11 +397,46 @@ export const LigasClient: React.FC<LigasClientProps> = ({
                   </p>
                 </div>
               )}
-              {competitionType === 'match_pool' ? (
-                <div className="p-3 rounded-xl bg-bg-secondary/40 border border-border-default text-xs text-text-secondary leading-relaxed">
-                  <span className="block font-semibold text-text-primary">Participación abierta por reto</span>
-                  En Retos por Partido no hay miembros fijos ni ranking global. Cada persona aprobada entra voluntariamente a cada reto por partido.
-                </div>
+               {competitionType === 'match_pool' ? (
+                <>
+                  <div className="p-3 rounded-xl bg-bg-secondary/40 border border-border-default text-xs text-text-secondary leading-relaxed">
+                    <span className="block font-semibold text-text-primary">Participación abierta por reto</span>
+                    En Retos por Partido no hay miembros fijos ni ranking global. Cada persona aprobada entra voluntariamente a cada reto por partido.
+                  </div>
+                  <div className="space-y-3 rounded-xl border border-border-default bg-bg-secondary/40 p-3">
+                    <span className="block text-xs font-semibold text-text-primary uppercase tracking-wider">Configuración de entrada tardía</span>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={matchPoolLateEntryEnabled}
+                        onChange={(e) => setMatchPoolLateEntryEnabled(e.target.checked)}
+                        className="mt-0.5"
+                        disabled={loading}
+                      />
+                      <span className="text-xs text-text-secondary leading-relaxed">
+                        <span className="block font-semibold text-text-primary">Permitir entrada tardía a retos</span>
+                        Permite crear, invitar o unirse a retos después del inicio del partido.
+                      </span>
+                    </label>
+                    {matchPoolLateEntryEnabled && (
+                      <label className="block text-xs text-text-secondary">
+                        Minutos después del inicio
+                        <input
+                          type="number"
+                          min="1"
+                          max="180"
+                          value={matchPoolLateEntryMinutes}
+                          onChange={(e) => setMatchPoolLateEntryMinutes(Number(e.target.value))}
+                          className="field mt-1 py-1 w-full"
+                          disabled={loading}
+                        />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-amber-300 leading-relaxed">
+                      ⚠️ Advertencia: Si se habilita, los usuarios podrían entrar con información parcial del partido.
+                    </p>
+                  </div>
+                </>
               ) : (
                 <label className="flex items-start gap-2 p-3 rounded-xl bg-bg-secondary/40 border border-border-default cursor-pointer">
                   <input

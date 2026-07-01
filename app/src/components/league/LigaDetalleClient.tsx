@@ -80,6 +80,16 @@ interface LigaDetalleClientProps {
     prizePoolOverride?: number | null;
     memberCount?: number;
   };
+  survivalTable?: {
+    userId: string;
+    displayName: string;
+    teamCode: string | null;
+    teamName: string | null;
+    position: number;
+    statusLabel: string;
+    roundLabel: string;
+    eliminatedInMatchId: string | null;
+  }[];
   currentUserRole: string | null;
   isSuperadmin: boolean;
   currentUserId: string;
@@ -112,6 +122,7 @@ interface LigaDetalleClientProps {
 
 export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
   league,
+  survivalTable = [],
   currentUserRole,
   isSuperadmin,
   currentUserId,
@@ -386,7 +397,12 @@ export const LigaDetalleClient: React.FC<LigaDetalleClientProps> = ({
                 </p>
               </div>
             ) : (
-              <RankingTable standings={standings} currentUserId={currentUserId} />
+              <RankingTable
+                competitionType={league.competitionType}
+                standings={standings}
+                survivalTable={survivalTable}
+                currentUserId={currentUserId}
+              />
             )}
           </div>
         )}

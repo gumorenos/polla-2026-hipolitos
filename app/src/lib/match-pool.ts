@@ -185,13 +185,34 @@ export function isMatchPoolPickValid(
   return pickValue === match.awayTeamCode;
 }
 
-/**
- * Authorizes logical edit/cancel operations. Kickoff is intentionally absent:
- * a creator may correct a one-person open reto without affecting a counterparty.
- */
-export function authorizeMatchPoolMutation(
-  context: MatchPoolMutationContext,
-): MatchPoolMutationDecision {
+export function creatorCanMutate(context: {
+  status: string;
+  createdByUserId: string;
+  currentUserId: string;
+  entryUserIds: string[];
+}): boolean {
+  const isCreator = context.createdByUserId === context.currentUserId;
+  const isOpen = context.status === 'open';
+  const hasOnlyCreatorEntry = context.entryUserIds.length === 1
+    && context.entryUserIds[0] === context.currentUserId;
+  return isCreator && isOpen && hasOnlyCreatorEntry;
+}
+
+export function adminMutationRequiresReason(context: {
+  status: string;
+  createdByUserId: string;
+  currentUserId: string;
+  entryUserIds: string[];
+  isSuperadmin: boolean;
+}): boolean {
+  if (!context.isSuperadmin) return false;
+  return !creatorCanMutate(context);
+}
+
+export function canMutate(context: MatchPoolMutationContext): MatchPoolMutationDecision {
+  if (creatorCanMutate(context)) {
+    return { allowed: true, requiresAudit: false, error: null };
+  }
   if (context.isSuperadmin) {
     if (!context.reason?.trim()) {
       return {
@@ -204,15 +225,14 @@ export function authorizeMatchPoolMutation(
   }
 
   const isCreator = context.createdByUserId === context.currentUserId;
-  const hasOnlyCreatorEntry = context.entryUserIds.length === 1
-    && context.entryUserIds[0] === context.createdByUserId;
-
   if (!isCreator) {
     return { allowed: false, requiresAudit: false, error: 'Solo el creador puede modificar este reto.' };
   }
   if (context.status !== 'open') {
     return { allowed: false, requiresAudit: false, error: 'Solo se pueden modificar retos abiertos.' };
   }
+  const hasOnlyCreatorEntry = context.entryUserIds.length === 1
+    && context.entryUserIds[0] === context.createdByUserId;
   if (!hasOnlyCreatorEntry) {
     return {
       allowed: false,
@@ -222,6 +242,16 @@ export function authorizeMatchPoolMutation(
   }
 
   return { allowed: true, requiresAudit: false, error: null };
+}
+
+/**
+ * Authorizes logical edit/cancel operations. Kickoff is intentionally absent:
+ * a creator may correct a one-person open reto without affecting a counterparty.
+ */
+export function authorizeMatchPoolMutation(
+  context: MatchPoolMutationContext,
+): MatchPoolMutationDecision {
+  return canMutate(context);
 }
 
 // ─── Result resolution ────────────────────────────────────────────────────────
@@ -404,6 +434,13 @@ export interface PublicMatchPool {
   createdByDisplayName: string;
   entries: PublicMatchPoolEntry[];
   invites: PublicMatchPoolInvite[];
+  match?: {
+    phase: string;
+    homeTeamCode: string;
+    awayTeamCode: string;
+    homeTeamName: string;
+    awayTeamName: string;
+  } | null;
 }
 
 /**
@@ -435,6 +472,13 @@ export function serializePublicMatchPool(pool: {
     status: string;
     invitedUser: { name: string; displayName: string | null };
   }>;
+  match?: {
+    phase?: string;
+    homeTeamCode: string;
+    awayTeamCode: string;
+    homeTeam?: { name: string } | null;
+    awayTeam?: { name: string } | null;
+  } | null;
 }): PublicMatchPool {
   return {
     id: pool.id,
@@ -461,5 +505,14 @@ export function serializePublicMatchPool(pool: {
       invitedDisplayName: i.invitedUser.displayName ?? i.invitedUser.name,
       status: i.status as MatchPoolInviteStatus,
     })),
+    match: pool.match
+      ? {
+          phase: pool.match.phase ?? 'groups',
+          homeTeamCode: pool.match.homeTeamCode,
+          awayTeamCode: pool.match.awayTeamCode,
+          homeTeamName: pool.match.homeTeam?.name ?? pool.match.homeTeamCode,
+          awayTeamName: pool.match.awayTeam?.name ?? pool.match.awayTeamCode,
+        }
+      : null,
   };
 }

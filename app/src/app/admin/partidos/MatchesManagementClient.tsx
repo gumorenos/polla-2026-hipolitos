@@ -6,8 +6,8 @@ import {
   updateMatchDetailsAction,
   previewKickoffCorrectionsAction,
   applyKickoffCorrectionsAction,
-  type KickoffCorrectionProposal,
 } from '../../../lib/actions/admin';
+import { type KickoffCorrectionProposal } from '../../../lib/actions/admin-helpers';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { parseLimaDateTimeToUtc } from '../../../lib/utils/dates';

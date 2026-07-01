@@ -9,7 +9,11 @@ import {
   joinMatchPoolAction,
   updateMatchPoolAction,
 } from '../../lib/actions/match-pools';
-import { getMatchPoolEntryDeadline } from '../../lib/match-pool';
+import {
+  getMatchPoolEntryDeadline,
+  creatorCanMutate,
+  adminMutationRequiresReason,
+} from '../../lib/match-pool';
 import type { MatchPoolPickType, PublicMatchPool } from '../../lib/match-pool';
 import { PublicMatchPoolsSection } from '../public/PublicMatchPoolsSection';
 
@@ -20,6 +24,8 @@ interface MatchOption {
   kickoffUtc: string;
   homeTeamCode: string;
   awayTeamCode: string;
+  homeTeamName?: string;
+  awayTeamName?: string;
   status: string;
   resultStatus: string | null;
 }
@@ -55,16 +61,18 @@ function isGroupPhase(phase: string): boolean {
 }
 
 function optionsForMatch(match: MatchOption): Array<{ value: MatchPoolPickType; label: string; pickValue: string }> {
+  const homeLabel = match.homeTeamName || match.homeTeamCode;
+  const awayLabel = match.awayTeamName || match.awayTeamCode;
   if (isGroupPhase(match.phase)) {
     return [
-      { value: 'home_win', label: `${match.homeTeamCode} gana`, pickValue: match.homeTeamCode },
+      { value: 'home_win', label: `${homeLabel} gana`, pickValue: match.homeTeamCode },
       { value: 'draw', label: 'Empate', pickValue: 'draw' },
-      { value: 'away_win', label: `${match.awayTeamCode} gana`, pickValue: match.awayTeamCode },
+      { value: 'away_win', label: `${awayLabel} gana`, pickValue: match.awayTeamCode },
     ];
   }
   return [
-    { value: 'home_advances', label: `${match.homeTeamCode} avanza`, pickValue: match.homeTeamCode },
-    { value: 'away_advances', label: `${match.awayTeamCode} avanza`, pickValue: match.awayTeamCode },
+    { value: 'home_advances', label: `${homeLabel} avanza`, pickValue: match.homeTeamCode },
+    { value: 'away_advances', label: `${awayLabel} avanza`, pickValue: match.awayTeamCode },
   ];
 }
 
@@ -190,6 +198,20 @@ export function MatchPoolLeagueClient({
       setMessage('Revisa el partido, el monto referencial y la predicción.');
       return;
     }
+    const entryUserIds = pool.entries.map((e) => e.userId);
+    const requiresReason = adminMutationRequiresReason({
+      status: pool.status,
+      createdByUserId: pool.createdByUserId,
+      currentUserId,
+      entryUserIds,
+      isSuperadmin,
+    });
+    const isCreator = pool.createdByUserId === currentUserId;
+    const isOpen = pool.status === 'open';
+    const hasOnlyCreatorEntry = pool.entries.length === 1 && pool.entries[0]?.userId === currentUserId;
+    const isCreatorMutatingOwn = isCreator && isOpen && hasOnlyCreatorEntry;
+
+    const reason = (requiresReason && !isCreatorMutatingOwn) ? (adminReasons[pool.id]?.trim() || undefined) : undefined;
     runAction(
       () => updateMatchPoolAction({
         poolId: pool.id,
@@ -199,7 +221,7 @@ export function MatchPoolLeagueClient({
         note: String(formData.get('note') ?? '').trim() || undefined,
         pickType: option.value,
         pickValue: option.pickValue,
-        reason: adminReasons[pool.id]?.trim() || undefined,
+        reason,
       }),
       'Reto actualizado.',
     );
@@ -207,10 +229,24 @@ export function MatchPoolLeagueClient({
   }
 
   function handleCancel(pool: PublicMatchPool) {
+    const entryUserIds = pool.entries.map((e) => e.userId);
+    const requiresReason = adminMutationRequiresReason({
+      status: pool.status,
+      createdByUserId: pool.createdByUserId,
+      currentUserId,
+      entryUserIds,
+      isSuperadmin,
+    });
+    const isCreator = pool.createdByUserId === currentUserId;
+    const isOpen = pool.status === 'open';
+    const hasOnlyCreatorEntry = pool.entries.length === 1 && pool.entries[0]?.userId === currentUserId;
+    const isCreatorMutatingOwn = isCreator && isOpen && hasOnlyCreatorEntry;
+
+    const reason = (requiresReason && !isCreatorMutatingOwn) ? (adminReasons[pool.id]?.trim() || undefined) : undefined;
     runAction(
       () => cancelMatchPoolAction({
         poolId: pool.id,
-        reason: adminReasons[pool.id]?.trim() || undefined,
+        reason,
       }),
       'Reto cancelado.',
     );
@@ -342,11 +378,21 @@ export function MatchPoolLeagueClient({
                 </div>
               )}
               {(() => {
-                const creatorCanMutate = pool.status === 'open'
-                  && pool.createdByUserId === currentUserId
-                  && pool.entries.length === 1
-                  && pool.entries[0]?.userId === currentUserId;
-                const canMutate = creatorCanMutate || isSuperadmin;
+                const entryUserIds = pool.entries.map((e) => e.userId);
+                const isCreatorCanMutate = creatorCanMutate({
+                  status: pool.status,
+                  createdByUserId: pool.createdByUserId,
+                  currentUserId,
+                  entryUserIds,
+                });
+                const requiresReason = adminMutationRequiresReason({
+                  status: pool.status,
+                  createdByUserId: pool.createdByUserId,
+                  currentUserId,
+                  entryUserIds,
+                  isSuperadmin,
+                });
+                const canMutate = isCreatorCanMutate || isSuperadmin;
                 if (!canMutate) return null;
                 const creatorEntry = pool.entries.find((entry) => entry.userId === pool.createdByUserId);
                 const editMatchId = editMatchIds[pool.id] ?? pool.matchId;
@@ -363,11 +409,11 @@ export function MatchPoolLeagueClient({
                       <button type="button" onClick={() => setEditingPoolId(editingPoolId === pool.id ? null : pool.id)} className="rounded border border-cyan-500/30 px-3 py-1.5 text-sm text-cyan-200">
                         {editingPoolId === pool.id ? 'Cerrar edición' : 'Editar reto'}
                       </button>
-                      <button type="button" disabled={isPending || (isSuperadmin && !adminReasons[pool.id]?.trim())} onClick={() => handleCancel(pool)} className="rounded border border-red-500/30 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50">
+                      <button type="button" disabled={isPending || (requiresReason && !adminReasons[pool.id]?.trim())} onClick={() => handleCancel(pool)} className="rounded border border-red-500/30 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50">
                         Cancelar reto
                       </button>
                     </div>
-                    {isSuperadmin && (
+                    {requiresReason && (
                       <label className="mt-3 block text-xs text-text-secondary">
                         Razón administrativa obligatoria
                         <input value={adminReasons[pool.id] ?? ''} onChange={(event) => setAdminReasons((current) => ({ ...current, [pool.id]: event.target.value }))} className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
@@ -394,7 +440,7 @@ export function MatchPoolLeagueClient({
                         <label className="text-xs text-text-secondary md:col-span-2">Nota
                           <input name="note" maxLength={240} defaultValue={pool.note ?? ''} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary" />
                         </label>
-                        <button type="submit" disabled={isPending || (isSuperadmin && !adminReasons[pool.id]?.trim())} className="w-fit rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar cambios</button>
+                        <button type="submit" disabled={isPending || (requiresReason && !adminReasons[pool.id]?.trim())} className="w-fit rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar cambios</button>
                       </form>
                     )}
                   </div>

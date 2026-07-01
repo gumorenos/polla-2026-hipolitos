@@ -21,6 +21,8 @@ interface CreateLeagueInput {
   joinAsParticipant?: boolean;
   showOdds?: boolean;
   showH2H?: boolean;
+  matchPoolLateEntryEnabled?: boolean;
+  matchPoolLateEntryMinutes?: number;
 }
 
 function resolveCompetitionTypeInput(value?: string | null): CompetitionTypeInput | null {
@@ -118,6 +120,8 @@ export async function createLeagueAction(input: string | CreateLeagueInput) {
           championDeadline,
           showOdds,
           showH2H,
+          matchPoolLateEntryEnabled: competitionType === 'match_pool' ? (payload.matchPoolLateEntryEnabled ?? false) : false,
+          matchPoolLateEntryMinutes: competitionType === 'match_pool' ? (payload.matchPoolLateEntryMinutes ?? 45) : 45,
         },
       });
 

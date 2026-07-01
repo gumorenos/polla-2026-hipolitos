@@ -18,8 +18,12 @@ import {
   authorizeMatchPoolMutation,
   isMatchPoolPickValid,
   getMatchPoolEntryDeadline,
+  creatorCanMutate,
+  adminMutationRequiresReason,
+  canMutate,
   type MatchPoolMatchContext,
   type MatchPoolSettlementInput,
+  type MatchPoolMutationContext,
 } from './match-pool';
 import { getDefaultCompetitionShowOdds } from './competition-types';
 
@@ -661,5 +665,105 @@ describe('Server action file structure', () => {
     // getAllowedMatchPoolPickOptions is in src/lib/match-pool.ts (no 'use server')
     // so it can safely be imported by both server and client code.
     expect(typeof getAllowedMatchPoolPickOptions).toBe('function');
+  });
+});
+
+// ─── 20. Late entry and creator/superadmin mutations ─────────────────────────
+
+describe('Match Pool late entry and creator/superadmin mutations', () => {
+  it('creatorCanMutate returns true if user is creator, status is open, and has only creator entry', () => {
+    const context = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-creator',
+      entryUserIds: ['user-creator'],
+    };
+    expect(creatorCanMutate(context)).toBe(true);
+  });
+
+  it('creatorCanMutate returns false if there are other entries', () => {
+    const context = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-creator',
+      entryUserIds: ['user-creator', 'user-other'],
+    };
+    expect(creatorCanMutate(context)).toBe(false);
+  });
+
+  it('adminMutationRequiresReason returns false if user is creator and meets normal creator rule, even if superadmin', () => {
+    const context = {
+      status: 'open',
+      createdByUserId: 'user-admin-creator',
+      currentUserId: 'user-admin-creator',
+      entryUserIds: ['user-admin-creator'],
+      isSuperadmin: true,
+    };
+    expect(adminMutationRequiresReason(context)).toBe(false);
+  });
+
+  it('adminMutationRequiresReason returns true if user is superadmin but NOT creator', () => {
+    const context = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-admin',
+      entryUserIds: ['user-creator'],
+      isSuperadmin: true,
+    };
+    expect(adminMutationRequiresReason(context)).toBe(true);
+  });
+
+  it('canMutate allows creator mutation without reason if only creator entry exists', () => {
+    const context: MatchPoolMutationContext = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-creator',
+      entryUserIds: ['user-creator'],
+      isSuperadmin: false,
+    };
+    const decision = canMutate(context);
+    expect(decision.allowed).toBe(true);
+    expect(decision.requiresAudit).toBe(false);
+  });
+
+  it('canMutate rejects superadmin mutation if reason is missing', () => {
+    const context: MatchPoolMutationContext = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-admin',
+      entryUserIds: ['user-creator'],
+      isSuperadmin: true,
+      reason: '',
+    };
+    const decision = canMutate(context);
+    expect(decision.allowed).toBe(false);
+    expect(decision.requiresAudit).toBe(true);
+  });
+
+  it('canMutate allows superadmin mutation if reason is provided', () => {
+    const context: MatchPoolMutationContext = {
+      status: 'open',
+      createdByUserId: 'user-creator',
+      currentUserId: 'user-admin',
+      entryUserIds: ['user-creator'],
+      isSuperadmin: true,
+      reason: 'Admin override',
+    };
+    const decision = canMutate(context);
+    expect(decision.allowed).toBe(true);
+    expect(decision.requiresAudit).toBe(true);
+  });
+
+  it('canCreateMatchPool obeys late entry config', () => {
+    const kickoffMs = Date.now() - 10 * 60 * 1000; // 10 minutes ago
+    const match = { kickoffUtc: new Date(kickoffMs) };
+    const lateConfigEnabled = { enabled: true, minutes: 45 };
+    const lateConfigDisabled = { enabled: false, minutes: 45 };
+
+    // With late entry disabled, cannot create after kickoff
+    expect(canCreateMatchPool(match, NOW, lateConfigDisabled)).toBe(false);
+
+    // With late entry enabled and within limit, can create after kickoff
+    expect(canCreateMatchPool(match, NOW, lateConfigEnabled)).toBe(true);
   });
 });

@@ -6,217 +6,23 @@ import { getCurrentSession } from '../auth-helpers';
 import { calculatePoints } from '../scoring/calculatePoints';
 import { revalidatePath } from 'next/cache';
 import { auth } from '../auth';
-import { randomUUID } from 'crypto';
 import { isConsistentFinalMatchResult, normalizeFinalMatchResult } from '../match-result';
 import { applyKnockoutProgressionAndSurvivorSync } from '../knockout-propagation-service';
 import { recalculateAllStandings } from '../services/standings';
 import { OFFICIAL_KNOCKOUT_SCHEDULE } from '../official-knockout-schedule';
 import { settleMatchPoolsForFinalMatch } from '../services/match-pool-settlement';
-
-type AdminUserType = 'participant' | 'admin' | 'superadmin';
-
-const ownedLeagueSelect = {
-  id: true,
-  name: true,
-  slug: true,
-  competitionType: true,
-} satisfies Prisma.LeagueSelect;
-
-const adminUserInclude = Prisma.validator<Prisma.UserInclude>()({
-  leaguesOwned: {
-    select: ownedLeagueSelect,
-  },
-  memberships: {
-    include: {
-      league: {
-        select: {
-          id: true,
-          name: true,
-          competitionType: true,
-        },
-      },
-    },
-  },
-  winnerPredictions: {
-    include: {
-      league: {
-        select: {
-          id: true,
-          name: true,
-          competitionType: true,
-        },
-      },
-      team: {
-        select: {
-          name: true,
-        },
-      },
-    },
-  },
-  winnerPredictionHistories: {
-    include: {
-      league: {
-        select: {
-          name: true,
-          competitionType: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: 'desc' as const,
-    },
-  },
-  _count: {
-    select: {
-      predictions: true,
-    },
-  },
-});
-
-function getAdminUserTypeFlags(userType: AdminUserType) {
-  if (userType === 'superadmin') {
-    return { isSuperadmin: true, canCreateLeagues: true };
-  }
-  if (userType === 'admin') {
-    return { isSuperadmin: false, canCreateLeagues: true };
-  }
-  return { isSuperadmin: false, canCreateLeagues: false };
-}
-
-function parseAdminUserType(userType: string | undefined): AdminUserType | null {
-  if (!userType) return 'participant';
-  if (userType === 'participant' || userType === 'admin' || userType === 'superadmin') {
-    return userType;
-  }
-  return null;
-}
-
-async function upsertPasswordAccounts(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  email: string,
-  hashedPassword: string
-) {
-  const now = new Date();
-  const existingAccounts = await tx.account.findMany({
-    where: {
-      userId,
-      providerId: { in: ['credential', 'email'] },
-    },
-  });
-
-  const credentialAccount = existingAccounts.find((account) => account.providerId === 'credential');
-  if (credentialAccount) {
-    await tx.account.update({
-      where: { id: credentialAccount.id },
-      data: {
-        accountId: userId,
-        password: hashedPassword,
-        updatedAt: now,
-      },
-    });
-  } else {
-    await tx.account.create({
-      data: {
-        id: `acc-credential-${randomUUID()}`,
-        accountId: userId,
-        providerId: 'credential',
-        userId,
-        password: hashedPassword,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
-  }
-
-  const emailAccount = existingAccounts.find((account) => account.providerId === 'email');
-  if (emailAccount) {
-    await tx.account.update({
-      where: { id: emailAccount.id },
-      data: {
-        accountId: email,
-        password: hashedPassword,
-        updatedAt: now,
-      },
-    });
-  } else {
-    await tx.account.create({
-      data: {
-        id: `acc-email-${randomUUID()}`,
-        accountId: email,
-        providerId: 'email',
-        userId,
-        password: hashedPassword,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
-  }
-}
-
-async function syncEmailPasswordAccount(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  email: string
-) {
-  await tx.account.updateMany({
-    where: { userId, providerId: 'email' },
-    data: { accountId: email, updatedAt: new Date() },
-  });
-}
-
-async function ensureCredentialPasswordAccount(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  email: string
-) {
-  const existingAccounts = await tx.account.findMany({
-    where: {
-      userId,
-      providerId: { in: ['credential', 'email'] },
-    },
-  });
-  const emailAccount = existingAccounts.find((account) => account.providerId === 'email');
-  if (!emailAccount?.password) return;
-
-  const credentialAccount = existingAccounts.find((account) => account.providerId === 'credential');
-  if (credentialAccount) {
-    await tx.account.update({
-      where: { id: credentialAccount.id },
-      data: {
-        accountId: userId,
-        password: emailAccount.password,
-        updatedAt: new Date(),
-      },
-    });
-  } else {
-    await tx.account.create({
-      data: {
-        id: `acc-credential-${randomUUID()}`,
-        accountId: userId,
-        providerId: 'credential',
-        userId,
-        password: emailAccount.password,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
-  }
-
-  if (emailAccount.accountId !== email) {
-    await tx.account.update({
-      where: { id: emailAccount.id },
-      data: { accountId: email, updatedAt: new Date() },
-    });
-  }
-}
-
-async function getAdminUserSnapshot(userId: string) {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    include: adminUserInclude,
-  });
-}
+import {
+  adminUserInclude,
+  getAdminUserTypeFlags,
+  parseAdminUserType,
+  upsertPasswordAccounts,
+  syncEmailPasswordAccount,
+  ensureCredentialPasswordAccount,
+  getAdminUserSnapshot,
+  ownedLeagueSelect,
+  type AdminUserType,
+  type KickoffCorrectionProposal,
+} from './admin-helpers';
 
 export async function updateMatchResultInternal(
   matchId: string,
@@ -1864,19 +1670,6 @@ export async function adminAddToLeagueAction(
 }
 
 
-export type KickoffCorrectionProposal = {
-  matchId: string;
-  homeTeamCode: string;
-  awayTeamCode: string;
-  phase: string;
-  jornada: string;
-  currentKickoffUtc: Date;
-  proposedKickoffUtc: Date;
-  currentReadable: string;
-  proposedReadable: string;
-  changed: boolean;
-  status: string;
-};
 
 export async function previewKickoffCorrectionsAction(): Promise<
   { success: true; proposals: KickoffCorrectionProposal[] } | { success: false; error: string }

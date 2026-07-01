@@ -652,7 +652,7 @@ export async function adminSyncChampionTeamStatuses(leagueId: string): ActionRes
     getEligibleChampionPickTeamCodes(leagueId),
     prisma.teamTournamentStatus.findMany({
       where: { leagueId },
-      select: { teamCode: true, status: true },
+      select: { teamCode: true, status: true, eliminatedInMatchId: true, finalRank: true },
     }),
     prisma.match.findMany({ orderBy: { kickoffUtc: 'asc' } }),
     prisma.team.findMany({ select: { code: true, name: true } }),

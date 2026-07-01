@@ -1,6 +1,8 @@
 export type ExistingChampionTeamStatus = {
   teamCode: string;
   status: string;
+  eliminatedInMatchId?: string | null;
+  finalRank?: number | null;
 };
 
 export type ChampionStatusUpdate = {
@@ -105,8 +107,8 @@ export function buildKnockoutChampionStatusUpdates(
   const resolvedMatches: string[] = [];
   const phaseOrder: Record<string, number> = { r32: 1, r16: 2, quarters: 3, semis: 4, final: 5 };
   const finalMatches = matches
-    .filter((match) => match.id !== '3rd' && phaseOrder[match.phase])
-    .sort((left, right) => phaseOrder[left.phase] - phaseOrder[right.phase]);
+     .filter((match) => match.id !== '3rd' && phaseOrder[match.phase])
+     .sort((left, right) => phaseOrder[left.phase] - phaseOrder[right.phase]);
 
   for (const match of finalMatches) {
     const outcome = getOutcome(match);
@@ -125,6 +127,15 @@ export function buildKnockoutChampionStatusUpdates(
 
     if (match.phase === 'final') {
       for (const teamCode of targets) {
+        // If the team is already marked as eliminated (or runner_up or champion), do not overwrite it!
+        const existingUpdate = desired.get(teamCode);
+        if (existingUpdate && (existingUpdate.status === 'eliminated' || existingUpdate.status === 'runner_up' || existingUpdate.status === 'champion')) {
+          continue;
+        }
+        const dbStatus = existingByTeam.get(teamCode);
+        if (dbStatus && (dbStatus === 'eliminated' || dbStatus === 'runner_up' || dbStatus === 'champion')) {
+          continue;
+        }
         desired.set(teamCode, {
           teamCode,
           status: 'eliminated',
@@ -147,17 +158,28 @@ export function buildKnockoutChampionStatusUpdates(
 
   const updates: ChampionStatusUpdate[] = [];
   for (const update of desired.values()) {
-    const current = existingByTeam.get(update.teamCode);
-    if (current === update.status) continue;
-    if (current === 'champion' && update.status !== 'champion') {
+    const currentObj = existingStatuses.find(s => normalizeCode(s.teamCode) === update.teamCode);
+    const currentStatus = currentObj?.status;
+
+    const statusChanged = currentStatus !== update.status;
+    const matchIdChanged = currentObj && ('eliminatedInMatchId' in currentObj) && currentObj.eliminatedInMatchId !== undefined
+      ? (currentObj.eliminatedInMatchId ?? null) !== (update.eliminatedInMatchId ?? null)
+      : false;
+    const rankChanged = currentObj && ('finalRank' in currentObj) && currentObj.finalRank !== undefined
+      ? (currentObj.finalRank ?? null) !== (update.finalRank ?? null)
+      : false;
+
+    if (!statusChanged && !matchIdChanged && !rankChanged) continue;
+
+    if (currentStatus === 'champion' && update.status !== 'champion') {
       conflicts.push(`${update.teamCode} figura como campeón manual y no se sobrescribió.`);
       continue;
     }
-    if (current === 'runner_up' && update.status !== 'runner_up' && update.status !== 'champion') {
+    if (currentStatus === 'runner_up' && update.status !== 'runner_up' && update.status !== 'champion') {
       conflicts.push(`${update.teamCode} figura como subcampeón manual y no se sobrescribió.`);
       continue;
     }
-    if (current === 'eliminated' && update.status === 'active') {
+    if (currentStatus === 'eliminated' && update.status === 'active') {
       conflicts.push(`${update.teamCode} figura eliminado y no se reactivó automáticamente.`);
       continue;
     }

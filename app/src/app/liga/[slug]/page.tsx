@@ -6,6 +6,7 @@ import { redirect, notFound } from 'next/navigation';
 import { LigaDetalleClient } from '../../../components/league/LigaDetalleClient';
 import { MatchPoolLeagueClient } from '../../../components/match-pool/MatchPoolLeagueClient';
 import { serializePublicMatchPool } from '../../../lib/match-pool';
+import { buildChampionSurvivalTable, TeamTournamentStatusValue } from '../../../lib/champion-survivor';
 
 function maskEmail(email: string | null | undefined): string | null {
   if (!email) return null;
@@ -89,6 +90,9 @@ export default async function LigaDetallePage({
               id: true,
               homeTeamCode: true,
               awayTeamCode: true,
+              phase: true,
+              homeTeam: { select: { name: true } },
+              awayTeam: { select: { name: true } },
             },
           },
           createdBy: {
@@ -118,6 +122,8 @@ export default async function LigaDetallePage({
           kickoffUtc: true,
           status: true,
           resultStatus: true,
+          homeTeam: { select: { name: true } },
+          awayTeam: { select: { name: true } },
         },
         orderBy: { kickoffUtc: 'asc' },
       }),
@@ -135,10 +141,14 @@ export default async function LigaDetallePage({
       || league.createdBy === userId
       || membership?.role === 'owner'
       || membership?.role === 'admin';
-    const matchLabels = Object.fromEntries(poolRecords.map((pool) => [
-      pool.matchId,
-      `${pool.match.homeTeamCode} vs ${pool.match.awayTeamCode}`,
-    ]));
+    const matchLabels = Object.fromEntries(poolRecords.map((pool) => {
+      const homeLabel = pool.match.homeTeam?.name || pool.match.homeTeamCode;
+      const awayLabel = pool.match.awayTeam?.name || pool.match.awayTeamCode;
+      return [
+        pool.matchId,
+        `${homeLabel} vs ${awayLabel}`,
+      ];
+    }));
 
     return (
       <MatchPoolLeagueClient
@@ -151,16 +161,22 @@ export default async function LigaDetallePage({
           matchPoolLateEntryMinutes: league.matchPoolLateEntryMinutes,
         }}
         pools={poolRecords.map(serializePublicMatchPool)}
-        matches={poolMatches.map((match) => ({
-          id: match.id,
-          label: `${match.homeTeamCode} vs ${match.awayTeamCode}`,
-          phase: match.phase,
-          kickoffUtc: match.kickoffUtc.toISOString(),
-          homeTeamCode: match.homeTeamCode,
-          awayTeamCode: match.awayTeamCode,
-          status: match.status,
-          resultStatus: match.resultStatus,
-        }))}
+        matches={poolMatches.map((match) => {
+          const homeLabel = match.homeTeam?.name || match.homeTeamCode;
+          const awayLabel = match.awayTeam?.name || match.awayTeamCode;
+          return {
+            id: match.id,
+            label: `${homeLabel} vs ${awayLabel}`,
+            phase: match.phase,
+            kickoffUtc: match.kickoffUtc.toISOString(),
+            homeTeamCode: match.homeTeamCode,
+            awayTeamCode: match.awayTeamCode,
+            homeTeamName: match.homeTeam?.name || match.homeTeamCode,
+            awayTeamName: match.awayTeam?.name || match.awayTeamCode,
+            status: match.status,
+            resultStatus: match.resultStatus,
+          };
+        })}
         matchLabels={matchLabels}
         approvedUsers={approvedUsers.map((user) => ({
           id: user.id,
@@ -367,6 +383,74 @@ export default async function LigaDetallePage({
     createdAt: h.createdAt.toISOString(),
   }));
 
+  let serializedSurvivalTable: {
+    userId: string;
+    displayName: string;
+    teamCode: string | null;
+    teamName: string | null;
+    position: number;
+    statusLabel: string;
+    roundLabel: string;
+    eliminatedInMatchId: string | null;
+  }[] = [];
+  if (league.competitionType === 'champion_survivor') {
+    // 1. Fetch all ChampionPicks for this league
+    const picks = await prisma.championPick.findMany({
+      where: { leagueId: league.id },
+      include: {
+        team: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    // 2. Fetch all TeamTournamentStatus for this league
+    const teamStatuses = await prisma.teamTournamentStatus.findMany({
+      where: { leagueId: league.id },
+    });
+
+    const picksMap = new Map(picks.map(p => [p.userId, p]));
+    const statusMap = new Map(teamStatuses.map(ts => [ts.teamCode, ts]));
+
+    // 3. Build inputs for buildChampionSurvivalTable
+    const tableInputs = members
+      .filter((m) => showDisabled ? ['approved', 'disabled'].includes(m.user.status || '') : m.user.status === 'approved')
+      .map((m) => {
+        const pick = picksMap.get(m.userId);
+        const teamStatus = pick ? statusMap.get(pick.teamCode) : null;
+        return {
+          userId: m.userId,
+          displayName: m.user.displayName || m.user.name,
+          teamCode: pick?.teamCode ?? null,
+          teamName: pick?.team?.name ?? null,
+          teamStatus: teamStatus
+            ? {
+                teamCode: teamStatus.teamCode,
+                status: teamStatus.status as TeamTournamentStatusValue,
+                eliminatedAt: teamStatus.eliminatedAt,
+                eliminatedInMatchId: teamStatus.eliminatedInMatchId,
+                finalRank: teamStatus.finalRank,
+              }
+            : null,
+        };
+      });
+
+    // 4. Call buildChampionSurvivalTable
+    const survivalTable = buildChampionSurvivalTable(tableInputs);
+    serializedSurvivalTable = survivalTable.map((row) => ({
+      userId: row.userId,
+      displayName: row.displayName,
+      teamCode: row.teamCode,
+      teamName: row.teamName,
+      position: row.position,
+      statusLabel: row.statusLabel,
+      roundLabel: row.roundLabel,
+      eliminatedInMatchId: row.eliminatedInMatchId,
+    }));
+  }
+
   return (
     <LigaDetalleClient
       league={serializedLeague}
@@ -375,6 +459,7 @@ export default async function LigaDetallePage({
       currentUserId={userId}
       members={serializedMembers}
       standings={finalStandings}
+      survivalTable={serializedSurvivalTable}
       winnerPredictions={serializedWinnerPredictions}
       winnerPredictionHistories={serializedHistories}
       teams={teams}

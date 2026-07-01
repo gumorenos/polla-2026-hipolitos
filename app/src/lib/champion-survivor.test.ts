@@ -8,6 +8,7 @@ import {
   classifyChampionPick,
   findConflictingChampionTeamCode,
   getChampionPickStatus,
+  getChampionSurvivalRoundLabel,
   isChampionDeadlinePassed,
   resolveCompetitionType,
   simulateChampionOdds,
@@ -342,5 +343,137 @@ describe('Champion Survivor business logic', () => {
     const bra = result.entries.find((entry) => entry.teamCode === 'BRA');
     expect(arg?.simulatedProbability).toBeCloseTo(arg?.normalizedProbability ?? 0, 1);
     expect(bra?.simulatedProbability).toBeCloseTo(bra?.normalizedProbability ?? 0, 1);
+  });
+
+  it('correctly normalizes survivor round labels and resolves ties for same round eliminations', () => {
+    const table = buildChampionSurvivalTable([
+      {
+        userId: 'u-jpn',
+        displayName: 'Diego',
+        teamCode: 'JPN',
+        teamName: 'Japón',
+        teamStatus: { teamCode: 'JPN', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: 'r32_02' },
+      },
+      {
+        userId: 'u-ned',
+        displayName: 'Bolo',
+        teamCode: 'NED',
+        teamName: 'Países Bajos',
+        teamStatus: { teamCode: 'NED', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: 'r32_04' },
+      },
+      {
+        userId: 'u-missing-round',
+        displayName: 'User Missing',
+        teamCode: 'ARG',
+        teamName: 'Argentina',
+        teamStatus: { teamCode: 'ARG', status: 'eliminated', eliminatedAt: null, eliminatedInMatchId: null },
+      },
+      {
+        userId: 'u-alive',
+        displayName: 'Vivo User',
+        teamCode: 'BRA',
+        teamName: 'Brasil',
+        teamStatus: { teamCode: 'BRA', status: 'active', eliminatedAt: null },
+      },
+      {
+        userId: 'u-none',
+        displayName: 'Sin Pick',
+        teamCode: null,
+        teamName: null,
+      },
+    ]);
+
+    const jpnRow = table.find((r) => r.userId === 'u-jpn');
+    const nedRow = table.find((r) => r.userId === 'u-ned');
+    const missingRow = table.find((r) => r.userId === 'u-missing-round');
+    const aliveRow = table.find((r) => r.userId === 'u-alive');
+    const noneRow = table.find((r) => r.userId === 'u-none');
+
+    // Labels check
+    expect(jpnRow?.roundLabel).toBe('16avos de final');
+    expect(nedRow?.roundLabel).toBe('16avos de final');
+    expect(missingRow?.roundLabel).toBe('Ronda no registrada');
+    expect(aliveRow?.roundLabel).toBe('En competencia');
+    expect(noneRow?.roundLabel).toBe('Sin selección');
+
+    expect(jpnRow?.position).toBe(2); // BRA (1st, weight 90), JPN/NED (2nd, weight 40)
+    // Sort order: BRA (90), JPN/NED (40), ARG (20), None (0).
+    // Positions: BRA (pos 1), JPN (pos 2), NED (pos 2), ARG (pos 4), None (pos 5).
+    // Let's check positions of sorted array:
+    const positions = table.map((r) => ({ userId: r.userId, pos: r.position, weight: r.sortWeight }));
+    expect(positions).toEqual([
+      { userId: 'u-alive', pos: 1, weight: 90 },
+      { userId: 'u-ned', pos: 2, weight: 40 },
+      { userId: 'u-jpn', pos: 2, weight: 40 },
+      { userId: 'u-missing-round', pos: 4, weight: 20 },
+      { userId: 'u-none', pos: 5, weight: 0 },
+    ]);
+  });
+
+  describe('getChampionSurvivalRoundLabel', () => {
+    it('returns Campeón for champion status or finalRank=1', () => {
+      expect(getChampionSurvivalRoundLabel('champion', null)).toBe('Campeón');
+      expect(getChampionSurvivalRoundLabel('eliminated', null, 1)).toBe('Campeón');
+    });
+
+    it('returns En competencia for active or unknown status', () => {
+      expect(getChampionSurvivalRoundLabel('active', null)).toBe('En competencia');
+      expect(getChampionSurvivalRoundLabel('unknown', 'r32_01')).toBe('En competencia');
+    });
+
+    it('returns Final for runner_up or finalRank=2', () => {
+      expect(getChampionSurvivalRoundLabel('runner_up', null)).toBe('Final');
+      expect(getChampionSurvivalRoundLabel('eliminated', null, 2)).toBe('Final');
+    });
+
+    it('returns Ronda no registrada when matchId is absent and status is eliminated', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', null)).toBe('Ronda no registrada');
+      expect(getChampionSurvivalRoundLabel('eliminated', undefined)).toBe('Ronda no registrada');
+    });
+
+    it('maps groups / g-prefix match IDs to Fase de grupos', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'groups')).toBe('Fase de grupos');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'gA1')).toBe('Fase de grupos');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'G_B3')).toBe('Fase de grupos');
+    });
+
+    it('maps r32 match IDs to 16avos de final', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'r32_02')).toBe('16avos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'r32_04')).toBe('16avos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'R32')).toBe('16avos de final');
+    });
+
+    it('maps r16 match IDs to Octavos de final', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'r16_01')).toBe('Octavos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'R16_03')).toBe('Octavos de final');
+    });
+
+    it('maps quarters/qf match IDs to Cuartos de final', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'qf_01')).toBe('Cuartos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'quarters')).toBe('Cuartos de final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'quarter_01')).toBe('Cuartos de final');
+    });
+
+    it('maps semis/sf match IDs to Semifinal', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'sf_01')).toBe('Semifinal');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'semis')).toBe('Semifinal');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'semi_02')).toBe('Semifinal');
+    });
+
+    it('maps third place match IDs to Tercer puesto', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'third_place')).toBe('Tercer puesto');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'third_01')).toBe('Tercer puesto');
+      expect(getChampionSurvivalRoundLabel('eliminated', '3rd_place')).toBe('Tercer puesto');
+    });
+
+    it('maps final match IDs to Final', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'final')).toBe('Final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'final_01')).toBe('Final');
+      expect(getChampionSurvivalRoundLabel('eliminated', 'fi_01')).toBe('Final');
+    });
+
+    it('returns fallback for unrecognized match IDs', () => {
+      expect(getChampionSurvivalRoundLabel('eliminated', 'unknown_match_xyz')).toBe('Eliminado · ronda pendiente');
+    });
   });
 });

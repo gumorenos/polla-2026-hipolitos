@@ -1,7 +1,7 @@
 {
-  "name": "La Polla 2026",
+  "name": "La Polla Hipólitos 2026",
   "short_name": "La Polla",
-  "description": "Private World Cup 2026 prediction pool application.",
+  "description": "Predicciones, Champion Survivor y retos por partido para el Mundial 2026 entre amigos.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

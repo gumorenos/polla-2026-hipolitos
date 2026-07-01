@@ -40,13 +40,27 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "La Polla 2026 — World Cup Pool",
-  description: "Private World Cup 2026 prediction pool application.",
-  manifest: "/manifest.json",
+  title: 'La Polla Hipólitos 2026',
+  description: 'Predicciones, Champion Survivor y retos por partido para el Mundial 2026 entre amigos.',
+  applicationName: 'La Polla Hipólitos 2026',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000'),
+  openGraph: {
+    title: 'La Polla Hipólitos 2026',
+    description: 'Predicciones, supervivencia y retos por partido del Mundial 2026.',
+    type: 'website',
+    locale: 'es_PE',
+    siteName: 'La Polla Hipólitos 2026',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'La Polla Hipólitos 2026',
+    description: 'Predicciones, Champion Survivor y retos por partido para el Mundial 2026.',
+  },
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: "La Polla 2026",
+    statusBarStyle: 'black-translucent',
+    title: 'La Polla 2026',
   },
 };
 

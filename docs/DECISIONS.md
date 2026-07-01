@@ -491,3 +491,21 @@ We implement the following 6 tie-breakers sequentially:
 - Late entry changes the information available to participants, so it must be explicit and visible.
 - One shared deadline calculation prevents create, join, invite, and UI rules from drifting.
 - Survivor measures how long a champion pick remains viable, not accumulated prediction points.
+
+## ADR-029 — Superadmin Match Pool constraints, hiding cancelled pools, Survivor round label derivation, Spanish metadata, and site icon configuration
+
+**Date:** 2026-07-01
+**Status:** Accepted
+
+**Decision:**
+1. **Superadmin Match Pool Constraints**: Superadmin can edit/cancel any Match Pool except those already `settled` (which is a final irreversible state). Reason is mandatory for superadmin when not acting as the creator of an open, single-entry pool.
+2. **Hiding Cancelled Match Pools**: Cancelled pools with <= 1 entry (no additional participants besides the creator/admin) can be hidden logically by superadmin (`hiddenAt`, `hiddenByUserId`, `hideReason`). Hidden pools are excluded from public and league listings but remain in the database for auditing and superadmin admin view.
+3. **Survivor Round Label Derivation**: If a participant's picked team is eliminated but lacks a recorded `eliminatedInMatchId` in `TeamTournamentStatus`, the round label is derived on-the-fly from the team's match history. If it cannot be derived, it fallbacks gracefully to the first possible elimination stage (`Fase de grupos`). Column display shows `—` instead of `Pendiente de registrar` if the match is not recorded or derived.
+4. **Spanish Metadata**: App title is updated to "La Polla Hipólitos 2026", description, OpenGraph, and Twitter card are updated to Spanish texts.
+5. **Site Icon Configuration**: Next.js App Router convention is configured for the site icon using `app/src/app/icon.png` (and/or `app/src/app/apple-icon.png`).
+
+**Rationale:**
+- Prevents database state inconsistency when modifying settled match pools.
+- Cleans up empty/cancelled test pools from public and user-facing lists without hard-deleting them.
+- Guarantees visual consistency in the Champion Survivor standings by never displaying simply "Eliminado" or generic pending messages when the round can be derived or default stages can be assumed.
+- Ensures premium UX and metadata preview consistency when sharing app links in social media.

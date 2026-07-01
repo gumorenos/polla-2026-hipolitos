@@ -80,7 +80,7 @@ export default async function LigaDetallePage({
       redirect('/competencia');
     }
 
-    const [poolRecords, futureMatches, approvedUsers] = await Promise.all([
+    const [poolRecords, poolMatches, approvedUsers] = await Promise.all([
       prisma.matchPool.findMany({
         where: { leagueId: league.id },
         include: {
@@ -110,20 +110,14 @@ export default async function LigaDetallePage({
         orderBy: { createdAt: 'desc' },
       }),
       prisma.match.findMany({
-        where: {
-          kickoffUtc: { gt: new Date() },
-          status: { not: 'result' },
-          OR: [
-            { resultStatus: null },
-            { resultStatus: { not: 'final' } },
-          ],
-        },
         select: {
           id: true,
           phase: true,
           homeTeamCode: true,
           awayTeamCode: true,
           kickoffUtc: true,
+          status: true,
+          resultStatus: true,
         },
         orderBy: { kickoffUtc: 'asc' },
       }),
@@ -155,13 +149,15 @@ export default async function LigaDetallePage({
           currency: league.currency,
         }}
         pools={poolRecords.map(serializePublicMatchPool)}
-        matches={futureMatches.map((match) => ({
+        matches={poolMatches.map((match) => ({
           id: match.id,
           label: `${match.homeTeamCode} vs ${match.awayTeamCode}`,
           phase: match.phase,
           kickoffUtc: match.kickoffUtc.toISOString(),
           homeTeamCode: match.homeTeamCode,
           awayTeamCode: match.awayTeamCode,
+          status: match.status,
+          resultStatus: match.resultStatus,
         }))}
         matchLabels={matchLabels}
         approvedUsers={approvedUsers.map((user) => ({
@@ -170,6 +166,8 @@ export default async function LigaDetallePage({
         }))}
         currentUserId={userId}
         canManage={canManage}
+        isSuperadmin={isSuperadmin}
+        nowIso={new Date().toISOString()}
       />
     );
   }

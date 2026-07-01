@@ -159,6 +159,17 @@ Participation exists only through `MatchPoolEntry`, one user and prediction per 
 - Internal owner/admin rows are hidden from Match Pool participant counts and screens.
 - The dedicated competition detail never renders standings, champion history, or fixed-member management.
 
+## Editing and cancellation
+
+- A normal creator may edit or logically cancel an `open` reto only while its sole entry is the creator's own entry.
+- This correction remains available after kickoff because no counterparty is affected.
+- Once another entry exists, the creator can no longer alter or cancel the reto.
+- A superadmin may intervene in any state only with a required reason. The before/after state and reason are written to `AdminActionLog`.
+- Cancellation is logical: pool and entries move to `cancelled`; records are not deleted.
+- Moving a reto to another match is blocked when an existing prediction would be invalid for the new match.
+
+The public home queries all active `match_pool` lobbies independently of `League.isDefault` and renders them in the read-only **Retos por Partido** tab.
+
 ---
 
 ## Database Models

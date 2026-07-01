@@ -15,6 +15,8 @@ import {
   resolveMatchPoolPick,
   calculateMatchPoolSettlement,
   serializePublicMatchPool,
+  authorizeMatchPoolMutation,
+  isMatchPoolPickValid,
   type MatchPoolMatchContext,
   type MatchPoolSettlementInput,
 } from './match-pool';
@@ -99,6 +101,61 @@ describe('Pool creation', () => {
   it('canCreateMatchPool returns false after kickoff', () => {
     const match = makeGroupMatch({ kickoffUtc: KICKOFF_PAST });
     expect(canCreateMatchPool(match, NOW)).toBe(false);
+  });
+});
+
+describe('Reto mutation permissions', () => {
+  it('allows the creator to edit or cancel an open one-entry reto without kickoff input', () => {
+    expect(authorizeMatchPoolMutation({
+      status: 'open',
+      createdByUserId: 'owner-1',
+      currentUserId: 'owner-1',
+      entryUserIds: ['owner-1'],
+      isSuperadmin: false,
+    })).toEqual({ allowed: true, requiresAudit: false, error: null });
+  });
+
+  it('blocks the creator after another user enters', () => {
+    const decision = authorizeMatchPoolMutation({
+      status: 'open',
+      createdByUserId: 'owner-1',
+      currentUserId: 'owner-1',
+      entryUserIds: ['owner-1', 'user-2'],
+      isSuperadmin: false,
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.error).toContain('otras entradas');
+  });
+
+  it('requires a reason and audit for superadmin mutations', () => {
+    const withoutReason = authorizeMatchPoolMutation({
+      status: 'settled',
+      createdByUserId: 'owner-1',
+      currentUserId: 'admin-1',
+      entryUserIds: ['owner-1', 'user-2'],
+      isSuperadmin: true,
+    });
+    expect(withoutReason.allowed).toBe(false);
+    expect(withoutReason.requiresAudit).toBe(true);
+
+    expect(authorizeMatchPoolMutation({
+      status: 'settled',
+      createdByUserId: 'owner-1',
+      currentUserId: 'admin-1',
+      entryUserIds: ['owner-1', 'user-2'],
+      isSuperadmin: true,
+      reason: 'Corrección solicitada por los participantes',
+    })).toEqual({ allowed: true, requiresAudit: true, error: null });
+  });
+});
+
+describe('Pick validation', () => {
+  it('validates both type and value against the selected match', () => {
+    const match = makeGroupMatch();
+    expect(isMatchPoolPickValid(match, 'home_win', 'ARG')).toBe(true);
+    expect(isMatchPoolPickValid(match, 'home_win', 'BRA')).toBe(false);
+    expect(isMatchPoolPickValid(match, 'draw', 'draw')).toBe(true);
+    expect(isMatchPoolPickValid(match, 'home_advances', 'ARG')).toBe(false);
   });
 });
 

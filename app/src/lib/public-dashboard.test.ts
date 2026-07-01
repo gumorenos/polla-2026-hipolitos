@@ -70,8 +70,8 @@ describe('Public guest dashboard components constraints', () => {
     ]);
     expect(CHAMPION_SURVIVOR_OVERVIEW_BLOCKS).toEqual([
       'participant_picks',
-      'team_market_analysis',
       'compact_summary',
+      'team_market_analysis',
     ]);
     expect(PUBLIC_FIXTURE_BLOCKS).toEqual(['upcoming_matches', 'recent_results']);
   });

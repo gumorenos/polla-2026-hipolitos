@@ -13,6 +13,8 @@ import type { PublicMatchPool } from '../../lib/match-pool';
 interface PublicMatchPoolsSectionProps {
   pools: PublicMatchPool[];
   matchLabels?: Record<string, string>; // matchId -> "Team A vs Team B"
+  leagueLabels?: Record<string, string>;
+  showHeading?: boolean;
 }
 
 function pickTypeLabel(pickType: string): string {
@@ -34,6 +36,18 @@ function poolStatusLabel(status: string): string {
     case 'void':      return 'Anulado';
     case 'cancelled': return 'Cancelado';
     default:          return status;
+  }
+}
+
+function poolStatusClass(status: string): string {
+  switch (status) {
+    case 'open': return 'border-green-500/30 bg-green-500/10 text-green-300';
+    case 'locked': return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
+    case 'cancelled': return 'border-red-500/30 bg-red-500/10 text-red-300';
+    case 'void':
+    case 'settled':
+      return 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300';
+    default: return 'border-border-default bg-bg-secondary text-text-secondary';
   }
 }
 
@@ -61,14 +75,14 @@ function inviteStatusLabel(status: string): string {
 export function PublicMatchPoolsSection({
   pools,
   matchLabels = {},
+  leagueLabels = {},
+  showHeading = true,
 }: PublicMatchPoolsSectionProps) {
   if (pools.length === 0) {
     return (
-      <section style={{ padding: '1.5rem 0', color: 'var(--text-muted, #888)' }}>
-        <h2 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-          Retos por Partido
-        </h2>
-        <p style={{ fontSize: '0.9rem' }}>
+      <section className="py-5 text-text-muted">
+        {showHeading && <h2 className="mb-2 font-display text-xl tracking-wide text-text-primary">Retos por Partido</h2>}
+        <p className="text-sm">
           No hay retos activos por el momento.
         </p>
       </section>
@@ -76,84 +90,67 @@ export function PublicMatchPoolsSection({
   }
 
   return (
-    <section style={{ padding: '1rem 0' }}>
-      <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', fontWeight: 700 }}>
-        Retos por Partido
-        <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: '0.5rem', color: 'var(--text-muted, #888)' }}>
-          Bolsa entre amigos — monto referencial
-        </span>
-      </h2>
+    <section className="py-4">
+      {showHeading && (
+        <div className="mb-4">
+          <h2 className="font-display text-xl tracking-wide text-text-primary">Retos por Partido</h2>
+          <p className="text-xs text-cyan-300">Bolsa entre amigos por cada partido · monto referencial</p>
+        </div>
+      )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="space-y-3">
         {pools.map((pool) => (
-          <div
-            key={pool.id}
-            style={{
-              border: '1px solid var(--border, #333)',
-              borderRadius: '8px',
-              padding: '1rem',
-              background: 'var(--card-bg, #1a1a1a)',
-            }}
-          >
-            {/* Pool header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <span style={{ fontWeight: 600 }}>
-                {matchLabels[pool.matchId] ?? pool.matchId}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.8rem',
-                  padding: '0.2rem 0.5rem',
-                  borderRadius: '4px',
-                  background: pool.status === 'settled' ? '#1a4d1a' : pool.status === 'void' ? '#4d1a1a' : '#1a2d4d',
-                  color: '#eee',
-                }}
-              >
+          <article key={pool.id} className="card-base border-l-2 border-l-cyan-400 p-4">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                {leagueLabels[pool.leagueId] && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+                    {leagueLabels[pool.leagueId]}
+                  </p>
+                )}
+                <p className="font-semibold text-text-primary">{matchLabels[pool.matchId] ?? pool.matchId}</p>
+              </div>
+              <span className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase ${poolStatusClass(pool.status)}`}>
                 {poolStatusLabel(pool.status)}
               </span>
             </div>
 
-            {/* Referential amount */}
-            <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--text-muted, #aaa)' }}>
+            <div className="mb-2 text-sm text-text-secondary">
               Monto referencial:{' '}
-              <strong style={{ color: 'var(--text-primary, #fff)' }}>
+              <strong className="text-text-primary">
                 {pool.amount} {pool.currency}
               </strong>
               {pool.note && (
-                <span style={{ marginLeft: '0.5rem', fontStyle: 'italic' }}>— {pool.note}</span>
+                <span className="ml-2 italic text-text-muted">· {pool.note}</span>
               )}
             </div>
 
-            {/* Creator */}
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #888)', marginBottom: '0.5rem' }}>
+            <div className="mb-3 text-xs text-text-muted">
               Creado por: {pool.createdByDisplayName}
             </div>
 
-            {/* Participants */}
             {pool.entries.length > 0 && (
-              <div style={{ marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Participantes ({pool.entries.length})
-                </div>
-                <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse' }}>
+              <div className="mb-3 overflow-x-auto">
+                <p className="mb-1 text-xs font-semibold text-text-primary">Entradas en este reto ({pool.entries.length})</p>
+                <table className="w-full min-w-[430px] border-collapse text-xs">
                   <thead>
-                    <tr style={{ color: 'var(--text-muted, #888)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.2rem' }}>Jugador</th>
-                      <th style={{ textAlign: 'left', padding: '0.2rem' }}>Predicción</th>
-                      <th style={{ textAlign: 'left', padding: '0.2rem' }}>Estado</th>
+                    <tr className="border-b border-border-subtle text-text-muted">
+                      <th className="p-1 text-left">Jugador</th>
+                      <th className="p-1 text-left">Predicción</th>
+                      <th className="p-1 text-left">Estado</th>
                       {pool.status === 'settled' && (
-                        <th style={{ textAlign: 'right', padding: '0.2rem' }}>Resultado ref.</th>
+                        <th className="p-1 text-right">Resultado ref.</th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
                     {pool.entries.map((entry) => (
-                      <tr key={entry.userId}>
-                        <td style={{ padding: '0.2rem' }}>{entry.displayName}</td>
-                        <td style={{ padding: '0.2rem' }}>{pickTypeLabel(entry.pickType)}</td>
-                        <td style={{ padding: '0.2rem' }}>{entryStatusLabel(entry.status)}</td>
+                      <tr key={entry.userId} className="border-b border-border-subtle/50 text-text-secondary last:border-0">
+                        <td className="p-1">{entry.displayName}</td>
+                        <td className="p-1">{pickTypeLabel(entry.pickType)}</td>
+                        <td className="p-1">{entryStatusLabel(entry.status)}</td>
                         {pool.status === 'settled' && (
-                          <td style={{ padding: '0.2rem', textAlign: 'right', color: (entry.netAmount ?? 0) >= 0 ? '#4caf50' : '#f44336' }}>
+                          <td className={`p-1 text-right ${(entry.netAmount ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                             {entry.netAmount !== null ? (
                               `${entry.netAmount >= 0 ? '+' : ''}${entry.netAmount} ${pool.currency}`
                             ) : '—'}
@@ -166,10 +163,9 @@ export function PublicMatchPoolsSection({
               </div>
             )}
 
-            {/* Invites */}
             {pool.invites.length > 0 && (
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #888)' }}>
-                <span style={{ fontWeight: 600 }}>Invitados: </span>
+              <div className="text-xs text-text-muted">
+                <span className="font-semibold text-text-secondary">Invitados: </span>
                 {pool.invites.map((inv, i) => (
                   <span key={inv.invitedUserId}>
                     {inv.invitedDisplayName} ({inviteStatusLabel(inv.status)})
@@ -179,23 +175,22 @@ export function PublicMatchPoolsSection({
               </div>
             )}
 
-            {/* Settlement result */}
             {pool.status === 'settled' && pool.settlementReason && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#4caf50', fontStyle: 'italic' }}>
+              <div className="mt-2 rounded border border-zinc-500/20 bg-zinc-500/5 p-2 text-xs italic text-zinc-300">
                 {pool.settlementReason}
                 <br />
-                <span style={{ color: 'var(--text-muted, #888)' }}>
+                <span className="text-text-muted">
                   Liquidación referencial — pendiente de coordinar fuera de la app.
                 </span>
               </div>
             )}
 
-            {pool.status === 'void' && pool.settlementReason && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f44336', fontStyle: 'italic' }}>
+            {(pool.status === 'void' || pool.status === 'cancelled') && pool.settlementReason && (
+              <div className="mt-2 rounded border border-red-500/20 bg-red-500/5 p-2 text-xs italic text-red-300">
                 {pool.settlementReason}
               </div>
             )}
-          </div>
+          </article>
         ))}
       </div>
     </section>

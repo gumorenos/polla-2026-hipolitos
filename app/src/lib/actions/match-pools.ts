@@ -20,9 +20,10 @@ import {
   canCreateMatchPool,
   canJoinMatchPool,
   canInviteToMatchPool,
-  getAllowedMatchPoolPickOptions,
+  authorizeMatchPoolMutation,
+  isMatchPoolPickValid,
 } from '../match-pool';
-import type { MatchPoolPickType } from '../match-pool';
+import type { EditMatchPoolInput, MatchPoolPickType, MatchPoolStatus } from '../match-pool';
 
 async function isApprovedUser(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
@@ -34,7 +35,7 @@ async function isApprovedUser(userId: string): Promise<boolean> {
 
 // ─── Action: createMatchPoolAction ────────────────────────────────────────────
 
-export interface CreateMatchPoolInput {
+interface CreateMatchPoolInput {
   leagueId: string;
   matchId: string;
   amount: number;
@@ -112,8 +113,7 @@ export async function createMatchPoolAction(
     }
 
     // Validate pick
-    const allowedPicks = getAllowedMatchPoolPickOptions(match);
-    if (!allowedPicks.includes(input.pickType)) {
+    if (!isMatchPoolPickValid(match, input.pickType, input.pickValue)) {
       return { error: `El tipo de predicción '${input.pickType}' no es válido para este partido.` };
     }
 
@@ -163,7 +163,7 @@ export async function createMatchPoolAction(
 
 // ─── Action: joinMatchPoolAction ──────────────────────────────────────────────
 
-export interface JoinMatchPoolInput {
+interface JoinMatchPoolInput {
   poolId: string;
   pickType: MatchPoolPickType;
   pickValue: string;
@@ -245,8 +245,7 @@ export async function joinMatchPoolAction(
     }
 
     // Validate pick
-    const allowedPicks = getAllowedMatchPoolPickOptions(matchCtx);
-    if (!allowedPicks.includes(input.pickType)) {
+    if (!isMatchPoolPickValid(matchCtx, input.pickType, input.pickValue)) {
       return { error: `El tipo de predicción '${input.pickType}' no es válido para este partido.` };
     }
 
@@ -277,7 +276,7 @@ export async function joinMatchPoolAction(
 
 // ─── Action: inviteToMatchPoolAction ──────────────────────────────────────────
 
-export interface InviteToMatchPoolInput {
+interface InviteToMatchPoolInput {
   poolId: string;
   invitedUserId: string;
   message?: string;
@@ -404,17 +403,144 @@ export async function inviteToMatchPoolAction(
 
 // ─── Action: cancelMatchPoolAction ────────────────────────────────────────────
 
-export interface CancelMatchPoolInput {
+interface CancelMatchPoolInput {
   poolId: string;
   reason?: string;
 }
 
 /**
- * Cancels an open match pool.
- *
- * - Only the creator or a superadmin can cancel.
- * - Can only cancel 'open' pools.
+ * Updates a reto while preserving its identity and entries.
  */
+export async function updateMatchPoolAction(
+  input: EditMatchPoolInput,
+): Promise<{ data: { poolId: string } } | { error: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user) return { error: 'No autorizado. Inicia sesión primero.' };
+  const userId = session.user.id;
+
+  try {
+    const [user, pool, match] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { status: true, isSuperadmin: true },
+      }),
+      prisma.matchPool.findUnique({
+        where: { id: input.poolId },
+        include: {
+          league: { select: { slug: true, competitionType: true, status: true, isActive: true } },
+          entries: { select: { id: true, userId: true, pickType: true, pickValue: true } },
+        },
+      }),
+      prisma.match.findUnique({
+        where: { id: input.matchId },
+        select: {
+          id: true,
+          phase: true,
+          homeTeamCode: true,
+          awayTeamCode: true,
+        },
+      }),
+    ]);
+
+    if (!pool) return { error: 'Reto no encontrado.' };
+    if (!match) return { error: 'Partido no encontrado.' };
+    if (!user || (user.status !== 'approved' && !user.isSuperadmin)) {
+      return { error: 'Tu usuario debe estar aprobado para editar retos.' };
+    }
+    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+      return { error: 'Esta competencia de Retos por Partido no está activa.' };
+    }
+
+    const decision = authorizeMatchPoolMutation({
+      status: pool.status as MatchPoolStatus,
+      createdByUserId: pool.createdByUserId,
+      currentUserId: userId,
+      entryUserIds: pool.entries.map((entry) => entry.userId),
+      isSuperadmin: user.isSuperadmin,
+      reason: input.reason,
+    });
+    if (!decision.allowed) return { error: decision.error ?? 'No puedes editar este reto.' };
+
+    if (!Number.isInteger(input.amount) || input.amount <= 0) {
+      return { error: 'El monto referencial debe ser un número entero positivo.' };
+    }
+    const currency = input.currency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      return { error: 'La moneda debe usar un código de tres letras, por ejemplo PEN.' };
+    }
+    if (!isMatchPoolPickValid(match, input.pickType, input.pickValue)) {
+      return { error: 'La predicción del creador no es válida para el partido seleccionado.' };
+    }
+    const incompatibleEntry = pool.entries.find((entry) => (
+      entry.userId !== pool.createdByUserId
+      && !isMatchPoolPickValid(
+        match,
+        entry.pickType as MatchPoolPickType,
+        entry.pickValue,
+      )
+    ));
+    if (incompatibleEntry) {
+      return { error: 'El nuevo partido no es compatible con las predicciones ya registradas.' };
+    }
+
+    const creatorEntry = pool.entries.find((entry) => entry.userId === pool.createdByUserId);
+    if (!creatorEntry) return { error: 'No se encontró la predicción del creador.' };
+
+    const before = {
+      matchId: pool.matchId,
+      amount: pool.amount,
+      currency: pool.currency,
+      note: pool.note,
+      creatorPickType: creatorEntry.pickType,
+      creatorPickValue: creatorEntry.pickValue,
+    };
+    const after = {
+      matchId: match.id,
+      amount: input.amount,
+      currency,
+      note: input.note?.trim() || null,
+      creatorPickType: input.pickType,
+      creatorPickValue: input.pickValue,
+    };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.matchPool.update({
+        where: { id: pool.id },
+        data: {
+          matchId: match.id,
+          amount: input.amount,
+          currency,
+          note: after.note,
+        },
+      });
+      await tx.matchPoolEntry.update({
+        where: { id: creatorEntry.id },
+        data: { pickType: input.pickType, pickValue: input.pickValue },
+      });
+      if (decision.requiresAudit) {
+        await tx.adminActionLog.create({
+          data: {
+            userId,
+            action: 'match_pool_edit',
+            target: `match_pool:${pool.id}`,
+            details: JSON.stringify({ before, after, reason: input.reason?.trim() }),
+          },
+        });
+      }
+    });
+
+    revalidatePath('/');
+    revalidatePath('/invitado');
+    revalidatePath(`/liga/${pool.league.slug}`);
+    revalidatePath(`/competencia/${pool.league.slug}`);
+    return { data: { poolId: pool.id } };
+  } catch (err) {
+    console.error('Error in updateMatchPoolAction:', err);
+    return { error: 'Ocurrió un error al editar el reto.' };
+  }
+}
+
+/** Logically cancels a reto. Normal creators may only cancel their one-entry open reto. */
 export async function cancelMatchPoolAction(
   input: CancelMatchPoolInput,
 ): Promise<{ data: { poolId: string } } | { error: string }> {
@@ -425,57 +551,73 @@ export async function cancelMatchPoolAction(
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { isSuperadmin: true },
+      select: { status: true, isSuperadmin: true },
     });
 
     const pool = await prisma.matchPool.findUnique({
       where: { id: input.poolId },
       include: {
         league: {
-          select: { createdBy: true, slug: true },
+          select: { slug: true, competitionType: true, status: true, isActive: true },
         },
+        entries: { select: { userId: true } },
       },
     });
 
     if (!pool) return { error: 'Reto no encontrado.' };
 
-    const isCreator = pool.createdByUserId === userId;
-    const isSuperadmin = user?.isSuperadmin === true;
-    const membership = await prisma.leagueMember.findUnique({
-      where: { leagueId_userId: { leagueId: pool.leagueId, userId } },
-      select: { role: true },
-    });
-    const isContainerAdmin = pool.league.createdBy === userId
-      || membership?.role === 'owner'
-      || membership?.role === 'admin';
-
-    if (!isCreator && !isSuperadmin && !isContainerAdmin) {
-      return { error: 'Solo el creador o un administrador puede cancelar un reto.' };
+    if (!user || (user.status !== 'approved' && !user.isSuperadmin)) {
+      return { error: 'Tu usuario debe estar aprobado para cancelar retos.' };
+    }
+    if (pool.league.competitionType !== 'match_pool' || !pool.league.isActive || pool.league.status !== 'active') {
+      return { error: 'Esta competencia de Retos por Partido no está activa.' };
     }
 
-    if (pool.status !== 'open') {
-      return { error: 'Solo se pueden cancelar retos en estado abierto.' };
-    }
-
-    await prisma.matchPool.update({
-      where: { id: pool.id },
-      data: {
-        status: 'cancelled',
-        settlementReason: input.reason ?? 'Cancelado por el creador o administrador.',
-        settledAt: new Date(),
-      },
+    const decision = authorizeMatchPoolMutation({
+      status: pool.status as MatchPoolStatus,
+      createdByUserId: pool.createdByUserId,
+      currentUserId: userId,
+      entryUserIds: pool.entries.map((entry) => entry.userId),
+      isSuperadmin: user.isSuperadmin,
+      reason: input.reason,
     });
+    if (!decision.allowed) return { error: decision.error ?? 'No puedes cancelar este reto.' };
 
-    // Mark all entries as cancelled
-    await prisma.matchPoolEntry.updateMany({
-      where: { poolId: pool.id },
-      data: { status: 'cancelled' },
+    const reason = input.reason?.trim() || 'Cancelado por el creador antes de recibir otras entradas.';
+    await prisma.$transaction(async (tx) => {
+      await tx.matchPool.update({
+        where: { id: pool.id },
+        data: {
+          status: 'cancelled',
+          settlementReason: reason,
+          settledAt: new Date(),
+        },
+      });
+      await tx.matchPoolEntry.updateMany({
+        where: { poolId: pool.id },
+        data: { status: 'cancelled' },
+      });
+      if (decision.requiresAudit) {
+        await tx.adminActionLog.create({
+          data: {
+            userId,
+            action: 'match_pool_cancel',
+            target: `match_pool:${pool.id}`,
+            details: JSON.stringify({
+              before: { status: pool.status, entryCount: pool.entries.length },
+              after: { status: 'cancelled' },
+              reason,
+            }),
+          },
+        });
+      }
     });
 
     try {
       revalidatePath('/');
       revalidatePath('/invitado');
       revalidatePath(`/liga/${pool.league.slug}`);
+      revalidatePath(`/competencia/${pool.league.slug}`);
     } catch {
       // Ignore
     }

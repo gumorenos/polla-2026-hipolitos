@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { LogIn, Trophy, Award, Calendar, Zap, Activity, Shield } from 'lucide-react';
+import { LogIn, Trophy, Award, Calendar, Zap, Activity, Shield, UsersRound } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { prisma } from '../lib/db';
 import { getCurrentSession } from '../lib/auth-helpers';
@@ -37,6 +37,8 @@ import {
 } from '../lib/theme-preferences';
 import { CHAMPION_SURVIVOR_HOME_SECTIONS } from '../lib/public-home-layout';
 import { getPublicMatchDisplayStatus } from '../lib/public-dashboard';
+import { PublicMatchPoolsSection } from '../components/public/PublicMatchPoolsSection';
+import { serializePublicMatchPool } from '../lib/match-pool';
 
 export const dynamic = 'force-dynamic';
 
@@ -240,6 +242,7 @@ export default async function PublicHome() {
     teams,
     teamStatuses,
     championOddsSnapshots,
+    publicMatchPoolRecords,
   ] = await Promise.all([
     prisma.leagueMember.count({
       where: {
@@ -270,7 +273,40 @@ export default async function PublicHome() {
           orderBy: { capturedAt: 'desc' },
         })
       : Promise.resolve([]),
+    prisma.matchPool.findMany({
+      where: {
+        league: {
+          competitionType: 'match_pool',
+          status: 'active',
+          isActive: true,
+        },
+      },
+      include: {
+        league: { select: { id: true, name: true } },
+        match: { select: { homeTeamCode: true, awayTeamCode: true } },
+        createdBy: { select: { name: true, displayName: true } },
+        entries: {
+          include: { user: { select: { name: true, displayName: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        invites: {
+          include: { invitedUser: { select: { name: true, displayName: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
   ]);
+
+  const publicMatchPools = publicMatchPoolRecords.map(serializePublicMatchPool);
+  const publicMatchPoolLabels = Object.fromEntries(publicMatchPoolRecords.map((pool) => [
+    pool.matchId,
+    `${pool.match.homeTeamCode} vs ${pool.match.awayTeamCode}`,
+  ]));
+  const publicMatchPoolLeagueLabels = Object.fromEntries(publicMatchPoolRecords.map((pool) => [
+    pool.leagueId,
+    pool.league.name,
+  ]));
 
   const approvedUserIds = new Set(
     (await prisma.leagueMember.findMany({
@@ -392,6 +428,7 @@ export default async function PublicHome() {
     { id: 'predictions', label: 'Pronósticos por Partido', icon: <Zap className="w-4 h-4" /> },
     { id: 'fifa', label: 'Fase de Grupos FIFA', icon: <Activity className="w-4 h-4" /> },
     { id: 'matches', label: 'Fixture y Resultados', icon: <Calendar className="w-4 h-4" /> },
+    { id: 'match-pools', label: 'Retos por Partido', icon: <UsersRound className="w-4 h-4" /> },
   ];
 
   const championSurvivorTabIcons = {
@@ -399,10 +436,13 @@ export default async function PublicHome() {
     matches: <Calendar className="w-4 h-4" />,
     fifa: <Activity className="w-4 h-4" />,
   };
-  const championSurvivorTabs = CHAMPION_SURVIVOR_HOME_SECTIONS.map((section) => ({
-    ...section,
-    icon: championSurvivorTabIcons[section.id],
-  }));
+  const championSurvivorTabs = [
+    ...CHAMPION_SURVIVOR_HOME_SECTIONS.map((section) => ({
+      ...section,
+      icon: championSurvivorTabIcons[section.id],
+    })),
+    { id: 'match-pools', label: 'Retos por Partido', icon: <UsersRound className="w-4 h-4" /> },
+  ];
 
   return (
     <div className="space-y-6 py-4">
@@ -438,12 +478,12 @@ export default async function PublicHome() {
           {/* Tab 1: Survivor overview */}
           <div className="space-y-6">
             <ChampionSurvivorPicksList picks={championSurvivorState.picksToShow} statusByTeam={championSurvivorState.statusByTeam} />
+            <ChampionSurvivorSummaryCards state={championSurvivorState} prizePool={prizePool} showOdds={league.showOdds} />
             <TeamMarketAnalysisTable
               teamsReport={championSurvivorState.teamsReport}
               currency={prizePool.currency}
               showOdds={league.showOdds}
             />
-            <ChampionSurvivorSummaryCards state={championSurvivorState} prizePool={prizePool} showOdds={league.showOdds} />
           </div>
 
           {/* Tab 2: Fixture */}
@@ -494,6 +534,13 @@ export default async function PublicHome() {
 
           {/* Tab 3: FIFA groups */}
           <FifaClassificationEngine qualification={qualification} />
+
+          {/* Tab 4: Match Pool lobbies */}
+          <PublicMatchPoolsSection
+            pools={publicMatchPools}
+            matchLabels={publicMatchPoolLabels}
+            leagueLabels={publicMatchPoolLeagueLabels}
+          />
         </PublicDashboardTabs>
       ) : (
         <PublicDashboardTabs tabs={fullPredictionTabs}>
@@ -558,6 +605,13 @@ export default async function PublicHome() {
               />
             </div>
           </div>
+
+          {/* Tab 5: Match Pool lobbies */}
+          <PublicMatchPoolsSection
+            pools={publicMatchPools}
+            matchLabels={publicMatchPoolLabels}
+            leagueLabels={publicMatchPoolLeagueLabels}
+          />
         </PublicDashboardTabs>
       )}
     </div>

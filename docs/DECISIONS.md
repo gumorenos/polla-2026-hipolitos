@@ -467,3 +467,15 @@ We implement the following 6 tie-breakers sequentially:
 - The shared amount and prediction belong to one match-specific pool, not to a season-long competition.
 - Global standings, champion picks, entry fees, and fixed member counts are misleading for this mode.
 - `MatchPoolEntry` is the authoritative participation record and its unique key prevents duplicate entry.
+
+## ADR-027 — Match Pool mutation safety and public aggregation
+
+**Date:** 2026-06-30
+**Status:** Accepted
+
+**Decision:** Creators may edit or logically cancel only an open, one-entry reto that contains their own entry. Superadmin overrides require a reason and audit record. The public dashboard aggregates retos from every active Match Pool lobby rather than using the default competition flag.
+
+**Rationale:**
+- A one-person reto has no counterparty whose accepted terms could be changed.
+- Once another user enters, amount, match, and prediction changes would alter shared terms.
+- Public discovery is a property of active Match Pool lobbies; `isDefault` remains reserved for the primary traditional/Survivor dashboard.

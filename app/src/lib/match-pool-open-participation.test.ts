@@ -15,6 +15,8 @@ describe('Match Pool open participation architecture', () => {
     expect(source).not.toContain('membership?.isParticipant');
     expect(source).toContain("user?.status === 'approved'");
     expect(source).toContain("pool.league.competitionType !== 'match_pool'");
+    expect(source).toContain("action: 'match_pool_edit'");
+    expect(source).toContain("action: 'match_pool_cancel'");
   });
 
   it('keeps the internal owner non-participant and skips standings on creation', () => {
@@ -39,5 +41,24 @@ describe('Match Pool open participation architecture', () => {
     expect(source).not.toContain('Posiciones');
     expect(source).not.toContain('Miembros de la competencia');
     expect(source).toContain('No hay miembros fijos');
+  });
+
+  it('loads public pools from every active Match Pool lobby without isDefault', () => {
+    const source = readSource('app/page.tsx');
+    const queryStart = source.indexOf('prisma.matchPool.findMany');
+    const queryEnd = source.indexOf('orderBy: { createdAt:', queryStart);
+    const query = source.slice(queryStart, queryEnd);
+    expect(query).toContain("competitionType: 'match_pool'");
+    expect(query).toContain("status: 'active'");
+    expect(query).toContain('isActive: true');
+    expect(query).not.toContain('isDefault');
+    expect(source).toContain("label: 'Retos por Partido'");
+  });
+
+  it('exposes edit and logical cancel actions in the dedicated detail', () => {
+    const source = readSource('components/match-pool/MatchPoolLeagueClient.tsx');
+    expect(source).toContain('updateMatchPoolAction');
+    expect(source).toContain('cancelMatchPoolAction');
+    expect(source).toContain('No se procesa dinero real');
   });
 });

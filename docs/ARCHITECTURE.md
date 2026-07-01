@@ -446,6 +446,8 @@ Key boundaries:
 - **Open participation**: `User.status = approved` and an active `match_pool` league are the access boundary. `LeagueMember.isParticipant` is not consulted.
 - **Permission-only owner**: Creation may retain an internal owner membership with `isParticipant = false`; it is hidden from Match Pool UI and counts.
 - **No global competition state**: Match Pool has no standings, global ranking, champion selection, or fixed member roster.
+- **Mutation boundary**: Creator edits/cancellation require an open pool with exactly the creator entry. Superadmin overrides require a reason and `AdminActionLog`; cancellation is logical.
+- **Public aggregation**: `/` and `/invitado` read pools from every active `match_pool` league without using `isDefault` and never expose mutation controls.
 - **Domain logic** lives in `src/lib/match-pool.ts` (pure functions, no DB access).
 - **Settlement service** `src/lib/services/match-pool-settlement.ts` reads only trusted DB results and writes entry/pool status rows.
 - **Post-result pipeline integration**: `settleMatchPoolsForFinalMatch(matchId)` is called from `runPostFinalResultPipeline` inside a non-fatal try/catch. Result saving is never blocked by pool settlement.

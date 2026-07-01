@@ -3,9 +3,11 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  cancelMatchPoolAction,
   createMatchPoolAction,
   inviteToMatchPoolAction,
   joinMatchPoolAction,
+  updateMatchPoolAction,
 } from '../../lib/actions/match-pools';
 import type { MatchPoolPickType, PublicMatchPool } from '../../lib/match-pool';
 import { PublicMatchPoolsSection } from '../public/PublicMatchPoolsSection';
@@ -17,6 +19,8 @@ interface MatchOption {
   kickoffUtc: string;
   homeTeamCode: string;
   awayTeamCode: string;
+  status: string;
+  resultStatus: string | null;
 }
 
 interface ApprovedUserOption {
@@ -37,6 +41,8 @@ interface MatchPoolLeagueClientProps {
   approvedUsers: ApprovedUserOption[];
   currentUserId: string;
   canManage: boolean;
+  isSuperadmin: boolean;
+  nowIso: string;
 }
 
 type MatchPoolActionResult = { error: string } | { data: unknown };
@@ -67,16 +73,33 @@ export function MatchPoolLeagueClient({
   approvedUsers,
   currentUserId,
   canManage,
+  isSuperadmin,
+  nowIso,
 }: MatchPoolLeagueClientProps) {
+  const nowMs = new Date(nowIso).getTime();
+  const firstCreatableMatchId = matches.find((match) => (
+    new Date(match.kickoffUtc).getTime() > nowMs
+    && match.status !== 'result'
+    && match.resultStatus !== 'final'
+  ))?.id ?? '';
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedMatchId, setSelectedMatchId] = useState(matches[0]?.id ?? '');
+  const [selectedMatchId, setSelectedMatchId] = useState(firstCreatableMatchId);
   const [selectedPick, setSelectedPick] = useState<MatchPoolPickType | ''>('');
   const [joinPicks, setJoinPicks] = useState<Record<string, MatchPoolPickType | ''>>({});
   const [inviteUsers, setInviteUsers] = useState<Record<string, string>>({});
+  const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
+  const [editMatchIds, setEditMatchIds] = useState<Record<string, string>>({});
+  const [editPicks, setEditPicks] = useState<Record<string, MatchPoolPickType | ''>>({});
+  const [adminReasons, setAdminReasons] = useState<Record<string, string>>({});
 
   const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
+  const creatableMatches = matches.filter((match) => (
+    new Date(match.kickoffUtc).getTime() > nowMs
+    && match.status !== 'result'
+    && match.resultStatus !== 'final'
+  ));
   const openPools = pools.filter((pool) => pool.status === 'open' || pool.status === 'locked');
   const closedPools = pools.filter((pool) => pool.status !== 'open' && pool.status !== 'locked');
   const selectedMatch = matchById.get(selectedMatchId);
@@ -147,6 +170,45 @@ export function MatchPoolLeagueClient({
     );
   }
 
+  function handleEdit(pool: PublicMatchPool, formData: FormData) {
+    const matchId = editMatchIds[pool.id] ?? pool.matchId;
+    const match = matchById.get(matchId);
+    const creatorEntry = pool.entries.find((entry) => entry.userId === pool.createdByUserId);
+    const pickType = editPicks[pool.id] || creatorEntry?.pickType || '';
+    const option = match && pickType
+      ? optionsForMatch(match).find((item) => item.value === pickType)
+      : undefined;
+    const amount = Number(formData.get('amount'));
+    if (!match || !option || !Number.isInteger(amount) || amount <= 0) {
+      setMessage('Revisa el partido, el monto referencial y la predicción.');
+      return;
+    }
+    runAction(
+      () => updateMatchPoolAction({
+        poolId: pool.id,
+        matchId,
+        amount,
+        currency: String(formData.get('currency') ?? pool.currency),
+        note: String(formData.get('note') ?? '').trim() || undefined,
+        pickType: option.value,
+        pickValue: option.pickValue,
+        reason: adminReasons[pool.id]?.trim() || undefined,
+      }),
+      'Reto actualizado.',
+    );
+    setEditingPoolId(null);
+  }
+
+  function handleCancel(pool: PublicMatchPool) {
+    runAction(
+      () => cancelMatchPoolAction({
+        poolId: pool.id,
+        reason: adminReasons[pool.id]?.trim() || undefined,
+      }),
+      'Reto cancelado.',
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
       <header className="border-b border-border pb-5">
@@ -168,7 +230,7 @@ export function MatchPoolLeagueClient({
 
       <section className="rounded border border-border bg-surface p-4">
         <h2 className="text-lg font-semibold text-text-primary">Crear reto por partido</h2>
-        {matches.length === 0 ? (
+        {creatableMatches.length === 0 ? (
           <p className="mt-2 text-sm text-text-muted">No hay partidos futuros disponibles.</p>
         ) : (
           <form action={handleCreate} className="mt-4 grid gap-3 md:grid-cols-2">
@@ -182,8 +244,12 @@ export function MatchPoolLeagueClient({
                 }}
                 className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary"
               >
-                {matches.map((match) => <option key={match.id} value={match.id}>{match.label}</option>)}
+                {creatableMatches.map((match) => <option key={match.id} value={match.id}>{match.label}</option>)}
               </select>
+            </label>
+            <label className="text-sm text-text-secondary">
+              Monto referencial ({league.currency})
+              <input name="amount" type="number" min="1" step="1" required className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
             </label>
             <label className="text-sm text-text-secondary">
               Predicción
@@ -199,16 +265,13 @@ export function MatchPoolLeagueClient({
               </select>
             </label>
             <label className="text-sm text-text-secondary">
-              Monto referencial ({league.currency})
-              <input name="amount" type="number" min="1" step="1" required className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
-            </label>
-            <label className="text-sm text-text-secondary">
               Nota opcional
               <input name="note" maxLength={240} className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
             </label>
-            <button type="submit" disabled={isPending} className="w-fit rounded bg-accent px-4 py-2 text-sm font-semibold text-background disabled:opacity-50">
-              Crear reto
-            </button>
+            <div className="md:col-span-2 rounded border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs text-cyan-200">
+              No se procesa dinero real. El monto es referencial y cualquier coordinación ocurre fuera de la app.
+            </div>
+            <button type="submit" disabled={isPending} className="w-fit rounded bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50">Crear reto</button>
           </form>
         )}
       </section>
@@ -221,8 +284,8 @@ export function MatchPoolLeagueClient({
           const match = matchById.get(pool.matchId);
           const alreadyJoined = pool.entries.some((entry) => entry.userId === currentUserId);
           return (
-            <div key={pool.id} className="mt-4 rounded border border-border bg-surface p-4">
-              <PublicMatchPoolsSection pools={[pool]} matchLabels={matchLabels} />
+            <div key={pool.id} className="mt-4 rounded border border-cyan-500/20 bg-surface p-4">
+              <PublicMatchPoolsSection pools={[pool]} matchLabels={matchLabels} showHeading={false} />
               {!alreadyJoined && match && pool.status === 'open' && (
                 <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
                   <label className="text-sm text-text-secondary">
@@ -259,6 +322,65 @@ export function MatchPoolLeagueClient({
                   </button>
                 </div>
               )}
+              {(() => {
+                const creatorCanMutate = pool.status === 'open'
+                  && pool.createdByUserId === currentUserId
+                  && pool.entries.length === 1
+                  && pool.entries[0]?.userId === currentUserId;
+                const canMutate = creatorCanMutate || isSuperadmin;
+                if (!canMutate) return null;
+                const creatorEntry = pool.entries.find((entry) => entry.userId === pool.createdByUserId);
+                const editMatchId = editMatchIds[pool.id] ?? pool.matchId;
+                const editMatch = matchById.get(editMatchId);
+                const editPick = editPicks[pool.id] || creatorEntry?.pickType || '';
+                const editOptions = matches.filter((candidate) => (
+                  isSuperadmin
+                  || candidate.id === pool.matchId
+                  || new Date(candidate.kickoffUtc).getTime() > nowMs
+                ));
+                return (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setEditingPoolId(editingPoolId === pool.id ? null : pool.id)} className="rounded border border-cyan-500/30 px-3 py-1.5 text-sm text-cyan-200">
+                        {editingPoolId === pool.id ? 'Cerrar edición' : 'Editar reto'}
+                      </button>
+                      <button type="button" disabled={isPending || (isSuperadmin && !adminReasons[pool.id]?.trim())} onClick={() => handleCancel(pool)} className="rounded border border-red-500/30 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50">
+                        Cancelar reto
+                      </button>
+                    </div>
+                    {isSuperadmin && (
+                      <label className="mt-3 block text-xs text-text-secondary">
+                        Razón administrativa obligatoria
+                        <input value={adminReasons[pool.id] ?? ''} onChange={(event) => setAdminReasons((current) => ({ ...current, [pool.id]: event.target.value }))} className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-text-primary" />
+                      </label>
+                    )}
+                    {editingPoolId === pool.id && creatorEntry && (
+                      <form action={(formData) => handleEdit(pool, formData)} className="mt-3 grid gap-3 rounded border border-border bg-bg-secondary/30 p-3 md:grid-cols-2">
+                        <label className="text-xs text-text-secondary">Partido
+                          <select value={editMatchId} onChange={(event) => { setEditMatchIds((current) => ({ ...current, [pool.id]: event.target.value })); setEditPicks((current) => ({ ...current, [pool.id]: '' })); }} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary">
+                            {editOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs text-text-secondary">Monto referencial
+                          <input name="amount" type="number" min="1" step="1" defaultValue={pool.amount} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary" />
+                        </label>
+                        <label className="text-xs text-text-secondary">Predicción
+                          <select value={editPick} onChange={(event) => setEditPicks((current) => ({ ...current, [pool.id]: event.target.value as MatchPoolPickType }))} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary">
+                            {editMatch && optionsForMatch(editMatch).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs text-text-secondary">Moneda
+                          <input name="currency" maxLength={3} defaultValue={pool.currency} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 uppercase text-text-primary" />
+                        </label>
+                        <label className="text-xs text-text-secondary md:col-span-2">Nota
+                          <input name="note" maxLength={240} defaultValue={pool.note ?? ''} className="mt-1 w-full rounded border border-border bg-background px-2 py-2 text-text-primary" />
+                        </label>
+                        <button type="submit" disabled={isPending || (isSuperadmin && !adminReasons[pool.id]?.trim())} className="w-fit rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar cambios</button>
+                      </form>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -267,7 +389,7 @@ export function MatchPoolLeagueClient({
 
       <section>
         <h2 className="text-xl font-semibold text-text-primary">Retos cerrados, liquidados o anulados</h2>
-        <PublicMatchPoolsSection pools={closedPools} matchLabels={matchLabels} />
+        <PublicMatchPoolsSection pools={closedPools} matchLabels={matchLabels} showHeading={false} />
       </section>
     </main>
   );

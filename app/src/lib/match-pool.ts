@@ -79,6 +79,32 @@ export interface MatchPoolSettlementResult {
   }>;
 }
 
+export interface MatchPoolMutationContext {
+  status: MatchPoolStatus;
+  createdByUserId: string;
+  currentUserId: string;
+  entryUserIds: string[];
+  isSuperadmin: boolean;
+  reason?: string | null;
+}
+
+export interface MatchPoolMutationDecision {
+  allowed: boolean;
+  requiresAudit: boolean;
+  error: string | null;
+}
+
+export interface EditMatchPoolInput {
+  poolId: string;
+  matchId: string;
+  amount: number;
+  currency: string;
+  note?: string;
+  pickType: MatchPoolPickType;
+  pickValue: string;
+  reason?: string;
+}
+
 // ─── Pick options ──────────────────────────────────────────────────────────────
 
 /**
@@ -127,6 +153,58 @@ export function canInviteToMatchPool(
   now: Date,
 ): boolean {
   return canJoinMatchPool(pool, match, now);
+}
+
+export function isMatchPoolPickValid(
+  match: Pick<MatchPoolMatchContext, 'phase' | 'homeTeamCode' | 'awayTeamCode'>,
+  pickType: MatchPoolPickType,
+  pickValue: string,
+): boolean {
+  if (!getAllowedMatchPoolPickOptions(match).includes(pickType)) return false;
+  if (pickType === 'draw') return pickValue === 'draw';
+  if (pickType === 'home_win' || pickType === 'home_advances') {
+    return pickValue === match.homeTeamCode;
+  }
+  return pickValue === match.awayTeamCode;
+}
+
+/**
+ * Authorizes logical edit/cancel operations. Kickoff is intentionally absent:
+ * a creator may correct a one-person open reto without affecting a counterparty.
+ */
+export function authorizeMatchPoolMutation(
+  context: MatchPoolMutationContext,
+): MatchPoolMutationDecision {
+  if (context.isSuperadmin) {
+    if (!context.reason?.trim()) {
+      return {
+        allowed: false,
+        requiresAudit: true,
+        error: 'El superadministrador debe indicar una razón.',
+      };
+    }
+    return { allowed: true, requiresAudit: true, error: null };
+  }
+
+  const isCreator = context.createdByUserId === context.currentUserId;
+  const hasOnlyCreatorEntry = context.entryUserIds.length === 1
+    && context.entryUserIds[0] === context.createdByUserId;
+
+  if (!isCreator) {
+    return { allowed: false, requiresAudit: false, error: 'Solo el creador puede modificar este reto.' };
+  }
+  if (context.status !== 'open') {
+    return { allowed: false, requiresAudit: false, error: 'Solo se pueden modificar retos abiertos.' };
+  }
+  if (!hasOnlyCreatorEntry) {
+    return {
+      allowed: false,
+      requiresAudit: false,
+      error: 'El reto ya tiene otras entradas y no puede modificarse.',
+    };
+  }
+
+  return { allowed: true, requiresAudit: false, error: null };
 }
 
 // ─── Result resolution ────────────────────────────────────────────────────────
